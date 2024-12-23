@@ -1,5 +1,5 @@
 """
-终结符
+Java 终结符类型的枚举类
 """
 
 import enum
@@ -8,7 +8,7 @@ import enum
 class TokenKind(enum.IntEnum):
     """Java 终结符类型的枚举类
 
-    在终结符类型名称设计时，与 JDK 源码名称保持一致。
+    在终结符类型名称设计时，与 JDK 源码名称保持一致，但为了适应 Python 语法规范，在不同单词之间增加了下划线
 
     JDK 源码路径：src/jdk.compiler/share/classes/com/sun/tools/javac/parser/Tokens.java
     JDK 源码地址：https://github.com/openjdk/jdk/blob/249f141211c94afcce70d9d536d84e108e07b4e5/src/jdk.compiler/share/classes/com/sun/tools/javac/parser/Tokens.java
@@ -168,9 +168,7 @@ class TokenKind(enum.IntEnum):
     # OP_CAL_MOD = enum.auto()  # 算术运算符：取模（%）
     # OP_EQ = enum.auto()  # 比较运算符：等于（==）
     # OP_NEQ = enum.auto()  # 比较运算符：不等于（!=）
-    # # OP_LT = enum.auto()  # 比较运算符：小于（<）  -- 在词法解析层，无法判断小于号是泛型的一部分还是比较运算符，因此终结符不做区别
     # OP_LTE = enum.auto()  # 比较运算符：小于等于（<=）
-    # # OP_GT = enum.auto()  # 比较运算符：大于（>）  -- 在词法解析层，无法判断大于号是泛型的一部分还是比较运算符，因此终结符不做区别
     # OP_GTE = enum.auto()  # 比较运算符：大于等于（>=）
     # OP_LOG_AND = enum.auto()  # 逻辑运算符：逻辑与（&&）
     # OP_LOG_OR = enum.auto()  # 逻辑运算符：逻辑或（||）
@@ -186,9 +184,6 @@ class TokenKind(enum.IntEnum):
     # OP_BIT_AND = enum.auto()  # 位运算符：按位与（&）
     # OP_BIT_OR = enum.auto()  # 位运算符：按位或（|）
     # OP_BIT_XOR = enum.auto()  # 位运算符：按位异或（^）
-    # OP_BIT_NOT = enum.auto()  # 位运算符：按位非（~）
     # OP_BIT_LSHIFT = enum.auto()  # 位运算符：左移位（<<）
     # OP_BIT_RSHIFT = enum.auto()  # 位运算符：带符号右移位（>>）
     # OP_BIT_UNSIGNED_RSHIFT = enum.auto()  # 位运算符：无符号右移位（>>>）
-    # OP_QUES = enum.auto()  # 三目运算符（?）
-    # # OP_COLON = enum.auto()  # 三目运算符（:）  -- 在词法解析层，无法判断冒号是三目运算符的一部分还是循环、Case 语句的一部分，因此终结符不做区分

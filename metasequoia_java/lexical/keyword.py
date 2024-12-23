@@ -2,7 +2,7 @@
 关键字、布尔字面值、空值字面值名称到终结符类型的映射
 """
 
-from metasequoia_java.terminal import TokenKind
+from metasequoia_java.lexical.token_kind import TokenKind
 
 __all__ = [
     "KEYWORD_HASH"
