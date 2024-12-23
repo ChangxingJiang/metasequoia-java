@@ -5,9 +5,13 @@ https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
 https://github.com/openjdk/jdk/blob/249f141211c94afcce70d9d536d84e108e07b4e5/src/jdk.compiler/share/classes/com/sun/tools/javac/code/Flags.java#L556
 https://github.com/openjdk/jdk/blob/249f141211c94afcce70d9d536d84e108e07b4e5/src/jdk.compiler/share/classes/com/sun/tools/javac/parser/Tokens.java#L363
 https://github.com/openjdk/jdk/blob/249f141211c94afcce70d9d536d84e108e07b4e5/src/jdk.compiler/share/classes/com/sun/tools/javac/parser/JavacParser.java#L3595
+
+TODO 令 StringLiteral 和 TextBlock 转换为字符串字面值时 Token 支持 string_value 方法
+TODO 增加 JavaDoc 的区分逻辑
 """
 
 import abc
+import collections
 import enum
 from typing import Dict, List, Optional, Tuple
 
@@ -107,6 +111,10 @@ class Token:
     def source(self) -> str:
         return self._source
 
+    @property
+    def is_end(self) -> bool:
+        return self.kind == TokenKind.EOF
+
     def int_value(self) -> int:
         raise TypeError(f"{self.__class__.__name__}.int_value is undefined!")
 
@@ -165,7 +173,7 @@ class StringToken(Token):
 class LexicalFSM:
     """词法解析器自动机的抽象基类"""
 
-    __slots__ = ("_text", "_length", "pos_start", "pos", "state", "affiliations")
+    __slots__ = ("_text", "_length", "pos_start", "pos", "state", "affiliations", "_ahead")
 
     def __init__(self, text: str):
         self._text: str = text  # Unicode 字符串
@@ -175,6 +183,8 @@ class LexicalFSM:
         self.pos: int = 0  # 当前指针位置
         self.state: LexicalState = LexicalState.INIT  # 自动机状态
         self.affiliations: List[Affiliation] = []  # 还没有写入 Token 的附属元素的列表
+
+        self._ahead = collections.deque()  # 提前获取前置元素的缓存
 
     @property
     def length(self) -> int:
@@ -205,6 +215,9 @@ class LexicalFSM:
     def lex(self) -> Token:
         """解析并生成一个终结符"""
 
+        if len(self._ahead) > 0:
+            return self._ahead.popleft()
+
         while True:
             char = self._char()
 
@@ -219,6 +232,13 @@ class LexicalFSM:
             res: Optional[Token] = operate(self)
             if res is not None:
                 return res
+
+    def ahead(self, idx: int):
+        """提前获取当前终结符之后的第 idx 个终结符（从 1 起），及 ahead(0) 对应当前终结符"""
+        if len(self._ahead) < idx:
+            for _ in range(idx - len(self._ahead)):
+                self._ahead.append(self.lex())
+        return self._ahead[idx - 1]
 
 
 class Operator(abc.ABC):
@@ -324,8 +344,28 @@ class ReduceLongSetState(Operator):
         )
 
 
-class ReduceOctSetState(Operator):
+class ReduceIntOctSetState(Operator):
     """【不移动指针】将当前单词作为八进制整数，执行规约操作，尝试将当前词语解析为关键词"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        fsm.state = self._state
+        source = fsm.get_word()
+        fsm.pos_start = fsm.pos
+        return IntToken(
+            kind=TokenKind.INT_LITERAL,
+            pos=fsm.pos_start,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=int(source[1:], base=8)
+        )
+
+
+class ReduceLongOctSetState(Operator):
+    """【不移动指针】将当前单词作为八进制长整数，执行规约操作，尝试将当前词语解析为关键词"""
 
     def __init__(self, state: LexicalState):
         self._state = state
@@ -340,11 +380,31 @@ class ReduceOctSetState(Operator):
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
-            value=int(source[1:], base=8)
+            value=int(source[1:-1], base=8)
         )
 
 
-class ReduceHexSetState(Operator):
+class ReduceIntHexSetState(Operator):
+    """【不移动指针】将当前单词作为十六进制整数，执行规约操作，尝试将当前词语解析为关键词"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        fsm.state = self._state
+        source = fsm.get_word()
+        fsm.pos_start = fsm.pos
+        return IntToken(
+            kind=TokenKind.INT_LITERAL,
+            pos=fsm.pos_start,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=int(source[2:], base=16)
+        )
+
+
+class ReduceLongHexSetState(Operator):
     """【不移动指针】将当前单词作为十六进制整数，执行规约操作，尝试将当前词语解析为关键词"""
 
     def __init__(self, state: LexicalState):
@@ -360,7 +420,7 @@ class ReduceHexSetState(Operator):
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
-            value=int(source[2:], base=16)
+            value=int(source[2:-1], base=16)
         )
 
 
@@ -395,7 +455,7 @@ class ReduceDoubleSetState(Operator):
         fsm.pos_start = fsm.pos
         value = float(source[:-1]) if source.endswith("d") or source.endswith("D") else float(source)
         return FloatToken(
-            kind=TokenKind.FLOAT_LITERAL,
+            kind=TokenKind.DOUBLE_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -432,23 +492,6 @@ class MoveReduceSetState(Operator):
         fsm.pos_start = fsm.pos
         return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
                      source=source)
-
-
-class Comment(Operator):
-    """【移动指针】将当前元素作为附属元素，进行规约操作"""
-
-    def __init__(self, style: AffiliationStyle):
-        self._style = style
-
-    def __call__(self, fsm: LexicalFSM):
-        source = fsm.get_word()
-        fsm.pos_start = fsm.pos
-        fsm.affiliations.append(Affiliation(
-            style=self._style,
-            pos=fsm.pos_start,
-            end_pos=fsm.pos,
-            text=source
-        ))
 
 
 class CommentSetState(Operator):
@@ -600,25 +643,25 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
         ")": MoveFixed(kind=TokenKind.RPAREN, source=")"),
         ".": ShiftSetState(state=LexicalState.DOT),
         ";": MoveFixed(kind=TokenKind.SEMI, source=";"),
-        ":": MoveFixed(kind=TokenKind.COLON, source=":"),
+        ":": ShiftSetState(state=LexicalState.COLON),
         ",": MoveFixed(kind=TokenKind.COMMA, source=","),
         "@": MoveFixed(kind=TokenKind.MONKEYS_AT, source="@"),
         "0": ShiftSetState(state=LexicalState.ZERO),
-        frozenset({"1", "2", "3", "4", "5", "6", "7", "8", "9"}): ShiftSetState(state=LexicalState.NUMBER),
-        "'": ShiftSetState(state=LexicalState.IN_SINGLE_QUOTE),
-        "\"": ShiftSetState(state=LexicalState.IN_DOUBLE_QUOTE),
-        "+": ShiftSetState(state=LexicalState.CHAR_ADD),
-        "-": ShiftSetState(state=LexicalState.CHAR_SUB),
-        "*": ShiftSetState(state=LexicalState.CHAR_MULT),
-        "/": ShiftSetState(state=LexicalState.CHAR_DIV),
-        "%": ShiftSetState(state=LexicalState.CHAR_MOD),
-        "=": ShiftSetState(state=LexicalState.CHAR_EQUAL),
-        "!": ShiftSetState(state=LexicalState.CHAR_EXCLAMATION),
-        "<": ShiftSetState(state=LexicalState.CHAR_LESS),
-        ">": ShiftSetState(state=LexicalState.CHAR_MORE),
-        "&": ShiftSetState(state=LexicalState.CHAR_AND),
-        "|": ShiftSetState(state=LexicalState.CHAR_OR),
-        "^": MoveFixed(kind=TokenKind.CARET, source="^"),
+        frozenset({"1", "2", "3", "4", "5", "6", "7", "8", "9"}): ShiftSetState(state=LexicalState.DEC),
+        "'": ShiftSetState(state=LexicalState.LIT_CHAR),
+        "\"": ShiftSetState(state=LexicalState.DQ),
+        "+": ShiftSetState(state=LexicalState.PLUS),
+        "-": ShiftSetState(state=LexicalState.SUB),
+        "*": ShiftSetState(state=LexicalState.STAR),
+        "/": ShiftSetState(state=LexicalState.SLASH),
+        "%": ShiftSetState(state=LexicalState.PERCENT),
+        "=": ShiftSetState(state=LexicalState.EQ),
+        "!": ShiftSetState(state=LexicalState.BANG),
+        "<": ShiftSetState(state=LexicalState.LT),
+        ">": ShiftSetState(state=LexicalState.GT),
+        "&": ShiftSetState(state=LexicalState.AMP),
+        "|": ShiftSetState(state=LexicalState.BAR),
+        "^": ShiftSetState(state=LexicalState.CARET),
         "~": MoveFixed(kind=TokenKind.TILDE, source="~"),
         "?": MoveFixed(kind=TokenKind.QUES, source="?"),
         END_CHAR: Finish(),
@@ -636,10 +679,10 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # 0（可能为八进制的前缀）
     LexicalState.ZERO: {
         frozenset({"x", "X"}): ShiftSetState(state=LexicalState.ZERO_X),
-        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.NUMBER_LONG),
-        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.NUMBER_FLOAT),
-        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.NUMBER_DOUBLE),
-        NUMBER: ShiftSetState(state=LexicalState.OCT_NUMBER),
+        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.DEC_L),
+        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
+        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
+        NUMBER: ShiftSetState(state=LexicalState.OCT),
         OPERATOR: FixedIntSetState(source="0", state=LexicalState.INIT),
         END_WORD: FixedIntSetState(source="0", state=LexicalState.INIT),
         END_CHAR: FixedIntSetState(source="0", state=LexicalState.INIT),
@@ -647,81 +690,97 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
 
     # 0[xX]（十六进制的前缀）
     LexicalState.ZERO_X: {
-        HEX_NUMBER: ShiftSetState(state=LexicalState.HEX_NUMBER),
+        HEX_NUMBER: ShiftSetState(state=LexicalState.HEX),
     },
 
     # [1-9][0-9]+（十进制数）
-    LexicalState.NUMBER: {
+    LexicalState.DEC: {
         NUMBER: Shift(),
-        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.NUMBER_LONG),
-        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.NUMBER_FLOAT),
-        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.NUMBER_DOUBLE),
-        ".": ShiftSetState(state=LexicalState.NUMBER_DECIMAL),
-        frozenset({"e", "E"}): ShiftSetState(state=LexicalState.NUMBER_DECIMAL_E),
+        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.DEC_L),
+        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
+        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
+        ".": ShiftSetState(state=LexicalState.DEC_DOT_NUM),
+        frozenset({"e", "E"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E),
         OPERATOR: ReduceIntSetState(state=LexicalState.INIT),
         frozenset(END_WORD - {"."}): ReduceIntSetState(state=LexicalState.INIT),
         END_CHAR: ReduceIntSetState(state=LexicalState.INIT),
     },
 
-    # 0[0-7]+（八进制数）
-    LexicalState.OCT_NUMBER: {
-        OCT_NUMBER: Shift(),
-        OPERATOR: ReduceOctSetState(state=LexicalState.INIT),
-        END_WORD: ReduceOctSetState(state=LexicalState.INIT),
-        END_CHAR: ReduceOctSetState(state=LexicalState.INIT),
-    },
-
-    # 0[xX][0-9a-fA-F]+（十六进制数）
-    LexicalState.HEX_NUMBER: {
-        HEX_NUMBER: Shift(),
-        OPERATOR: ReduceHexSetState(state=LexicalState.INIT),
-        END_WORD: ReduceHexSetState(state=LexicalState.INIT),
-        END_CHAR: ReduceHexSetState(state=LexicalState.INIT)
-    },
-
     # [1-9][0-9]*L（长整型字面值）
-    LexicalState.NUMBER_LONG: {
+    LexicalState.DEC_L: {
         OPERATOR: ReduceLongSetState(state=LexicalState.INIT),
         END_WORD: ReduceLongSetState(state=LexicalState.INIT),
         END_CHAR: ReduceLongSetState(state=LexicalState.INIT),
     },
 
+    # 0[0-7]+（八进制数）
+    LexicalState.OCT: {
+        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.OCT_L),
+        OCT_NUMBER: Shift(),
+        OPERATOR: ReduceIntOctSetState(state=LexicalState.INIT),
+        END_WORD: ReduceIntOctSetState(state=LexicalState.INIT),
+        END_CHAR: ReduceIntOctSetState(state=LexicalState.INIT),
+    },
+
+    # [1-9][0-9]*L（八进制长整型）
+    LexicalState.OCT_L: {
+        OPERATOR: ReduceLongOctSetState(state=LexicalState.INIT),
+        END_WORD: ReduceLongOctSetState(state=LexicalState.INIT),
+        END_CHAR: ReduceLongOctSetState(state=LexicalState.INIT),
+    },
+
+    # 0[xX][0-9a-fA-F]+（十六进制数）
+    LexicalState.HEX: {
+        frozenset({"l", "L"}): ShiftSetState(state=LexicalState.HEX_L),
+        HEX_NUMBER: Shift(),
+        OPERATOR: ReduceIntHexSetState(state=LexicalState.INIT),
+        END_WORD: ReduceIntHexSetState(state=LexicalState.INIT),
+        END_CHAR: ReduceIntHexSetState(state=LexicalState.INIT)
+    },
+
+    # [1-9][0-9]*L（十六进制长整型）
+    LexicalState.HEX_L: {
+        OPERATOR: ReduceLongHexSetState(state=LexicalState.INIT),
+        END_WORD: ReduceLongHexSetState(state=LexicalState.INIT),
+        END_CHAR: ReduceLongHexSetState(state=LexicalState.INIT),
+    },
+
     # [0-9]+\.[0-9]+（小数）
-    LexicalState.NUMBER_DECIMAL: {
+    LexicalState.DEC_DOT_NUM: {
         NUMBER: Shift(),
-        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.NUMBER_FLOAT),
-        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.NUMBER_DOUBLE),
-        frozenset({"e", "E"}): ShiftSetState(state=LexicalState.NUMBER_DECIMAL_E),
+        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
+        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
+        frozenset({"e", "E"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E),
         OPERATOR: ReduceDoubleSetState(state=LexicalState.INIT),
         END_WORD: ReduceDoubleSetState(state=LexicalState.INIT),
         END_CHAR: ReduceDoubleSetState(state=LexicalState.INIT),
     },
 
     # [0-9]+(\.[0-9]+)?[eE]（科学记数法的前缀）
-    LexicalState.NUMBER_DECIMAL_E: {
-        NUMBER: ShiftSetState(state=LexicalState.NUMBER_SCIENTIFIC),
-        "-": ShiftSetState(state=LexicalState.NUMBER_SCIENTIFIC),
+    LexicalState.DEC_DOT_NUM_E: {
+        NUMBER: ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM),
+        "-": ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM),
     },
 
     # [0-9]+(\.[0-9]+)?[eE]-?[0-9]*（科学记数法）
-    LexicalState.NUMBER_SCIENTIFIC: {
+    LexicalState.DEC_DOT_NUM_E_NUM: {
         NUMBER: Shift(),
-        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.NUMBER_FLOAT),
-        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.NUMBER_DOUBLE),
+        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
+        frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
         OPERATOR: ReduceDoubleSetState(state=LexicalState.INIT),
         END_WORD: ReduceDoubleSetState(state=LexicalState.INIT),
         END_CHAR: ReduceDoubleSetState(state=LexicalState.INIT),
     },
 
     # [0-9]+(\.[0-9]+)?([eE]-?[0-9]*)?[fF]（单精度浮点数字面值）
-    LexicalState.NUMBER_FLOAT: {
+    LexicalState.DEC_DOT_NUM_E_NUM_F: {
         OPERATOR: ReduceFloatSetState(state=LexicalState.INIT),
         END_WORD: ReduceFloatSetState(state=LexicalState.INIT),
         END_CHAR: ReduceFloatSetState(state=LexicalState.INIT),
     },
 
     # [0-9]+(\.[0-9]+)?([eE]-?[0-9]*)?[dD]（双精度浮点数字面值）
-    LexicalState.NUMBER_DOUBLE: {
+    LexicalState.DEC_DOT_NUM_E_NUM_D: {
         OPERATOR: ReduceDoubleSetState(state=LexicalState.INIT),
         END_WORD: ReduceDoubleSetState(state=LexicalState.INIT),
         END_CHAR: ReduceDoubleSetState(state=LexicalState.INIT),
@@ -729,57 +788,102 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
 
     # -------------------- 字符字面值 --------------------
     # 在单引号字符串中
-    LexicalState.IN_SINGLE_QUOTE: {
-        "\\": ShiftSetState(state=LexicalState.IN_SINGLE_QUOTE_ESCAPE),
+    LexicalState.LIT_CHAR: {
+        "\\": ShiftSetState(state=LexicalState.LIT_CHAR_ESCAPE),
         "'": MoveReduceSetState(kind=TokenKind.CHAR_LITERAL, state=LexicalState.INIT),
         END_CHAR: Error(),
         DEFAULT: Shift(),
     },
 
     # 在单引号字符串中的转义符之后
-    LexicalState.IN_SINGLE_QUOTE_ESCAPE: {
+    LexicalState.LIT_CHAR_ESCAPE: {
         END_CHAR: Error(),
-        DEFAULT: ShiftSetState(state=LexicalState.IN_SINGLE_QUOTE),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_CHAR),
     },
 
     # -------------------- 字符串字面值 --------------------
+    # "
+    LexicalState.DQ: {
+        "\"": ShiftSetState(state=LexicalState.DQ_DQ),
+        "\\": ShiftSetState(state=LexicalState.LIT_STRING_ESCAPE),
+        END_CHAR: Error(),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_STRING),
+    },
+
+    # ""
+    LexicalState.DQ_DQ: {
+        "\"": ShiftSetState(state=LexicalState.LIT_BLOCK),
+        DEFAULT: MoveFixedSetState(kind=TokenKind.STRING_LITERAL, source="\"\"", state=LexicalState.INIT),
+    },
+
     # 在双引号字符串中
-    LexicalState.IN_DOUBLE_QUOTE: {
-        "\\": ShiftSetState(state=LexicalState.IN_DOUBLE_QUOTE_ESCAPE),
+    LexicalState.LIT_STRING: {
+        "\\": ShiftSetState(state=LexicalState.LIT_STRING_ESCAPE),
         "\"": MoveReduceSetState(kind=TokenKind.STRING_LITERAL, state=LexicalState.INIT),
         END_CHAR: Error(),
         DEFAULT: Shift(),
     },
 
     # 在双引号字符串中的转义符之后
-    LexicalState.IN_DOUBLE_QUOTE_ESCAPE: {
+    LexicalState.LIT_STRING_ESCAPE: {
         END_CHAR: Error(),
-        DEFAULT: ShiftSetState(state=LexicalState.IN_DOUBLE_QUOTE),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_STRING),
+    },
+
+    # 在 TextBlock 中
+    LexicalState.LIT_BLOCK: {
+        "\"": ShiftSetState(state=LexicalState.LIT_BLOCK_DQ),
+        "\\": ShiftSetState(state=LexicalState.LIT_BLOCK_ESCAPE),
+        END_CHAR: Error(),
+        DEFAULT: Shift(),
+    },
+
+    # 在 TextBlock 中的转义符之后
+    LexicalState.LIT_BLOCK_ESCAPE: {
+        END_CHAR: Error(),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_BLOCK),
+    },
+
+    # 在 TextBlock 中的 " 之后
+    LexicalState.LIT_BLOCK_DQ: {
+        "\"": ShiftSetState(state=LexicalState.LIT_BLOCK_DQ_DQ),
+        "\\": ShiftSetState(state=LexicalState.LIT_BLOCK_ESCAPE),
+        END_CHAR: Error(),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_BLOCK),
+    },
+
+    # 在 TextBlock 中的 "" 之后
+    LexicalState.LIT_BLOCK_DQ_DQ: {
+        "\"": MoveReduceSetState(kind=TokenKind.STRING_LITERAL, state=LexicalState.INIT),
+        "\\": ShiftSetState(state=LexicalState.LIT_BLOCK_ESCAPE),
+        END_CHAR: Error(),
+        DEFAULT: ShiftSetState(state=LexicalState.LIT_BLOCK),
     },
 
     # -------------------- 多字符运算符 --------------------
     # +
-    LexicalState.CHAR_ADD: {
+    LexicalState.PLUS: {
         "=": MoveFixedSetState(kind=TokenKind.PLUS_EQ, source="+=", state=LexicalState.INIT),
         "+": MoveFixedSetState(kind=TokenKind.PLUS_PLUS, source="++", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.PLUS, source="+", state=LexicalState.INIT),
     },
 
     # -
-    LexicalState.CHAR_SUB: {
+    LexicalState.SUB: {
+        ">": MoveFixedSetState(kind=TokenKind.ARROW, source="->", state=LexicalState.INIT),
         "=": MoveFixedSetState(kind=TokenKind.SUB_EQ, source="-=", state=LexicalState.INIT),
         "-": MoveFixedSetState(kind=TokenKind.SUB_SUB, source="--", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.SUB, source="-", state=LexicalState.INIT),
     },
 
     # *
-    LexicalState.CHAR_MULT: {
+    LexicalState.STAR: {
         "=": MoveFixedSetState(kind=TokenKind.STAR_EQ, source="*=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.STAR, source="*", state=LexicalState.INIT),
     },
 
     # /
-    LexicalState.CHAR_DIV: {
+    LexicalState.SLASH: {
         "=": MoveFixedSetState(kind=TokenKind.SLASH_EQ, source="/=", state=LexicalState.INIT),
         "/": ShiftSetState(state=LexicalState.IN_LINE_COMMENT),
         "*": ShiftSetState(state=LexicalState.IN_MULTI_COMMENT),
@@ -787,53 +891,80 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     },
 
     # %
-    LexicalState.CHAR_MOD: {
+    LexicalState.PERCENT: {
         "=": MoveFixedSetState(kind=TokenKind.PERCENT_EQ, source="%=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.PERCENT, source="%", state=LexicalState.INIT),
     },
 
     # =
-    LexicalState.CHAR_EQUAL: {
+    LexicalState.EQ: {
         "=": MoveFixedSetState(kind=TokenKind.EQ_EQ, source="==", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.EQ, source="=", state=LexicalState.INIT),
     },
 
     # !
-    LexicalState.CHAR_EXCLAMATION: {
+    LexicalState.BANG: {
         "=": MoveFixedSetState(kind=TokenKind.BANG_EQ, source="!=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.BANG, source="!", state=LexicalState.INIT),
     },
 
     # <
-    LexicalState.CHAR_LESS: {
-        "<": MoveFixedSetState(kind=TokenKind.LT_LT, source="<<", state=LexicalState.INIT),
+    LexicalState.LT: {
+        "<": ShiftSetState(state=LexicalState.LT_LT),
         "=": MoveFixedSetState(kind=TokenKind.LT_EQ, source="<=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.LT, source="<", state=LexicalState.INIT)
     },
 
+    # <<
+    LexicalState.LT_LT: {
+        "=": MoveFixedSetState(kind=TokenKind.LT_LT_EQ, source="<<=", state=LexicalState.INIT),
+        DEFAULT: FixedSetState(kind=TokenKind.LT_LT, source="<<", state=LexicalState.INIT),
+    },
+
     # >
-    LexicalState.CHAR_MORE: {
-        ">": ShiftSetState(state=LexicalState.CHAR_MORE_MORE),
+    LexicalState.GT: {
+        ">": ShiftSetState(state=LexicalState.GT_GT),
         "=": MoveFixedSetState(kind=TokenKind.GT_EQ, source=">=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.GT, source=">", state=LexicalState.INIT)
     },
 
     # >>
-    LexicalState.CHAR_MORE_MORE: {
-        ">": MoveFixedSetState(kind=TokenKind.GT_GT_GT, source=">>>", state=LexicalState.INIT),
+    LexicalState.GT_GT: {
+        ">": ShiftSetState(state=LexicalState.GT_GT_GT),
+        "=": MoveFixedSetState(kind=TokenKind.GT_GT_EQ, source=">>=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.GT_GT, source=">>", state=LexicalState.INIT),
     },
 
+    # >>>
+    LexicalState.GT_GT_GT: {
+        "=": MoveFixedSetState(kind=TokenKind.GT_GT_GT_EQ, source=">>>=", state=LexicalState.INIT),
+        DEFAULT: FixedSetState(kind=TokenKind.GT_GT_GT, source=">>>", state=LexicalState.INIT),
+    },
+
     # &
-    LexicalState.CHAR_AND: {
+    LexicalState.AMP: {
         "&": MoveFixedSetState(kind=TokenKind.AMP_AMP, source="&&", state=LexicalState.INIT),
+        "=": MoveFixedSetState(kind=TokenKind.AMP_EQ, source="&=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.AMP, source="&", state=LexicalState.INIT),
     },
 
     # |
-    LexicalState.CHAR_OR: {
+    LexicalState.BAR: {
         "|": MoveFixedSetState(kind=TokenKind.BAR_BAR, source="||", state=LexicalState.INIT),
+        "=": MoveFixedSetState(kind=TokenKind.BAR_EQ, source="|=", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.BAR, source="|", state=LexicalState.INIT),
+    },
+
+    # ^
+    LexicalState.CARET: {
+        "=": MoveFixedSetState(kind=TokenKind.CARET_EQ, source="^=", state=LexicalState.INIT),
+        DEFAULT: FixedSetState(kind=TokenKind.CARET, source="^", state=LexicalState.INIT),
+    },
+
+    # :
+    LexicalState.COLON: {
+        "：": MoveFixedSetState(kind=TokenKind.COL_COL, source="::", state=LexicalState.INIT),
+        DEFAULT: FixedSetState(kind=TokenKind.COLON, source=":", state=LexicalState.INIT),
     },
 
     # -------------------- 注释 --------------------
@@ -854,16 +985,22 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # 在多行注释中的 * 之后
     LexicalState.IN_MULTI_COMMENT_STAR: {
         "*": Shift(),
-        "/": CommentSetState(style=AffiliationStyle.COMMENT_BLOCK, state=LexicalState.INIT),
+        "/": MoveCommentSetState(style=AffiliationStyle.COMMENT_BLOCK, state=LexicalState.INIT),
         END_CHAR: Error(),
         DEFAULT: ShiftSetState(state=LexicalState.IN_MULTI_COMMENT),
     },
 
     # -------------------- 特殊场景 --------------------
     # .
-    LexicalState.POINT: {
-        NUMBER: ShiftSetState(state=LexicalState.NUMBER_DECIMAL),  # 当下一个字符是数字时，为浮点数
+    LexicalState.DOT: {
+        ".": ShiftSetState(state=LexicalState.DOT_DOT),
+        NUMBER: ShiftSetState(state=LexicalState.DEC_DOT_NUM),  # 当下一个字符是数字时，为浮点数
         DEFAULT: FixedSetState(kind=TokenKind.DOT, source=".", state=LexicalState.INIT),  # 当下一个字符不是数字时，为类名或方法名
+    },
+
+    # ..
+    LexicalState.DOT_DOT: {
+        ".": MoveFixedSetState(kind=TokenKind.ELLIPSIS, source="...", state=LexicalState.INIT),  # 当下一个字符是数字时，为浮点数
     }
 }
 
@@ -894,7 +1031,7 @@ for state_, operation_map in FSM_OPERATION_MAP_SOURCE.items():
             FSM_OPERATION_MAP[(state_, ch)] = FSM_OPERATION_MAP_DEFAULT[state_]
 
 if __name__ == "__main__":
-    lexical_fsm = LexicalFSM("1 + 2//comment")
+    lexical_fsm = LexicalFSM("1/* xxx */\n2")
     token_list = []
     while token := lexical_fsm.lex():
         print("token:", token)

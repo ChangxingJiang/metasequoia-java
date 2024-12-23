@@ -10,6 +10,7 @@ __all__ = [
 
 # 关键字、布尔字面值、空值字面值名称到终结符类型的映射
 KEYWORD_HASH = {
+    # 关键字
     "abstract": TokenKind.ABSTRACT,
     "assert": TokenKind.ASSERT,
     "boolean": TokenKind.BOOLEAN,
@@ -60,7 +61,12 @@ KEYWORD_HASH = {
     "while": TokenKind.WHILE,
     "goto": TokenKind.GOTO,
     "const": TokenKind.CONST,
+
+    # 字面值
     "true": TokenKind.TRUE,
     "false": TokenKind.FALSE,
     "null": TokenKind.NULL,
+
+    # 下划线
+    "_": TokenKind.UNDERSCORE,
 }
