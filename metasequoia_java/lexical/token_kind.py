@@ -77,12 +77,17 @@ class TokenKind(enum.IntEnum):
     UNDERSCORE = enum.auto()  # 下划线：_
 
     # ------------------------------ 字面值 ------------------------------
-    INT_LITERAL = enum.auto()  # 整型字面值（包含十进制整型、八进制整型和十六进制整型）
-    LONG_LITERAL = enum.auto()  # 长整型字面值（包含十进制长整型、八进制长整型和十六进制长整型）
+    INT_OCT_LITERAL = enum.auto()  # 八进制整型字面值
+    INT_DEC_LITERAL = enum.auto()  # 十进制整型字面值
+    INT_HEX_LITERAL = enum.auto()  # 十六进制整型字面值
+    LONG_OCT_LITERAL = enum.auto()  # 八进制长整型字面值
+    LONG_DEC_LITERAL = enum.auto()  # 十进制长整型字面值
+    LONG_HEX_LITERAL = enum.auto()  # 十六进制长整型字面值
     FLOAT_LITERAL = enum.auto()  # 单精度浮点数字面值
     DOUBLE_LITERAL = enum.auto()  # 双精度浮点数字面值
     CHAR_LITERAL = enum.auto()  # 字符字面值
     STRING_LITERAL = enum.auto()  # 字符串字面值
+    TEXT_BLOCK = enum.auto()  # 字符块字面值（JDK 15+）
     STRING_FRAGMENT = enum.auto()
     TRUE = enum.auto()  # 布尔字面值：true
     FALSE = enum.auto()  # 布尔字面值：false

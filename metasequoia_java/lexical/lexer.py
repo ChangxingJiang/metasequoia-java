@@ -115,13 +115,20 @@ class Token:
     def is_end(self) -> bool:
         return self.kind == TokenKind.EOF
 
+    @property
+    def name(self) -> str:
+        return self.source
+
     def int_value(self) -> int:
         raise TypeError(f"{self.__class__.__name__}.int_value is undefined!")
 
     def float_value(self) -> int:
         raise TypeError(f"{self.__class__.__name__}.float_value is undefined!")
 
-    def string_value(self) -> int:
+    def char_value(self) -> str:
+        raise TypeError(f"{self.__class__.__name__}.char_value is undefined!")
+
+    def string_value(self) -> str:
         raise TypeError(f"{self.__class__.__name__}.string_value is undefined!")
 
     def __repr__(self) -> str:
@@ -156,8 +163,22 @@ class FloatToken(Token):
         return self._value
 
 
+class CharToken(Token):
+    """字符类型的 Token"""
+
+    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
+
+    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str],
+                 value: str):
+        super().__init__(kind, pos, end_pos, affiliations, source)
+        self._value = value
+
+    def char_value(self) -> str:
+        return self._value
+
+
 class StringToken(Token):
-    """浮点数类型的 Token"""
+    """字符串类型的 Token"""
 
     __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
 
@@ -315,7 +336,7 @@ class ReduceIntSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.INT_LITERAL,
+            kind=TokenKind.INT_DEC_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -335,7 +356,7 @@ class ReduceLongSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.LONG_LITERAL,
+            kind=TokenKind.LONG_DEC_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -355,7 +376,7 @@ class ReduceIntOctSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.INT_LITERAL,
+            kind=TokenKind.INT_OCT_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -375,7 +396,7 @@ class ReduceLongOctSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.LONG_LITERAL,
+            kind=TokenKind.LONG_OCT_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -395,7 +416,7 @@ class ReduceIntHexSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.INT_LITERAL,
+            kind=TokenKind.INT_HEX_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -415,7 +436,7 @@ class ReduceLongHexSetState(Operator):
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         return IntToken(
-            kind=TokenKind.LONG_LITERAL,
+            kind=TokenKind.LONG_HEX_LITERAL,
             pos=fsm.pos_start,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
@@ -492,6 +513,51 @@ class MoveReduceSetState(Operator):
         fsm.pos_start = fsm.pos
         return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
                      source=source)
+
+
+class MoveReduceCharSetState(Operator):
+    """【移动指针】将当前词语作为字符字面值，进行规约操作"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        fsm.state = self._state
+        fsm.pos += 1
+        source = fsm.get_word()
+        fsm.pos_start = fsm.pos
+        return CharToken(kind=TokenKind.CHAR_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
+                         affiliations=fsm.pop_affiliation(), source=source, value=source[1:-1])
+
+
+class MoveReduceStringSetState(Operator):
+    """【移动指针】将当前词语作为字符串字面值，进行规约操作"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        fsm.state = self._state
+        fsm.pos += 1
+        source = fsm.get_word()
+        fsm.pos_start = fsm.pos
+        return StringToken(kind=TokenKind.STRING_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
+                           affiliations=fsm.pop_affiliation(), source=source, value=source[1:-1])
+
+
+class MoveReduceTextBlockSetState(Operator):
+    """【移动指针】将当前词语作为 TextBlock，进行规约操作"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        fsm.state = self._state
+        fsm.pos += 1
+        source = fsm.get_word()
+        fsm.pos_start = fsm.pos
+        return StringToken(kind=TokenKind.TEXT_BLOCK, pos=fsm.pos_start, end_pos=fsm.pos,
+                           affiliations=fsm.pop_affiliation(), source=source, value=source[3:-3])
 
 
 class CommentSetState(Operator):
@@ -576,7 +642,7 @@ class FixedIntSetState(Operator):
     def __call__(self, fsm: LexicalFSM):
         fsm.state = self._state
         fsm.pos_start = fsm.pos
-        return IntToken(kind=TokenKind.INT_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
+        return IntToken(kind=TokenKind.INT_DEC_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
                         affiliations=fsm.pop_affiliation(),
                         source=self._source, value=int(self._source))
 
@@ -680,7 +746,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     LexicalState.ZERO: {
         frozenset({"x", "X"}): ShiftSetState(state=LexicalState.ZERO_X),
         frozenset({"l", "L"}): ShiftSetState(state=LexicalState.DEC_L),
-        frozenset({"f", "f"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
+        frozenset({"f", "F"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
         frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
         NUMBER: ShiftSetState(state=LexicalState.OCT),
         OPERATOR: FixedIntSetState(source="0", state=LexicalState.INIT),
@@ -790,7 +856,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # 在单引号字符串中
     LexicalState.LIT_CHAR: {
         "\\": ShiftSetState(state=LexicalState.LIT_CHAR_ESCAPE),
-        "'": MoveReduceSetState(kind=TokenKind.CHAR_LITERAL, state=LexicalState.INIT),
+        "'": MoveReduceCharSetState(state=LexicalState.INIT),
         END_CHAR: Error(),
         DEFAULT: Shift(),
     },
@@ -819,7 +885,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # 在双引号字符串中
     LexicalState.LIT_STRING: {
         "\\": ShiftSetState(state=LexicalState.LIT_STRING_ESCAPE),
-        "\"": MoveReduceSetState(kind=TokenKind.STRING_LITERAL, state=LexicalState.INIT),
+        "\"": MoveReduceStringSetState(state=LexicalState.INIT),
         END_CHAR: Error(),
         DEFAULT: Shift(),
     },
@@ -854,7 +920,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
 
     # 在 TextBlock 中的 "" 之后
     LexicalState.LIT_BLOCK_DQ_DQ: {
-        "\"": MoveReduceSetState(kind=TokenKind.STRING_LITERAL, state=LexicalState.INIT),
+        "\"": MoveReduceTextBlockSetState(state=LexicalState.INIT),
         "\\": ShiftSetState(state=LexicalState.LIT_BLOCK_ESCAPE),
         END_CHAR: Error(),
         DEFAULT: ShiftSetState(state=LexicalState.LIT_BLOCK),
