@@ -7,6 +7,8 @@ __all__ = [
     "StringStyle",
     "INT_LITERAL_STYLE_HASH",
     "LONG_LITERAL_STYLE_HASH",
+    "CaseKind",
+    "ModuleKind",
 ]
 
 
@@ -38,3 +40,17 @@ LONG_LITERAL_STYLE_HASH = {
     TokenKind.LONG_DEC_LITERAL: IntegerStyle.DEC,
     TokenKind.LONG_HEX_LITERAL: IntegerStyle.HEX
 }
+
+
+class CaseKind(enum.Enum):
+    """Case 语句类型"""
+
+    STATEMENT = enum.auto()  # <expression>: <statements>
+    RULE = enum.auto()  # <expression> -> <expression>
+
+
+class ModuleKind(enum.Enum):
+    """模块类型"""
+
+    OPEN = enum.auto()
+    STRONG = enum.auto()
