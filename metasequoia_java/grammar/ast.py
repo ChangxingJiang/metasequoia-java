@@ -7,7 +7,7 @@ from metasequoia_java.grammar.constants import StringStyle
 from metasequoia_java.grammar.utils import change_int_to_string
 
 __all__ = [
-    "AST",
+    "Tree",
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
     "Literal",
@@ -24,8 +24,11 @@ __all__ = [
 
 
 @dataclasses.dataclass(slots=True)
-class AST(abc.ABC):
-    """抽象语法树节点的抽象基类"""
+class Tree(abc.ABC):
+    """抽象语法树节点的抽象基类
+
+    JDK 源码接口：https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/Tree.java
+    """
 
     source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码
 
@@ -39,7 +42,7 @@ class AST(abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class Literal(AST, abc.ABC):
+class Literal(Tree, abc.ABC):
 
     @property
     def is_literal(self) -> bool:
