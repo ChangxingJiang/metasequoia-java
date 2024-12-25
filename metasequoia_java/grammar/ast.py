@@ -2,6 +2,11 @@ import abc
 import dataclasses
 from typing import List, Optional
 
+from metasequoia_java.ast.base import CaseLabelTree
+from metasequoia_java.ast.base import DirectiveTree
+from metasequoia_java.ast.base import ExpressionTree
+from metasequoia_java.ast.base import PatternTree
+from metasequoia_java.ast.base import StatementTree
 from metasequoia_java.ast.base import Tree
 from metasequoia_java.ast.generate_utils import Separator, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
@@ -16,18 +21,9 @@ from metasequoia_java.grammar.element import TypeKind
 from metasequoia_java.grammar.utils import change_int_to_string
 
 __all__ = [
-    # ------------------------------ 抽象语法树节点的抽象类 ------------------------------
-    "ExpressionTree",  # 各类表达式节点的抽象基类
-    "PatternTree",  # 【JDK 16+】
-    "AnyPatternTree",  # 【JDK 22+】
-    "StatementTree",  # 各类语句节点的抽象基类
-    "CaseLabelTree",  # 【JDK 21+】
-    "DirectiveTree",  # 模块中所有指令的超类型【JDK 9+】
-    "DefaultCaseLabelTree",  # 【JDK 21+】
-
-    # ------------------------------ 抽象语法树节点的实体类 ------------------------------
-    "AnnotationTree",  # 注解
     "AnnotatedTypeTree",  # 包含注解的类型
+    "AnnotationTree",  # 注解
+    "AnyPatternTree",  # 【JDK 22+】
     "ArrayAccessTree",  # 访问数组中元素
     "ArrayTypeTree",  # 数组类型
     "AssertTree",  # assert 语句
@@ -45,6 +41,7 @@ __all__ = [
     "ConstantCaseLabelTree",  #
     "ContinueTree",  # continue 语句
     "DeconstructionPatternTree",  # 【JDK 21+】
+    "DefaultCaseLabelTree",  # 【JDK 21+】
     "DoWhileLoopTree",  # do while 语句【JDK 21+】
     "EmptyStatementTree",  # 空语句
     "EnhancedForLoopTree",  # 增强 for 循环语句
@@ -103,74 +100,16 @@ __all__ = [
 ]
 
 
-# ------------------------------ 抽象基类 ------------------------------
-
-
 @dataclasses.dataclass(slots=True)
-class ExpressionTree(Tree, abc.ABC):
-    """各类表达式节点的抽象基类
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExpressionTree.java
-    A tree node used as the base class for the different types of expressions.
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class PatternTree(Tree, abc.ABC):
-    """【JDK 16+】TODO 名称待整理
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PatternTree.java
-    A tree node used as the base class for the different kinds of patterns.
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class AnyPatternTree(PatternTree, abc.ABC):
-    """【JDK 22+】TODO 名称待整理
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AnyPatternTree.java
-    A tree node for a binding pattern that matches a pattern with a variable of any name and a type of the match
-    candidate; an unnamed pattern.
-
-    使用下划线 `_` 的样例：
-    if (r instanceof R(_)) {}
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class StatementTree(Tree, abc.ABC):
-    """各类语句节点的抽象基类
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/StatementTree.java
-    A tree node used as the base class for the different kinds of statements.
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class CaseLabelTree(Tree, abc.ABC):
-    """TODO 名称待整理
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CaseLabelTree.java
-    A marker interface for Trees that may be used as CaseTree labels.
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class DirectiveTree(Tree, abc.ABC):
-    """模块中所有指令的超类型【JDK 9+】
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DirectiveTree.java
-    A super-type for all the directives in a ModuleTree.
-    """
-
-
-@dataclasses.dataclass(slots=True)
-class DefaultCaseLabelTree(Tree, abc.ABC):
+class DefaultCaseLabelTree(CaseLabelTree):
     """【JDK 21+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DefaultCaseLabelTree.java
     A case label that marks `default` in `case null, default`.
     """
+
+    def generate(self) -> str:
+        """TODO"""
 
 
 @dataclasses.dataclass(slots=True)
@@ -211,6 +150,22 @@ class AnnotatedTypeTree(ExpressionTree):
 
     def generate(self) -> str:
         return f"{generate_tree_list(self.annotations, Separator.SPACE)} {self.underlying_type.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class AnyPatternTree(PatternTree):
+    """【JDK 22+】TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AnyPatternTree.java
+    A tree node for a binding pattern that matches a pattern with a variable of any name and a type of the match
+    candidate; an unnamed pattern.
+
+    使用下划线 `_` 的样例：
+    if (r instanceof R(_)) {}
+    """
+
+    def generate(self) -> str:
+        """TODO"""
 
 
 @dataclasses.dataclass(slots=True)
