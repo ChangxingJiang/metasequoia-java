@@ -22,6 +22,7 @@ __all__ = [
     "StatementTree",  # 各类语句节点的抽象基类
     "CaseLabelTree",  # 【JDK 21+】
     "DirectiveTree",  # 模块中所有指令的超类型【JDK 9+】
+    "DefaultCaseLabelTree",  # 【JDK 21+】
 
     # ------------------------------ 抽象语法树节点的实体类 ------------------------------
     "AnnotationTree",  # 注解
@@ -38,6 +39,16 @@ __all__ = [
     "CatchTree",  # try 语句中的 catch 代码块
     "ClassTree",  # 类（class）、接口（interface）、枚举类（enum）、记录类（record）或注解类（annotation type）的声明语句
     "CompilationUnitTree",  # 表示普通编译单元和模块化编译单元的抽象语法树节点
+    "CompoundAssignmentTree",  # 赋值表达式
+    "ConditionalExpressionTree",  # 三目表达式
+    "ConstantCaseLabelTree",  #
+    "ContinueTree",  # continue 语句
+    "DeconstructionPatternTree",  # 【JDK 21+】
+    "DoWhileLoopTree",  # do while 语句【JDK 21+】
+    "EmptyStatementTree",  # 空语句
+    "EnhancedForLoopTree",  # 增强 for 循环语句
+    "ErroneousTree",
+    "ExportsTree",  # 模块声明语句中的 exports 指令【JDK 9+】
     "ImportTree",  # 声明引用
     "ModuleTree",  # 声明模块【JDK 9+】
     "PackageTree",  # 声明包【JDK 9+】
@@ -139,6 +150,15 @@ class DirectiveTree(Tree, abc.ABC):
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DirectiveTree.java
     A super-type for all the directives in a ModuleTree.
+    """
+
+
+@dataclasses.dataclass(slots=True)
+class DefaultCaseLabelTree(Tree, abc.ABC):
+    """【JDK 21+】TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DefaultCaseLabelTree.java
+    A case label that marks `default` in `case null, default`.
     """
 
 
@@ -540,6 +560,180 @@ class CompilationUnitTree(Tree):
     package: PackageTree = dataclasses.field(kw_only=True)
     imports: List[ImportTree] = dataclasses.field(kw_only=True)
     type_decls: List[Tree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class CompoundAssignmentTree(ExpressionTree):
+    """赋值表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CompoundAssignmentTree.java
+    A tree node for compound assignment operator.
+    Use `getKind` to determine the kind of operator.
+
+    样例：
+    - variable operator expression
+    """
+
+    variable: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class ConditionalExpressionTree(ExpressionTree):
+    """三目表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ConditionalExpressionTree.java
+    A tree node for the conditional operator `? :`.
+
+    样例：condition ? trueExpression : falseExpression
+    """
+
+    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    true_expression: ExpressionTree = dataclasses.field(kw_only=True)
+    false_expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"{self.condition.generate()} ? {self.true_expression.generate()} : {self.false_expression.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class ConstantCaseLabelTree(CaseLabelTree):
+    """TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ConstantCaseLabelTree.java
+    A case label element that refers to a constant expression
+    """
+
+    constant_expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class ContinueTree(StatementTree):
+    """continue 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ContinueTree.java
+    A tree node for a `continue` statement.
+
+    样例：
+    - continue ;
+    - continue label ;
+    """
+
+    label: Optional[str] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        if self.label is None:
+            return "continue;"
+        return f"continue {self.label};"
+
+
+@dataclasses.dataclass(slots=True)
+class DeconstructionPatternTree(PatternTree):
+    """【JDK 21+】TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DeconstructionPatternTree.java#L35
+    A deconstruction pattern tree.
+    """
+
+    deconstructor: ExpressionTree = dataclasses.field(kw_only=True)
+    nested_patterns: List[PatternTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class DoWhileLoopTree(StatementTree):
+    """do while 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DoWhileLoopTree.java
+    A tree node for a `do` statement.
+
+    样例：
+    do
+        statement
+    while ( expression );
+    """
+
+    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    statement: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"do {self.statement.generate()} while ({self.condition.generate()});"
+
+
+@dataclasses.dataclass(slots=True)
+class EmptyStatementTree(StatementTree):
+    """空语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/EmptyStatementTree.java
+    A tree node for an empty (skip) statement.
+
+    样例：;
+    """
+
+    def generate(self) -> str:
+        return ";"
+
+
+@dataclasses.dataclass(slots=True)
+class EnhancedForLoopTree(StatementTree):
+    """增强 for 循环语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/EnhancedForLoopTree.java
+    A tree node for an "enhanced" `for` loop statement.
+
+    样例：
+    for ( variable : expression )
+        statement
+    """
+
+    variable: VariableTree = dataclasses.field(kw_only=True)
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    statement: StatementTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return (f"for ({self.variable.generate()} : {self.expression.generate()}) \n"
+                f"    {self.statement.generate()}")
+
+
+@dataclasses.dataclass(slots=True)
+class ErroneousTree(ExpressionTree):
+    """TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ErroneousTree.java
+    A tree node to stand in for a malformed expression.
+    """
+
+    error_trees: Tree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class ExportsTree(DirectiveTree):
+    """模块声明语句中的 exports 指令【JDK 9+】
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExportsTree.java
+    A tree node for an 'exports' directive in a module declaration.
+
+    样例：
+    - exports package-name;
+    - exports package-name to module-name;
+    """
+
+    package_name: ExpressionTree = dataclasses.field(kw_only=True)
+    module_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
     def generate(self) -> str:
         """TODO"""
