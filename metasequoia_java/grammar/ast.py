@@ -1,20 +1,20 @@
 import abc
 import dataclasses
-import enum
 from typing import List, Optional
 
-from metasequoia_java.grammar.ast_kind import TreeKind
+from metasequoia_java.ast.base import Tree
+from metasequoia_java.ast.generate_utils import Separator, generate_enum_list, generate_tree_list
 from metasequoia_java.grammar.constants import CaseKind
 from metasequoia_java.grammar.constants import IntegerStyle
+from metasequoia_java.grammar.constants import LambdaBodyKind
 from metasequoia_java.grammar.constants import ModuleKind
+from metasequoia_java.grammar.constants import ReferenceMode
 from metasequoia_java.grammar.constants import StringStyle
 from metasequoia_java.grammar.element import Modifier
+from metasequoia_java.grammar.element import TypeKind
 from metasequoia_java.grammar.utils import change_int_to_string
 
 __all__ = [
-    # ------------------------------ 抽象语法树节点的抽象基类 ------------------------------
-    "Tree",  # 抽象语法树节点的抽象基类
-
     # ------------------------------ 抽象语法树节点的抽象类 ------------------------------
     "ExpressionTree",  # 各类表达式节点的抽象基类
     "PatternTree",  # 【JDK 16+】
@@ -49,50 +49,48 @@ __all__ = [
     "EnhancedForLoopTree",  # 增强 for 循环语句
     "ErroneousTree",
     "ExportsTree",  # 模块声明语句中的 exports 指令【JDK 9+】
+    "ExpressionStatementTree",  # 表达式语句
+    "ForLoopTree",  # for 循环语句
+    "IdentifierTree",  # 标识符
+    "IfTree",  # if 语句
     "ImportTree",  # 声明引用
+    "InstanceOfTree",  # instanceof 表达式
+    "IntersectionTypeTree",  # 交互类型
+    "LabeledStatementTree",  # 包含标签的表达式
+    "LambdaExpressionTree",  # lambda 表达式
+    "LiteralTree",  # 字面值
+    "IntLiteralTree",  # 整型字面值（包括十进制、八进制、十六进制）
+    "LongLiteralTree",  # 十进制长整型字面值（包括十进制、八进制、十六进制）
+    "FloatLiteralTree",  # 单精度浮点数字面值
+    "DoubleLiteralTree",  # 双精度浮点数字面值
+    "TrueLiteralTree",  # 布尔值真值字面值
+    "FalseLiteralTree",  # 布尔值假值字面值
+    "CharacterLiteralTree",  # 字符字面值
+    "StringLiteralTree",  # 字符串字面值
+    "NullLiteralTree",  # 空值字面值
+    "MemberReferenceTree",  # 成员引用表达式
+    "MemberSelectTree",  # 成员访问表达式
+    "MethodInvocationTree",  # 方法调用表达式
+    "MethodTree",  # 声明方法或注解类型元素
+    "ModifiersTree",  # 用于声明表达式的修饰符，包括注解
     "ModuleTree",  # 声明模块【JDK 9+】
+    "NewArrayTree",  # 初始化数组表达式
+    "NewClassTree",  # 实例化类表达式
+    "OpensTree",  # 模块声明中的 opens 指令
     "PackageTree",  # 声明包【JDK 9+】
+    "ParameterizedTypeTree",  # 包含类型参数的类型表达式
+    "ParenthesizedTree",  # 括号表达式
+    "PatternCaseLabelTree",  # 【JDK 21+】
+    "PrimitiveTypeTree",  # 原生类型
+    "ProvidesTree",  # 模块声明语句的 provides 指令【JDK 9+】
+    "RequiresTree",  # 模块声明语句中的 requires 指令【JDK 9+】
+    "ReturnTree",  # 返回语句
     "TypeParameterTree",  # 类型参数列表
     "VariableTree",  # 声明变量
-
-    # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
-    "Literal",
-    "IntLiteral",  # 十进制整型字面值
-    "LongLiteral",  # 十进制长整型字面值
-    "FloatLiteral",  # 十进制单精度浮点数字面值
-    "DoubleLiteral",  # 十进制双精度浮点数字面值
-    "CharacterLiteral",  # 字符字面值
-    "StringLiteral",  # 字符串字面值
-    "TrueLiteral",  # 布尔值真值字面值
-    "FalseLiteral",  # 布尔值假值字面值
-    "NullLiteral",  # 空值字面值
 ]
-
-COMMA = ","
-SPACE = " "
-SEMI = " "
 
 
 # ------------------------------ 抽象基类 ------------------------------
-
-@dataclasses.dataclass(slots=True)
-class Tree(abc.ABC):
-    """抽象语法树节点的抽象基类
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/Tree.java
-    Common interface for all nodes in an abstract syntax tree.
-    """
-
-    kind: TreeKind = dataclasses.field(kw_only=True)  # 节点类型
-    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码
-
-    @property
-    def is_literal(self) -> bool:
-        return False
-
-    @abc.abstractmethod
-    def generate(self) -> str:
-        """生成当前节点元素的标准格式代码"""
 
 
 @dataclasses.dataclass(slots=True)
@@ -179,7 +177,7 @@ class AnnotationTree(ExpressionTree):
 
     def generate(self) -> str:
         if len(self.arguments) > 0:
-            return f"@{self.annotation_type.generate()}({generate_tree_list(self.arguments, COMMA)})"
+            return f"@{self.annotation_type.generate()}({generate_tree_list(self.arguments, Separator.COMMA)})"
         return f"@{self.annotation_type.generate()}"
 
 
@@ -199,7 +197,7 @@ class AnnotatedTypeTree(ExpressionTree):
     underlying_type: ExpressionTree = dataclasses.field(kw_only=True)
 
     def generate(self) -> str:
-        return f"{generate_tree_list(self.annotations, SPACE)} {self.underlying_type.generate()}"
+        return f"{generate_tree_list(self.annotations, Separator.SPACE)} {self.underlying_type.generate()}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -312,8 +310,9 @@ class ModifiersTree(Tree):
 
     def generate(self) -> str:
         if len(self.annotations) > 0:
-            return f"{generate_enum_list(self.flags, SPACE)} {generate_tree_list(self.annotations, SPACE)}"
-        return f"{generate_enum_list(self.flags, SPACE)}"
+            return (f"{generate_enum_list(self.flags, Separator.SPACE)} "
+                    f"{generate_tree_list(self.annotations, Separator.SPACE)}")
+        return f"{generate_enum_list(self.flags, Separator.SPACE)}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -370,7 +369,7 @@ class BlockTree(StatementTree):
 
     def generate(self) -> str:
         static_str = "static " if self.is_static is True else ""
-        return f"{static_str}{{{generate_tree_list(self.statements, SEMI)}}}"
+        return f"{static_str}{{{generate_tree_list(self.statements, Separator.SEMI)}}}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -739,11 +738,174 @@ class ExportsTree(DirectiveTree):
         """TODO"""
 
 
-# ------------------------------------------------------------------------------------------
+@dataclasses.dataclass(slots=True)
+class ExpressionStatementTree(StatementTree):
+    """表达式语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExpressionStatementTree.java
+    A tree node for an expression statement.
+
+    样例：expression ;
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"{self.expression.generate()};"
 
 
 @dataclasses.dataclass(slots=True)
-class Literal(Tree, abc.ABC):
+class ForLoopTree(StatementTree):
+    """for 循环语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ForLoopTree.java
+    A tree node for a basic {@code for} loop statement.
+
+    样例：
+    for ( initializer ; condition ; update )
+        statement
+    """
+
+    initializer: List[StatementTree] = dataclasses.field(kw_only=True)
+    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    update: List[ExpressionStatementTree] = dataclasses.field(kw_only=True)
+    statement: StatementTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class IdentifierTree(ExpressionTree):
+    """标识符
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IdentifierTree.java
+    A tree node for an identifier expression.
+
+    样例：name
+    """
+
+    name: str = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return self.name
+
+
+@dataclasses.dataclass(slots=True)
+class IfTree(StatementTree):
+    """if 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IfTree.java
+    A tree node for an `if` statement.
+
+    样例：
+    if ( condition )
+        thenStatement
+
+    if ( condition )
+        thenStatement
+    else
+        elseStatement
+    """
+
+    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    then_statement: StatementTree = dataclasses.field(kw_only=True)
+    else_statement: Optional[StatementTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        if self.else_statement is None:
+            return (f"if ({self.condition.generate()}) \n"
+                    f"    {self.then_statement.generate()}")
+        return (f"if ({self.condition.generate()}) \n"
+                f"    {self.then_statement.generate()} \n"
+                f"else \n"
+                f"    {self.else_statement.generate()}")
+
+
+@dataclasses.dataclass(slots=True)
+class InstanceOfTree(ExpressionTree):
+    """instanceof 表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/InstanceOfTree.java
+    A tree node for an `instanceof` expression.
+    
+    样例：
+    expression instanceof type
+    expression instanceof type variable-name
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    type: Tree = dataclasses.field(kw_only=True)
+    pattern: Optional[PatternTree] = dataclasses.field(kw_only=True)  # 【JDK 16+】
+
+    def generate(self) -> str:
+        if self.pattern is None:
+            return f"{self.expression.generate()} instanceof {self.type.generate()}"
+        return f"{self.expression.generate()} instanceof {self.type.generate()} {self.pattern.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class IntersectionTypeTree(Tree):
+    """交叉类型
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IntersectionTypeTree.java
+    A tree node for an intersection type in a cast expression.
+    """
+
+    bounds: List[Tree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class LabeledStatementTree(StatementTree):
+    """包含标签的表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LabeledStatementTree.java
+    A tree node for a labeled statement.
+
+    样例：label : statement
+    """
+
+    label: str = dataclasses.field(kw_only=True)
+    statement: StatementTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"{self.label} : {self.statement.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class LambdaExpressionTree(ExpressionTree):
+    """lambda 表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LambdaExpressionTree.java
+    A tree node for a lambda expression.
+
+    样例：
+    ()->{}
+    (List<String> ls)->ls.size()
+    (x,y)-> { return x + y; }
+    """
+
+    parameters: List[VariableTree] = dataclasses.field(kw_only=True)
+    body: Tree = dataclasses.field(kw_only=True)
+    body_kind: LambdaBodyKind = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"({generate_tree_list(self.parameters, Separator.COMMA)}) -> {self.body.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class LiteralTree(Tree, abc.ABC):
+    """字面值
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LiteralTree.java
+    A tree node for a literal expression.
+    Use `getKind` to determine the kind of literal.
+
+    样例：value
+    """
 
     @property
     def is_literal(self) -> bool:
@@ -751,7 +913,7 @@ class Literal(Tree, abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class IntLiteral(Literal):
+class IntLiteralTree(LiteralTree):
     """整型字面值（包括十进制、八进制、十六进制）"""
 
     style: IntegerStyle = dataclasses.field(kw_only=True)
@@ -762,8 +924,8 @@ class IntLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class LongLiteral(Literal):
-    """十进制长整型字面值"""
+class LongLiteralTree(LiteralTree):
+    """十进制长整型字面值（包括十进制、八进制、十六进制）"""
 
     style: IntegerStyle = dataclasses.field(kw_only=True)
     value: int = dataclasses.field(kw_only=True)
@@ -773,8 +935,8 @@ class LongLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class FloatLiteral(Literal):
-    """十进制单精度浮点数字面值"""
+class FloatLiteralTree(LiteralTree):
+    """单精度浮点数字面值"""
 
     value: float = dataclasses.field(kw_only=True)
 
@@ -783,8 +945,8 @@ class FloatLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class DoubleLiteral(Literal):
-    """十进制双精度浮点数字面值"""
+class DoubleLiteralTree(LiteralTree):
+    """双精度浮点数字面值"""
 
     value: float = dataclasses.field(kw_only=True)
 
@@ -793,7 +955,7 @@ class DoubleLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class TrueLiteral(Literal):
+class TrueLiteralTree(LiteralTree):
     """布尔值真值字面值"""
 
     def generate(self) -> str:
@@ -801,7 +963,7 @@ class TrueLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class FalseLiteral(Literal):
+class FalseLiteralTree(LiteralTree):
     """布尔值假值字面值"""
 
     def generate(self) -> str:
@@ -809,7 +971,7 @@ class FalseLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class CharacterLiteral(Literal):
+class CharacterLiteralTree(LiteralTree):
     """字符字面值"""
 
     value: str = dataclasses.field(kw_only=True)  # 不包含单引号的字符串
@@ -819,7 +981,7 @@ class CharacterLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class StringLiteral(Literal):
+class StringLiteralTree(LiteralTree):
     """字符串字面值"""
 
     style: StringStyle = dataclasses.field(kw_only=True)  # 字面值样式
@@ -832,18 +994,325 @@ class StringLiteral(Literal):
 
 
 @dataclasses.dataclass(slots=True)
-class NullLiteral(Literal):
+class NullLiteralTree(LiteralTree):
     """空值字面值"""
 
     def generate(self) -> str:
         return f"null"
 
 
-def generate_tree_list(elems: List[Tree], sep: str):
-    """将抽象语法树节点的列表生成代码"""
-    return sep.join(elem.generate() for elem in elems)
+@dataclasses.dataclass(slots=True)
+class MemberReferenceTree(ExpressionTree):
+    """成员引用表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MemberReferenceTree.java
+    A tree node for a member reference expression.
+
+    样例：expression # [ identifier | new ]
+    """
+
+    mode: ReferenceMode = dataclasses.field(kw_only=True)
+    qualifier_expression: ExpressionTree = dataclasses.field(kw_only=True)
+    name: str = dataclasses.field(kw_only=True)
+    type_arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
 
 
-def generate_enum_list(elems: List[enum.Enum], sep: str):
-    """将枚举值的列表生成代码"""
-    return sep.join(elem.value for elem in elems)
+@dataclasses.dataclass(slots=True)
+class MemberSelectTree(ExpressionTree):
+    """成员访问表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MemberSelectTree.java
+    A tree node for a member access expression.
+
+    样例：expression . identifier
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    identifier: str = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"{self.expression.generate()}.{self.identifier}"
+
+
+@dataclasses.dataclass(slots=True)
+class MethodInvocationTree(ExpressionTree):
+    """方法调用表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MethodInvocationTree.java
+    A tree node for a method invocation expression.
+
+    样例：
+    - identifier ( arguments )
+    - this . typeArguments identifier ( arguments )
+    """
+
+    type_arguments: List[Tree] = dataclasses.field(kw_only=True)
+    method_select: ExpressionTree = dataclasses.field(kw_only=True)
+    arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+class MethodTree(Tree):
+    """声明方法或注解类型元素
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MethodTree.java
+    A tree node for a method or annotation type element declaration.
+
+    样例 1：
+    modifiers typeParameters type name
+        ( parameters )
+        body
+
+    样例 2：
+    modifiers type name ( ) default defaultValue
+    """
+
+    modifiers: ModifiersTree = dataclasses.field(kw_only=True)
+    name: str = dataclasses.field(kw_only=True)
+    return_type: Tree = dataclasses.field(kw_only=True)
+    type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
+    receiver_parameter: VariableTree = dataclasses.field(kw_only=True)
+    throws: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    default_value: Tree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class NewArrayTree(ExpressionTree):
+    """初始化数组表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/NewArrayTree.java
+    A tree node for an expression to create a new instance of an array.
+
+    样例 1：new type dimensions initializers
+    样例 2：new type dimensions [ ] initializers
+    """
+
+    type: Tree = dataclasses.field(kw_only=True)
+    dimensions: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    initializers: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
+    dim_annotations: List[List[AnnotationTree]] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class NewClassTree(ExpressionTree):
+    """实例化类表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/NewClassTree.java
+    A tree node to declare a new instance of a class.
+
+    样例 1:
+    new identifier ( )
+
+    样例 2:
+    new identifier ( arguments )
+
+    样例 3:
+    new typeArguments identifier ( arguments )
+        classBody
+
+    样例 4:
+    enclosingExpression.new identifier ( arguments )
+    """
+
+    enclosing_expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    type_arguments: List[Tree] = dataclasses.field(kw_only=True)
+    identifier: ExpressionTree = dataclasses.field(kw_only=True)
+    arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    class_body: Optional[ClassTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO 待验证分隔符"""
+        enclosing_str = f"{self.enclosing_expression.generate()}." if self.enclosing_expression is not None else ""
+        body_str = f"\n    {self.class_body.generate()}" if self.class_body is not None else ""
+        return (f"{enclosing_str}new "
+                f"{generate_tree_list(self.type_arguments, Separator.SPACE)} {self.identifier.generate()} "
+                f"( {generate_tree_list(self.arguments, Separator.COMMA)} ){body_str}")
+
+
+@dataclasses.dataclass(slots=True)
+class OpensTree(DirectiveTree):
+    """模块声明中的 opens 指令
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/OpensTree.java
+    A tree node for an 'opens' directive in a module declaration.
+
+    样例 1:
+    opens package-name;
+
+    样例 2:
+    opens package-name to module-name;
+    """
+
+    package_name: ExpressionTree = dataclasses.field(kw_only=True)
+    module_name: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class ParameterizedTypeTree(Tree):
+    """包含类型参数的类型表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ParameterizedTypeTree.java
+    A tree node for a type expression involving type parameters.
+
+    样例:
+    type < typeArguments >
+    """
+
+    type: Tree = dataclasses.field(kw_only=True)
+    type_arguments: List[Tree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"{self.type.generate()}<{generate_tree_list(self.type_arguments, Separator.COMMA)}>"
+
+
+@dataclasses.dataclass(slots=True)
+class ParenthesizedTree(ExpressionTree):
+    """括号表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ParenthesizedTree.java
+    A tree node for a parenthesized expression.
+    Note: parentheses not be preserved by the parser.
+
+    样例:
+    ( expression )
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"({self.expression.generate()})"
+
+
+@dataclasses.dataclass(slots=True)
+class PatternCaseLabelTree(CaseLabelTree):
+    """【JDK 21+】TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PatternCaseLabelTree.java
+    A case label element that refers to an expression
+    """
+
+    pattern: PatternTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class PrimitiveTypeTree(Tree):
+    """原生类型
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PrimitiveTypeTree.java
+    A tree node for a primitive type.
+
+    样例：
+    primitiveTypeKind
+    """
+
+    primitive_type_kind: TypeKind = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return self.primitive_type_kind.value
+
+
+@dataclasses.dataclass(slots=True)
+class ProvidesTree(DirectiveTree):
+    """模块声明语句的 provides 指令【JDK 9+】
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ProvidesTree.java
+    A tree node for a 'provides' directive in a module declaration.
+
+    样例:
+    provides service-name with implementation-name;
+    """
+
+    service_name: ExpressionTree = dataclasses.field(kw_only=True)
+    implementation_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class RequiresTree(DirectiveTree):
+    """模块声明语句中的 requires 指令【JDK 9+】
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/RequiresTree.java
+    A tree node for a 'requires' directive in a module declaration.
+
+    样例 1:
+    requires module-name;
+
+    样例 2:
+    requires static module-name;
+
+    样例 3:
+    requires transitive module-name;
+    """
+
+    is_static: bool = dataclasses.field(kw_only=True)
+    is_transitive: bool = dataclasses.field(kw_only=True)
+    module_name: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        static_str = " static" if self.is_static is True else ""
+        transitive_str = " transitive" if self.is_transitive is True else ""
+        return f"requires{static_str}{transitive_str} {self.module_name.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class ReturnTree(StatementTree):
+    """返回语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ReturnTree.java
+    A tree node for a `return` statement.
+
+    样例 1:
+    return;
+
+    样例 2:
+    return expression ;
+    """
+
+    expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        if self.expression is None:
+            return "return;"
+        return f"return {self.expression.generate()};"
+
+
+@dataclasses.dataclass(slots=True)
+class SwitchExpressionTree(ExpressionTree):
+    """switch 表达式【JDK 14+】
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SwitchExpressionTree.java
+    A tree node for a `switch` expression.
+
+    样例:
+    switch ( expression ) {
+        cases
+    }
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    cases: List[CaseTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return (f"switch ({self.expression.generate()}) {{ \n"
+                f"    {generate_tree_list(self.cases, Separator.SEMI)} \n"
+                f"}}")

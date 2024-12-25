@@ -9,6 +9,8 @@ __all__ = [
     "LONG_LITERAL_STYLE_HASH",
     "CaseKind",
     "ModuleKind",
+    "LambdaBodyKind",
+    "ReferenceMode",
 ]
 
 
@@ -54,3 +56,17 @@ class ModuleKind(enum.Enum):
 
     OPEN = enum.auto()
     STRONG = enum.auto()
+
+
+class LambdaBodyKind(enum.Enum):
+    """lambda 表达式类型"""
+
+    EXPRESSION = enum.auto()
+    STATEMENT = enum.auto()
+
+
+class ReferenceMode(enum.Enum):
+    """引用模式"""
+
+    INVOKE = enum.auto()
+    NEW = enum.auto()

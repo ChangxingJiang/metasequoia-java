@@ -5,7 +5,8 @@
 import enum
 
 __all__ = [
-    "Modifier"
+    "Modifier",
+    "TypeKind",
 ]
 
 
@@ -30,3 +31,35 @@ class Modifier(enum.Enum):
     SYNCHRONIZED = "synchronized"
     NATIVE = "native"
     STRICTFP = "strictfp"
+
+
+class TypeKind(enum.Enum):
+    """类型"""
+
+    BOOLEAN = enum.auto()
+    BYTE = enum.auto()
+    SHORT = enum.auto()
+    INT = enum.auto()
+    LONG = enum.auto()
+    CHAR = enum.auto()
+    FLOAT = enum.auto()
+    DOUBLE = enum.auto()
+    VOID = enum.auto()
+    NONE = enum.auto()
+    NULL = enum.auto()
+    ARRAY = enum.auto()
+    DECLARED = enum.auto()
+    ERROR = enum.auto()
+    TYPE_VAR = enum.auto()  # type variable
+    WILDCARD = enum.auto()
+    PACKAGE = enum.auto()
+    EXECUTABLE = enum.auto()
+    OTHER = enum.auto()
+    UNION = enum.auto()
+    INTERSECTION = enum.auto()
+    MODULE = enum.auto()  # 【JDK 9+】
+
+    def is_primitive(self) -> bool:
+        """返回是否为原生类型"""
+        return self in {TypeKind.BOOLEAN, TypeKind.BYTE, TypeKind.SHORT, TypeKind.INT, TypeKind.LONG, TypeKind.CHAR,
+                        TypeKind.FLOAT, TypeKind.DOUBLE}
