@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from metasequoia_java.ast.base import Tree
 from metasequoia_java.ast.generate_utils import Separator, generate_enum_list, generate_tree_list
+from metasequoia_java.ast.kind import TreeKind
 from metasequoia_java.grammar.constants import CaseKind
 from metasequoia_java.grammar.constants import IntegerStyle
 from metasequoia_java.grammar.constants import LambdaBodyKind
@@ -85,8 +86,20 @@ __all__ = [
     "ProvidesTree",  # 模块声明语句的 provides 指令【JDK 9+】
     "RequiresTree",  # 模块声明语句中的 requires 指令【JDK 9+】
     "ReturnTree",  # 返回语句
+    "SwitchExpressionTree",  # switch 表达式【JDK 14+】
+    "SwitchTree",  # switch 语句
+    "SynchronizedTree",  # 同步代码块语句
+    "ThrowTree",  # throw 语句
+    "TryTree",  # try 语句
+    "TypeCastTree",  # 强制类型转换表达式
     "TypeParameterTree",  # 类型参数列表
+    "UnaryTree",  # 一元表达式
+    "UnionTypeTree",  #
+    "UsesTree",  # 模块声明语句中的 uses 指令【JDK 9+】
     "VariableTree",  # 声明变量
+    "WhileLoopTree",  # while 循环语句
+    "WildcardTree",  # 通配符
+    "YieldTree",  # yield 语句
 ]
 
 
@@ -1316,3 +1329,221 @@ class SwitchExpressionTree(ExpressionTree):
         return (f"switch ({self.expression.generate()}) {{ \n"
                 f"    {generate_tree_list(self.cases, Separator.SEMI)} \n"
                 f"}}")
+
+
+@dataclasses.dataclass(slots=True)
+class SwitchTree(StatementTree):
+    """switch 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SwitchTree.java
+    A tree node for a `switch` statement.
+
+    样例:
+    switch ( expression ) {
+        cases
+    }
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    cases: List[CaseTree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return (f"switch ({self.expression.generate()}) {{ \n"
+                f"    {generate_tree_list(self.cases, Separator.SEMI)} \n"
+                f"}}")
+
+
+@dataclasses.dataclass(slots=True)
+class SynchronizedTree(StatementTree):
+    """同步代码块语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SynchronizedTree.java
+    A tree node for a `synchronized` statement.
+
+    样例:
+    synchronized ( expression )
+        block
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    block: BlockTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return (f"synchronized ({self.expression.generate()}) \n"
+                f"    {self.block.generate()}")
+
+
+@dataclasses.dataclass(slots=True)
+class ThrowTree(StatementTree):
+    """throw 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ThrowTree.java
+    A tree node for a `throw` statement.
+
+    样例:
+    throw expression;
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"throw {self.expression.generate()};"
+
+
+@dataclasses.dataclass(slots=True)
+class TryTree(StatementTree):
+    """try 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/TryTree.java
+    A tree node for a `try` statement.
+
+    样例:
+    try
+        block
+    catches
+    finally
+        finallyBlock
+    """
+
+    block: BlockTree = dataclasses.field(kw_only=True)
+    catches: List[CatchTree] = dataclasses.field(kw_only=True)
+    finally_block: Optional[BlockTree] = dataclasses.field(kw_only=True)
+    resources: List[Tree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class TypeCastTree(ExpressionTree):
+    """强制类型转换表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/TypeCastTree.java
+    A tree node for a type cast expression.
+
+    样例:
+    ( type ) expression
+    """
+
+    type: Tree = dataclasses.field(kw_only=True)
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"({self.type.generate()}){self.expression.generate()}"
+
+
+@dataclasses.dataclass(slots=True)
+class UnaryTree(ExpressionTree):
+    """一元表达式
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UnaryTree.java
+    A tree node for postfix and unary expressions.
+    Use `getKind` to determine the kind of operator.
+
+    样例 1:
+    operator expression
+
+    样例 2:
+    expression operator
+    """
+
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class UnionTypeTree(Tree):
+    """TODO 名称待整理
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UnionTypeTree.java
+    A tree node for a union type expression in a multicatch variable declaration.
+    """
+
+    type_alternatives: List[Tree] = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        """TODO"""
+
+
+@dataclasses.dataclass(slots=True)
+class UsesTree(DirectiveTree):
+    """模块声明语句中的 uses 指令【JDK 9+】
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UsesTree.java
+    A tree node for a 'uses' directive in a module declaration.
+
+    样例 1:
+    uses service-name;
+    """
+
+    service_name: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"uses {self.service_name.generate()};"
+
+
+@dataclasses.dataclass(slots=True)
+class WhileLoopTree(StatementTree):
+    """while 循环语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WhileLoopTree.java
+    A tree node for a `while` loop statement.
+
+    样例 1:
+    while ( condition )
+        statement
+    """
+
+    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    statement: StatementTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return (f"while ({self.condition.generate()}) \n"
+                f"    {self.statement.generate()}")
+
+
+@dataclasses.dataclass(slots=True)
+class WildcardTree(Tree):
+    """通配符
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WildcardTree.java
+    A tree node for a wildcard type argument.
+    Use `getKind` to determine the kind of bound.
+
+    样例 1:
+    ?
+
+    样例 2:
+    ? extends bound
+
+    样例 3:
+    ? super bound
+    """
+
+    bound: Tree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        if self.kind == TreeKind.EXTENDS_WILDCARD:
+            return f"? extends {self.bound.generate()}"
+        if self.kind == TreeKind.SUPER_WILDCARD:
+            return f"? super {self.bound.generate()}"
+        return "?"  # TreeKind.UNBOUNDED_WILDCARD
+
+
+@dataclasses.dataclass(slots=True)
+class YieldTree(StatementTree):
+    """yield 语句
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/YieldTree.java
+    A tree node for a `yield` statement.
+
+    样例 1:
+    yield expression;
+    """
+
+    value: ExpressionTree = dataclasses.field(kw_only=True)
+
+    def generate(self) -> str:
+        return f"yield {self.value.generate()};"
