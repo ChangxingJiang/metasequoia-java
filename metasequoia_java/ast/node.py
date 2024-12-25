@@ -8,17 +8,16 @@ from metasequoia_java.ast.base import ExpressionTree
 from metasequoia_java.ast.base import PatternTree
 from metasequoia_java.ast.base import StatementTree
 from metasequoia_java.ast.base import Tree
-from metasequoia_java.ast.generate_utils import Separator, generate_enum_list, generate_tree_list
+from metasequoia_java.ast.constants import CaseKind
+from metasequoia_java.ast.constants import IntegerStyle
+from metasequoia_java.ast.constants import LambdaBodyKind
+from metasequoia_java.ast.constants import ModuleKind
+from metasequoia_java.ast.constants import ReferenceMode
+from metasequoia_java.ast.constants import StringStyle
+from metasequoia_java.ast.element import Modifier
+from metasequoia_java.ast.element import TypeKind
+from metasequoia_java.ast.generate_utils import Separator, change_int_to_string, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
-from metasequoia_java.grammar.constants import CaseKind
-from metasequoia_java.grammar.constants import IntegerStyle
-from metasequoia_java.grammar.constants import LambdaBodyKind
-from metasequoia_java.grammar.constants import ModuleKind
-from metasequoia_java.grammar.constants import ReferenceMode
-from metasequoia_java.grammar.constants import StringStyle
-from metasequoia_java.grammar.element import Modifier
-from metasequoia_java.grammar.element import TypeKind
-from metasequoia_java.grammar.utils import change_int_to_string
 
 __all__ = [
     "AnnotatedTypeTree",  # 包含注解的类型

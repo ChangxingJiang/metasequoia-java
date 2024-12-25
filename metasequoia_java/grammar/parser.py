@@ -1,10 +1,9 @@
 from typing import Optional
 
-from metasequoia_java.grammar import ast
 from metasequoia_java.ast.kind import TreeKind
-from metasequoia_java.grammar.constants import INT_LITERAL_STYLE_HASH
-from metasequoia_java.grammar.constants import LONG_LITERAL_STYLE_HASH
-from metasequoia_java.grammar.constants import StringStyle
+from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
+from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
+from metasequoia_java.ast.constants import StringStyle
 from metasequoia_java.lexical import LexicalFSM
 from metasequoia_java.lexical import Token
 from metasequoia_java.lexical import TokenKind

@@ -1,2 +1,2 @@
-from metasequoia_java.ast.base import ExpressionTree
-from metasequoia_java.ast.base import Tree
+from metasequoia_java.ast.base import *
+from metasequoia_java.ast.node import *
