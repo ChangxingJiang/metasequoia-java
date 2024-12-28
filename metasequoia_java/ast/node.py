@@ -1459,10 +1459,13 @@ class WhileLoopTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class WildcardTree(Tree):
+class WildcardTree(ExpressionTree):
     """通配符
 
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WildcardTree.java
+    与 JDK 中 com.sun.source.tree.WildcardTree 接口的继承关系不一致，是因为 con.sun.tools.javac.tree.JCTree 类继承了 JCExpression，详见：
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/tree/JCTree.java
+
+    【JDK 接口源码】https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WildcardTree.java
     A tree node for a wildcard type argument.
     Use `getKind` to determine the kind of bound.
 

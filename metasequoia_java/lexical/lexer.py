@@ -12,187 +12,29 @@ TODO 增加 JavaDoc 的区分逻辑
 
 import abc
 import collections
-import enum
 from typing import Dict, List, Optional, Tuple
 
 from metasequoia_java.lexical.charset import DEFAULT, END_CHAR, END_WORD, HEX_NUMBER, NUMBER, OCT_NUMBER
-from metasequoia_java.lexical.keyword import KEYWORD_HASH
+from metasequoia_java.lexical.keyword_hash import KEYWORD_HASH
+from metasequoia_java.lexical.split_hash import SPLIT_HASH
 from metasequoia_java.lexical.state import LexicalState
+from metasequoia_java.lexical.token import (Affiliation, AffiliationStyle, CharToken, FloatToken, IntToken, StringToken,
+                                            Token)
 from metasequoia_java.lexical.token_kind import TokenKind
 
 
-class AffiliationStyle(enum.IntEnum):
-    """附属元素的类型"""
-
-    SPACE = enum.auto()  # 空格
-    LINEBREAK = enum.auto()  # 换行符
-    COMMENT_LINE = enum.auto()  # 以 // 开头的注释
-    COMMENT_BLOCK = enum.auto()  # 以 /* 开头的注释
-    JAVADOC_LINE = enum.auto()  # 以 //* 开头的注释
-    JAVADOC_BLOCK = enum.auto()  # 以 /** 开头的注释
-
-
-class Affiliation:
-    """附属元素：包括空格、换行符和注释
-
-    之所以设计附属元素的概念，是为了给构造的抽象语法树提供重新转换为 Java 代码的功能，且在恢复时能够还原原始代码的空格、换行符和注释。从而使构造的抽象
-    语法树能够被应用到格式化代码、添加注释的场景。
-    """
-
-    __slots__ = ("_style", "_pos", "_end_pos", "_text")
-
-    def __init__(self, style: AffiliationStyle, pos: int, end_pos: int, text: str):
-        self._style = style
-        self._pos = pos
-        self._end_pos = end_pos
-        self._text = text
-
-    @property
-    def style(self) -> AffiliationStyle:
-        return self._style
-
-    @property
-    def pos(self) -> int:
-        return self._pos
-
-    @property
-    def end_pos(self) -> int:
-        return self._end_pos
-
-    @property
-    def text(self) -> str:
-        return self._text
-
-
-class Token:
-    """语法元素"""
-
-    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source")
-
-    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str]):
-        """
-
-        Parameters
-        ----------
-        kind : TokenKind
-            语法元素类型
-        pos : int
-            语法元素开始位置（包含）
-        end_pos : int
-            语法元素结束位置（不包含）
-        affiliations : List[Affiliation]
-            语法元素之后的附属元素
-        source : Optional[str]
-            语法元素的源代码；当前仅当当前语法元素为结束符时源代码为 None
-        """
-        self._kind = kind
-        self._pos = pos
-        self._end_pos = end_pos
-        self._affiliations = affiliations
-        self._source = source
-
-    @property
-    def kind(self) -> TokenKind:
-        return self._kind
-
-    @property
-    def pos(self) -> int:
-        return self._pos
-
-    @property
-    def end_pos(self) -> int:
-        return self._end_pos
-
-    @property
-    def affiliations(self) -> List[Affiliation]:
-        return self._affiliations
-
-    @property
-    def source(self) -> str:
-        return self._source
-
-    @property
-    def is_end(self) -> bool:
-        return self.kind == TokenKind.EOF
-
-    @property
-    def name(self) -> str:
-        return self.source
-
-    def int_value(self) -> int:
-        raise TypeError(f"{self.__class__.__name__}.int_value is undefined!")
-
-    def float_value(self) -> int:
-        raise TypeError(f"{self.__class__.__name__}.float_value is undefined!")
-
-    def char_value(self) -> str:
-        raise TypeError(f"{self.__class__.__name__}.char_value is undefined!")
-
-    def string_value(self) -> str:
-        raise TypeError(f"{self.__class__.__name__}.string_value is undefined!")
-
-    def __repr__(self) -> str:
-        return f"{self.kind.name}({self.source}){self.affiliations}"
-
-
-class IntToken(Token):
-    """整数类型的 Token"""
-
-    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
-
-    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str],
-                 value: int):
-        super().__init__(kind, pos, end_pos, affiliations, source)
-        self._value = value
-
-    def int_value(self) -> int:
-        return self._value
-
-
-class FloatToken(Token):
-    """浮点数类型的 Token"""
-
-    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
-
-    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str],
-                 value: float):
-        super().__init__(kind, pos, end_pos, affiliations, source)
-        self._value = value
-
-    def float_value(self) -> float:
-        return self._value
-
-
-class CharToken(Token):
-    """字符类型的 Token"""
-
-    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
-
-    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str],
-                 value: str):
-        super().__init__(kind, pos, end_pos, affiliations, source)
-        self._value = value
-
-    def char_value(self) -> str:
-        return self._value
-
-
-class StringToken(Token):
-    """字符串类型的 Token"""
-
-    __slots__ = ("_kind", "_pos", "_end_pos", "_affiliations", "_source", "_value")
-
-    def __init__(self, kind: TokenKind, pos: int, end_pos: int, affiliations: List[Affiliation], source: Optional[str],
-                 value: str):
-        super().__init__(kind, pos, end_pos, affiliations, source)
-        self._value = value
-
-    def string_value(self) -> str:
-        return self._value
-
-
 class LexicalFSM:
-    """词法解析器自动机的抽象基类"""
+    """词法解析器自动机的抽象基类
+
+    Bison API：
+    - lex()：每次调用时，解析下一个函数并返回
+
+    JDK 词法解析器 API：
+    - token(idx = 0)：每次调用时，获取当前终结符之后的第 idx 个终结符，其中 token(0) 为当前终结符
+    - next_token()：每次调用时，将当前指向的终结符向后移动 1 个
+
+    其中类似 JDK 词法解析器 API 是通过 Bison 实现的。
+    """
 
     __slots__ = ("_text", "_length", "pos_start", "pos", "state", "affiliations", "_ahead")
 
@@ -205,7 +47,7 @@ class LexicalFSM:
         self.state: LexicalState = LexicalState.INIT  # 自动机状态
         self.affiliations: List[Affiliation] = []  # 还没有写入 Token 的附属元素的列表
 
-        self._ahead = collections.deque()  # 提前获取前置元素的缓存
+        self._ahead: collections.deque[Token] = collections.deque()  # 提前获取前置元素的缓存
 
     @property
     def length(self) -> int:
@@ -231,14 +73,10 @@ class LexicalFSM:
         self.affiliations = []
         return res
 
-    # ------------------------------ 词法解析主逻辑 ------------------------------
+    # ------------------------------ Bison API ------------------------------
 
     def lex(self) -> Token:
         """解析并生成一个终结符"""
-
-        if len(self._ahead) > 0:
-            return self._ahead.popleft()
-
         while True:
             char = self._char()
 
@@ -254,12 +92,42 @@ class LexicalFSM:
             if res is not None:
                 return res
 
-    def ahead(self, idx: int):
-        """提前获取当前终结符之后的第 idx 个终结符（从 1 起），及 ahead(0) 对应当前终结符"""
-        if len(self._ahead) < idx:
-            for _ in range(idx - len(self._ahead)):
+    # ------------------------------ JDK 词法解析器 API ------------------------------
+
+    def token(self, idx: int = 0):
+        """提前获取当前终结符之后的第 idx 个终结符，其中 ahead(0) 对应当前终结符"""
+        if len(self._ahead) <= idx:
+            for _ in range(idx - len(self._ahead) + 1):
                 self._ahead.append(self.lex())
-        return self._ahead[idx - 1]
+        return self._ahead[idx]
+
+    def next_token(self):
+        if len(self._ahead) == 0:
+            self._ahead.append(self.lex())
+        self._ahead.popleft()
+
+    def split(self):
+        if len(self._ahead) == 0:
+            self._ahead.append(self.lex())
+        if self._ahead[0].kind not in SPLIT_HASH:
+            raise KeyError("拆分失败")  # TODO 待修改异常类型
+        kind1, kind2 = SPLIT_HASH[self._ahead[0].kind]
+        token1 = Token(
+            kind=kind1,
+            pos=self._ahead[0].pos,
+            end_pos=self._ahead[0].pos + 1,
+            affiliations=self._ahead[0].affiliations,
+            source=self._ahead[0].source[0]
+        )
+        token2 = Token(
+            kind=kind2,
+            pos=self._ahead[0].pos + 1,
+            end_pos=self._ahead[0].end_pos,
+            affiliations=[],
+            source=self._ahead[0].source[1:]
+        )
+        self._ahead[0] = token2
+        return token1
 
 
 class Operator(abc.ABC):
@@ -1103,3 +971,12 @@ if __name__ == "__main__":
         print("token:", token)
         if token.kind == TokenKind.EOF:
             break
+
+    lexical_fsm = LexicalFSM("1/* xxx */\n2")
+    token_list = []
+    while True:
+        token = lexical_fsm.token(0)
+        print("token:", token)
+        if token.kind == TokenKind.EOF:
+            break
+        lexical_fsm.next_token()
