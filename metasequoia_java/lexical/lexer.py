@@ -50,6 +50,10 @@ class LexicalFSM:
         self._ahead: collections.deque[Token] = collections.deque()  # 提前获取前置元素的缓存
 
     @property
+    def text(self):
+        return self._text
+
+    @property
     def length(self) -> int:
         return self._length
 
@@ -80,7 +84,7 @@ class LexicalFSM:
         while True:
             char = self._char()
 
-            # print(f"state: {self.state.state.name}({self.state.state.value}), char: {char}")
+            print(f"state: {self.state.name}({self.state.value}), char: {char}")
 
             operate: Optional["Operator"] = FSM_OPERATION_MAP.get((self.state, char))
 
@@ -181,12 +185,13 @@ class ReduceSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return Token(
             kind=self._kind,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source
@@ -200,12 +205,13 @@ class ReduceIntSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.INT_DEC_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -220,12 +226,13 @@ class ReduceLongSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.LONG_DEC_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -240,12 +247,13 @@ class ReduceIntOctSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.INT_OCT_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -260,12 +268,13 @@ class ReduceLongOctSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.LONG_OCT_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -280,12 +289,13 @@ class ReduceIntHexSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.INT_HEX_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -300,12 +310,13 @@ class ReduceLongHexSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return IntToken(
             kind=TokenKind.LONG_HEX_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -320,12 +331,13 @@ class ReduceFloatSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         return FloatToken(
             kind=TokenKind.FLOAT_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source, value=float(source[:-1])
@@ -339,13 +351,14 @@ class ReduceDoubleSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         value = float(source[:-1]) if source.endswith("d") or source.endswith("D") else float(source)
         return FloatToken(
             kind=TokenKind.DOUBLE_LITERAL,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=source,
@@ -360,11 +373,18 @@ class ReduceSetStateMaybeKeyword(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         kind = KEYWORD_HASH.get(source, TokenKind.IDENTIFIER)
-        return Token(kind=kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(), source=source)
+        return Token(
+            kind=kind,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source
+        )
 
 
 class MoveReduceSetState(Operator):
@@ -375,12 +395,18 @@ class MoveReduceSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
-        return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
-                     source=source)
+        return Token(
+            kind=self._kind,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source
+        )
 
 
 class MoveReduceCharSetState(Operator):
@@ -390,12 +416,19 @@ class MoveReduceCharSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
-        return CharToken(kind=TokenKind.CHAR_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
-                         affiliations=fsm.pop_affiliation(), source=source, value=source[1:-1])
+        return CharToken(
+            kind=TokenKind.CHAR_LITERAL,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=source[1:-1]
+        )
 
 
 class MoveReduceStringSetState(Operator):
@@ -405,12 +438,19 @@ class MoveReduceStringSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
-        return StringToken(kind=TokenKind.STRING_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
-                           affiliations=fsm.pop_affiliation(), source=source, value=source[1:-1])
+        return StringToken(
+            kind=TokenKind.STRING_LITERAL,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=source[1:-1]
+        )
 
 
 class MoveReduceTextBlockSetState(Operator):
@@ -420,12 +460,19 @@ class MoveReduceTextBlockSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
-        return StringToken(kind=TokenKind.TEXT_BLOCK, pos=fsm.pos_start, end_pos=fsm.pos,
-                           affiliations=fsm.pop_affiliation(), source=source, value=source[3:-3])
+        return StringToken(
+            kind=TokenKind.TEXT_BLOCK,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=source[3:-3]
+        )
 
 
 class CommentSetState(Operator):
@@ -437,11 +484,12 @@ class CommentSetState(Operator):
 
     def __call__(self, fsm: LexicalFSM):
         fsm.state = self._state
+        pos = fsm.pos_start
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         fsm.affiliations.append(Affiliation(
             style=self._style,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             text=source
         ))
@@ -455,11 +503,12 @@ class MoveComment(Operator):
 
     def __call__(self, fsm: LexicalFSM):
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
         fsm.pos_start = fsm.pos
         fsm.affiliations.append(Affiliation(
             style=self._style,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             text=source
         ))
@@ -473,13 +522,14 @@ class MoveCommentSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         source = fsm.get_word()
+        fsm.state = self._state
         fsm.pos_start = fsm.pos
         fsm.affiliations.append(Affiliation(
             style=self._style,
-            pos=fsm.pos_start,
+            pos=pos,
             end_pos=fsm.pos,
             text=source
         ))
@@ -494,10 +544,16 @@ class FixedSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         fsm.pos_start = fsm.pos
-        return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
-                     source=self._source)
+        fsm.state = self._state
+        return Token(
+            kind=self._kind,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=self._source
+        )
 
 
 class FixedIntSetState(Operator):
@@ -508,11 +564,17 @@ class FixedIntSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
+        pos = fsm.pos_start
         fsm.pos_start = fsm.pos
-        return IntToken(kind=TokenKind.INT_DEC_LITERAL, pos=fsm.pos_start, end_pos=fsm.pos,
-                        affiliations=fsm.pop_affiliation(),
-                        source=self._source, value=int(self._source))
+        fsm.state = self._state
+        return IntToken(
+            kind=TokenKind.INT_DEC_LITERAL,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=self._source,
+            value=int(self._source)
+        )
 
 
 class MoveFixed(Operator):
@@ -524,9 +586,15 @@ class MoveFixed(Operator):
 
     def __call__(self, fsm: LexicalFSM):
         fsm.pos += 1
+        pos = fsm.pos_start
         fsm.pos_start = fsm.pos
-        return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
-                     source=self._source)
+        return Token(
+            kind=self._kind,
+            pos=pos,
+            end_pos=fsm.pos + 1,
+            affiliations=fsm.pop_affiliation(),
+            source=self._source
+        )
 
 
 class MoveFixedSetState(Operator):
@@ -538,11 +606,17 @@ class MoveFixedSetState(Operator):
         self._state = state
 
     def __call__(self, fsm: LexicalFSM):
-        fsm.state = self._state
         fsm.pos += 1
+        pos = fsm.pos_start
         fsm.pos_start = fsm.pos
-        return Token(kind=self._kind, pos=fsm.pos_start, end_pos=fsm.pos, affiliations=fsm.pop_affiliation(),
-                     source=self._source)
+        fsm.state = self._state
+        return Token(
+            kind=self._kind,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=self._source
+        )
 
 
 class Error(Operator):

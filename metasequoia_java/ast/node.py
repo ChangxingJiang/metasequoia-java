@@ -147,6 +147,18 @@ class AnnotatedTypeTree(ExpressionTree):
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
     underlying_type: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(annotations: List[AnnotationTree], underlying_type: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "AnnotatedTypeTree":
+        return AnnotatedTypeTree(
+            kind=TreeKind.ANNOTATION_TYPE,
+            annotations=annotations,
+            underlying_type=underlying_type,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{generate_tree_list(self.annotations, Separator.SPACE)} {self.underlying_type.generate()}"
 
@@ -419,6 +431,19 @@ class TypeParameterTree(Tree):
     name: str = dataclasses.field(kw_only=True)
     bounds: List[Tree] = dataclasses.field(kw_only=True)
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(name: str, bounds: List[Tree], annotations: List[AnnotationTree],
+               start_pos: int, end_pos: int, source: str) -> "TypeParameterTree":
+        return TypeParameterTree(
+            kind=TreeKind.TYPE_PARAMETER,
+            name=name,
+            bounds=bounds,
+            annotations=annotations,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -754,6 +779,16 @@ class IdentifierTree(ExpressionTree):
 
     name: str = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(name: str, start_pos: int, end_pos: int, source: str) -> "IdentifierTree":
+        return IdentifierTree(
+            kind=TreeKind.IDENTIFIER,
+            name=name,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return self.name
 
@@ -864,7 +899,7 @@ class LambdaExpressionTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class LiteralTree(Tree, abc.ABC):
+class LiteralTree(ExpressionTree, abc.ABC):
     """字面值
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LiteralTree.java
@@ -886,6 +921,17 @@ class IntLiteralTree(LiteralTree):
     style: IntegerStyle = dataclasses.field(kw_only=True)
     value: int = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "IntLiteralTree":
+        return IntLiteralTree(
+            kind=TreeKind.INT_LITERAL,
+            style=style,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return change_int_to_string(self.value, self.style)
 
@@ -897,6 +943,17 @@ class LongLiteralTree(LiteralTree):
     style: IntegerStyle = dataclasses.field(kw_only=True)
     value: int = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "LongLiteralTree":
+        return LongLiteralTree(
+            kind=TreeKind.LONG_LITERAL,
+            style=style,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{self.value}L"
 
@@ -906,6 +963,16 @@ class FloatLiteralTree(LiteralTree):
     """单精度浮点数字面值"""
 
     value: float = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(value: float, start_pos: int, end_pos: int, source: str) -> "FloatLiteralTree":
+        return FloatLiteralTree(
+            kind=TreeKind.FLOAT_LITERAL,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"{self.value}f"
@@ -917,6 +984,16 @@ class DoubleLiteralTree(LiteralTree):
 
     value: float = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(value: float, start_pos: int, end_pos: int, source: str) -> "DoubleLiteralTree":
+        return DoubleLiteralTree(
+            kind=TreeKind.DOUBLE_LITERAL,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{self.value}"
 
@@ -925,6 +1002,15 @@ class DoubleLiteralTree(LiteralTree):
 class TrueLiteralTree(LiteralTree):
     """布尔值真值字面值"""
 
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "TrueLiteralTree":
+        return TrueLiteralTree(
+            kind=TreeKind.BOOLEAN_LITERAL,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"true"
 
@@ -932,6 +1018,15 @@ class TrueLiteralTree(LiteralTree):
 @dataclasses.dataclass(slots=True)
 class FalseLiteralTree(LiteralTree):
     """布尔值假值字面值"""
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "FalseLiteralTree":
+        return FalseLiteralTree(
+            kind=TreeKind.BOOLEAN_LITERAL,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"false"
@@ -942,6 +1037,16 @@ class CharacterLiteralTree(LiteralTree):
     """字符字面值"""
 
     value: str = dataclasses.field(kw_only=True)  # 不包含单引号的字符串
+
+    @staticmethod
+    def create(value: str, start_pos: int, end_pos: int, source: str) -> "CharacterLiteralTree":
+        return CharacterLiteralTree(
+            kind=TreeKind.CHAR_LITERAL,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"'{self.value}'"
@@ -954,6 +1059,28 @@ class StringLiteralTree(LiteralTree):
     style: StringStyle = dataclasses.field(kw_only=True)  # 字面值样式
     value: str = dataclasses.field(kw_only=True)  # 不包含双引号的字符串内容
 
+    @staticmethod
+    def create_string(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteralTree":
+        return StringLiteralTree(
+            kind=TreeKind.STRING_LITERAL,
+            style=StringStyle.STRING,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_text_block(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteralTree":
+        return StringLiteralTree(
+            kind=TreeKind.STRING_LITERAL,
+            style=StringStyle.TEXT_BLOCK,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         if self.style == StringStyle.STRING:
             return f"\"{repr(self.value)}\""
@@ -963,6 +1090,15 @@ class StringLiteralTree(LiteralTree):
 @dataclasses.dataclass(slots=True)
 class NullLiteralTree(LiteralTree):
     """空值字面值"""
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "NullLiteralTree":
+        return NullLiteralTree(
+            kind=TreeKind.NULL_LITERAL,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"null"
@@ -998,7 +1134,19 @@ class MemberSelectTree(ExpressionTree):
     """
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
-    identifier: str = dataclasses.field(kw_only=True)
+    identifier: IdentifierTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(expression: ExpressionTree, identifier: IdentifierTree,
+               start_pos: int, end_pos: int, source: str) -> "MemberSelectTree":
+        return MemberSelectTree(
+            kind=TreeKind.NULL_LITERAL,
+            expression=expression,
+            identifier=identifier,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"{self.expression.generate()}.{self.identifier}"
@@ -1480,6 +1628,36 @@ class WildcardTree(ExpressionTree):
     """
 
     bound: Tree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create_extends_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
+        return WildcardTree(
+            kind=TreeKind.EXTENDS_WILDCARD,
+            bound=bound,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_super_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
+        return WildcardTree(
+            kind=TreeKind.SUPER_WILDCARD,
+            bound=bound,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_unbounded_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
+        return WildcardTree(
+            kind=TreeKind.UNBOUNDED_WILDCARD,
+            bound=bound,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if self.kind == TreeKind.EXTENDS_WILDCARD:

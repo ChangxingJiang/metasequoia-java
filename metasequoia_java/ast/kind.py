@@ -5,6 +5,11 @@
 import enum
 
 
+__all__ = [
+    "TreeKind"
+]
+
+
 class TreeKind(enum.Enum):
     """抽象语法树节点类型
 

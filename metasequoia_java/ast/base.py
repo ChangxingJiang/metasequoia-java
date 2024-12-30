@@ -27,7 +27,9 @@ class Tree(abc.ABC):
     """
 
     kind: TreeKind = dataclasses.field(kw_only=True)  # 节点类型
-    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码
+    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码  # TODO 待移除 Optional
+    start_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的开始位置  # TODO 待移除 Optional
+    end_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的结束位置  # TODO 待移除 Optional
 
     @property
     def is_literal(self) -> bool:
