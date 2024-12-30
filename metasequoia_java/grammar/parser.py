@@ -259,7 +259,7 @@ class JavaParser:
         """
         pos = self._token.pos
         annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
-        name: str = self.type_name()
+        name: ast.IdentifierTree = self.type_name()
         bounds: List[ast.ExpressionTree] = []
         if self._token.kind == TokenKind.EXTENDS:
             self._next_token()
@@ -388,14 +388,16 @@ class JavaParser:
     def qualident(self, allow_annotations: bool):
         """解析名称
 
-        对应 JDK 文档中的：ModuleName
+        对应 JDK 文档中的：ModuleName, PackageName
 
         【对应 JDK 源码】JavacParser.qualident
         Qualident = Ident { DOT [Annotations] Ident }
+
+        TODO 补充单元测试：allow_annotations = True
         """
+        pos = self._token.pos
         expression: ast.ExpressionTree = self.identifier()
         while self._token.kind == TokenKind.DOT:
-            pos = self._token.pos
             self._next_token()
             type_annotations = self.type_annotations_opt() if allow_annotations is True else None
             identifier: ast.IdentifierTree = self.identifier()
@@ -480,4 +482,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("101")).literal())
+    print(JavaParser(LexicalFSM("abc.def")).qualident(False))

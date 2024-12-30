@@ -416,6 +416,32 @@ class CatchTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
+class IdentifierTree(ExpressionTree):
+    """标识符
+
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IdentifierTree.java
+    A tree node for an identifier expression.
+
+    样例：name
+    """
+
+    name: str = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(name: str, start_pos: int, end_pos: int, source: str) -> "IdentifierTree":
+        return IdentifierTree(
+            kind=TreeKind.IDENTIFIER,
+            name=name,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    def generate(self) -> str:
+        return self.name
+
+
+@dataclasses.dataclass(slots=True)
 class TypeParameterTree(Tree):
     """类型参数列表
 
@@ -428,12 +454,12 @@ class TypeParameterTree(Tree):
     - annotations name
     """
 
-    name: str = dataclasses.field(kw_only=True)
+    name: IdentifierTree = dataclasses.field(kw_only=True)
     bounds: List[Tree] = dataclasses.field(kw_only=True)
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(name: str, bounds: List[Tree], annotations: List[AnnotationTree],
+    def create(name: IdentifierTree, bounds: List[Tree], annotations: List[AnnotationTree],
                start_pos: int, end_pos: int, source: str) -> "TypeParameterTree":
         return TypeParameterTree(
             kind=TreeKind.TYPE_PARAMETER,
@@ -765,32 +791,6 @@ class ForLoopTree(StatementTree):
 
     def generate(self) -> str:
         """TODO"""
-
-
-@dataclasses.dataclass(slots=True)
-class IdentifierTree(ExpressionTree):
-    """标识符
-
-    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IdentifierTree.java
-    A tree node for an identifier expression.
-
-    样例：name
-    """
-
-    name: str = dataclasses.field(kw_only=True)
-
-    @staticmethod
-    def create(name: str, start_pos: int, end_pos: int, source: str) -> "IdentifierTree":
-        return IdentifierTree(
-            kind=TreeKind.IDENTIFIER,
-            name=name,
-            start_pos=start_pos,
-            end_pos=end_pos,
-            source=source
-        )
-
-    def generate(self) -> str:
-        return self.name
 
 
 @dataclasses.dataclass(slots=True)
@@ -1140,7 +1140,7 @@ class MemberSelectTree(ExpressionTree):
     def create(expression: ExpressionTree, identifier: IdentifierTree,
                start_pos: int, end_pos: int, source: str) -> "MemberSelectTree":
         return MemberSelectTree(
-            kind=TreeKind.NULL_LITERAL,
+            kind=TreeKind.MEMBER_SELECT,
             expression=expression,
             identifier=identifier,
             start_pos=start_pos,
