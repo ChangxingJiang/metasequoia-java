@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from metasequoia_java import ast
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
+from metasequoia_java.grammar.parans_result import ParensResult
+from metasequoia_java.grammar.token_set import LAX_IDENTIFIER
 from metasequoia_java.lexical import LexicalFSM
 from metasequoia_java.lexical import Token
 from metasequoia_java.lexical import TokenKind
@@ -25,8 +27,7 @@ class JavaParser:
     def __init__(self, lexer: LexicalFSM):
         self._text = lexer.text
         self._lexer = lexer
-        self._token: Optional[Token] = None
-        self._next_token()
+        self._token: Optional[Token] = self._lexer.token(0)
 
     def _next_token(self):
         self._token = self._lexer.lex()
@@ -64,7 +65,7 @@ class JavaParser:
         Identifier:
           IdentifierChars but not a ReservedKeyword or BooleanLiteral or NullLiteral
 
-        【对应 JDK 源码】JavacParser.ident
+        [JDK Code] JavacParser.ident
         """
         if self._token.kind != TokenKind.IDENTIFIER:
             raise JavaSyntaxError(f"{self._token.source} 不能作为 Identifier")
@@ -80,7 +81,7 @@ class JavaParser:
     def type_name(self) -> ast.IdentifierTree:
         """解析 TypeIdentifier 元素
 
-        【对应 JDK 源码】JavacParser.typeName
+        [JDK Code] JavacParser.typeName
         JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
         TypeIdentifier:
           Identifier but not permits, record, sealed, var, or yield
@@ -199,7 +200,7 @@ class JavaParser:
         annotations : Optional[List[ast.AnnotationTree]], default = None
             已经解析的注解
 
-        【对应 JDK 源码】JavacParser.parseType
+        [JDK Code] JavacParser.parseType
 
         TODO 待补充单元测试
         """
@@ -227,7 +228,7 @@ class JavaParser:
         parse_empty : bool, default = False
             是否解析空参数
 
-        【对应 JDK 源码】JavacParser.typeParametersOpt
+        [JDK Code] JavacParser.typeParametersOpt
         TypeParametersOpt = ["<" TypeParameter {"," TypeParameter} ">"]
 
         TODO 待补充单元测试
@@ -250,7 +251,7 @@ class JavaParser:
     def type_parameter(self) -> ast.TypeParameterTree:
         """类型参数
 
-        【对应 JDK 源码】JavacParser.typeParameter
+        [JDK Code] JavacParser.typeParameter
         TypeParameter = [Annotations] TypeVariable [TypeParameterBound]
         TypeParameterBound = EXTENDS Type {"&" Type}
         TypeVariable = Ident
@@ -277,7 +278,7 @@ class JavaParser:
     def type_arguments_opt(self) -> Optional[List[ast.ExpressionTree]]:
         """可选的多个类型实参
 
-        【对应 JDK 源码】JavacParser.typeArgumentsOpt
+        [JDK Code] JavacParser.typeArgumentsOpt
         TypeArgumentsOpt = [ TypeArguments ]
 
         TODO 待补充单元测试
@@ -289,7 +290,7 @@ class JavaParser:
     def type_arguments(self) -> List[ast.ExpressionTree]:
         """多个类型实参
 
-        【对应 JDK 源码】JavacParser.typeArguments
+        [JDK Code] JavacParser.typeArguments
         TypeArguments  = "<" TypeArgument {"," TypeArgument} ">"
 
         TODO 待补充单元测试
@@ -319,7 +320,7 @@ class JavaParser:
     def type_argument(self) -> ast.ExpressionTree:
         """类型实参
 
-        【对应 JDK 源码】JavacParser.typeArgument
+        [JDK Code] JavacParser.typeArgument
         TypeArgument = Type
                      | [Annotations] "?"
                      | [Annotations] "?" EXTENDS Type {"&" Type}
@@ -374,7 +375,7 @@ class JavaParser:
     def unannotated_type(self, allow_var: bool = False) -> ast.ExpressionTree:
         """解析不包含注解的类型
 
-        【对应 JDK 源码】JavacParser.unannotatedType
+        [JDK Code] JavacParser.unannotatedType
 
         TODO 待增加 allowVar 相关逻辑
         TODO 待增加单元测试
@@ -390,7 +391,7 @@ class JavaParser:
 
         对应 JDK 文档中的：ModuleName, PackageName
 
-        【对应 JDK 源码】JavacParser.qualident
+        [JDK Code] JavacParser.qualident
         Qualident = Ident { DOT [Annotations] Ident }
 
         TODO 补充单元测试：allow_annotations = True
@@ -417,13 +418,33 @@ class JavaParser:
     def term(self) -> ast.ExpressionTree:
         """TODO 名称待整理
 
-        【对应 JDK 源码】JavacParser.term
+        [JDK Code] JavacParser.term
         """
+
+    def parse_intersection_type(self, pos: int, first_type: ast.ExpressionTree):
+        """解析 CAST 语句中的交叉类型
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-4.html#jls-AdditionalBound
+        AdditionalBound:
+          & InterfaceType
+
+        [JDK Code] JavacParser.parseIntersectionType
+        """
+        bounds = [first_type]
+        while self._token.kind == TokenKind.AMP:
+            self._accept(TokenKind.AMP)
+            bounds.append(self.parse_type())
+        if len(bounds) > 1:
+            return ast.IntersectionTypeTree.create(
+                bounds=bounds,
+                **self._info_include(pos)
+            )
+        return first_type
 
     def term3(self) -> ast.ExpressionTree:
         """解析第 3 层级语法元素
 
-        【对应 JDK 源码】JavacParser.term3
+        [JDK Code] JavacParser.term3
         Expression3    = PrefixOp Expression3
                        | "(" Expr | TypeNoParams ")" Expression3
                        | Primary {Selector} {PostfixOp}
@@ -467,7 +488,7 @@ class JavaParser:
             # TODO 增加 isMode 的逻辑
             return self.type_argument()
 
-        # 一元表达式
+        # 一元表达式：PrefixOp Expression3
         if self._token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
                                 TokenKind.SUB}:
             # TODO 增加 isMode 的逻辑
@@ -485,9 +506,183 @@ class JavaParser:
                     **self._info_include(pos)
                 )
 
+        # 括号表达式：
+        if self._token.kind == TokenKind.LPAREN:
+            # TODO 增加 isMode 的逻辑
+            if type_args is not None:
+                raise JavaSyntaxError("语法不合法")
+            pres: ParensResult = self.analyze_parens()
+
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-15.html#jls-CastExpression
+            # CastExpression:
+            #   ( PrimitiveType ) UnaryExpression
+            #   ( ReferenceType {AdditionalBound} ) UnaryExpressionNotPlusMinus
+            #   ( ReferenceType {AdditionalBound} ) LambdaExpression
+            if pres == ParensResult.CAST:
+                self._accept(TokenKind.LPAREN)
+                cast_type = self.parse_intersection_type(pos, self.parse_type())
+                self._accept(TokenKind.RPAREN)
+                expression = self.term3()
+                return ast.TypeCastTree(
+                    cast_type=cast_type,
+                    expression=expression,
+                    **self._info_include(pos)
+                )
+
+            # if pres in {ParensResult.IMPLICIT_LAMBDA, ParensResult.EXPLICIT_LAMBDA}:
+
+
     def term3_rest(self, t: ast.ExpressionTree, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
         """解析第 3 层级语法元素的剩余部分"""
 
+    def analyze_parens(self) -> ParensResult:
+        """分析括号中的内容
+
+        [JDK Code] JavacParser.analyzeParens
+        """
+        depth = 0
+        is_type = False
+        lookahead = 0
+        default_result = ParensResult.PARENS
+        while True:
+            tk = self._lexer.token(lookahead).kind
+            print(tk)
+            if tk == TokenKind.COMMA:
+                is_type = True
+            elif tk in {TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.DOT, TokenKind.AMP}:
+                continue  # 跳过
+            elif tk == TokenKind.QUES:
+                if self._lexer.token(lookahead + 1).kind in {TokenKind.EXTENDS, TokenKind.SUPER}:
+                    is_type = True  # wildcards
+            elif tk in {TokenKind.BYTE, TokenKind.SHORT, TokenKind.INT, TokenKind.LONG, TokenKind.FLOAT,
+                        TokenKind.FLOAT, TokenKind.DOUBLE, TokenKind.BOOLEAN, TokenKind.CHAR, TokenKind.VOID}:
+                if self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
+                    # Type, ')' -> cast
+                    return ParensResult.CAST
+                if self._lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
+                    # Type, Identifier/'_'/'assert'/'enum' -> explicit lambda
+                    return ParensResult.EXPLICIT_LAMBDA
+            elif tk == TokenKind.LPAREN:
+                if lookahead != 0:
+                    # // '(' in a non-starting position -> parens
+                    return ParensResult.PARENS
+                if self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
+                    # // '(', ')' -> explicit lambda
+                    return ParensResult.EXPLICIT_LAMBDA
+            elif tk == TokenKind.RPAREN:
+                if is_type is True:
+                    return ParensResult.CAST
+                if self._lexer.token(lookahead + 1).kind in {
+                    TokenKind.CASE, TokenKind.TILDE, TokenKind.LPAREN, TokenKind.THIS, TokenKind.SUPER,
+                    TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL,
+                    TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL,
+                    TokenKind.FLOAT_LITERAL, TokenKind.DOUBLE_LITERAL, TokenKind.CHAR_LITERAL, TokenKind.STRING_LITERAL,
+                    TokenKind.STRING_FRAGMENT, TokenKind.TRUE, TokenKind.FALSE, TokenKind.NULL, TokenKind.NEW,
+                    TokenKind.IDENTIFIER, TokenKind.ASSERT, TokenKind.ENUM, TokenKind.UNDERSCORE, TokenKind.SWITCH,
+                    TokenKind.BYTE, TokenKind.SHORT, TokenKind.CHAR, TokenKind.INT, TokenKind.LONG, TokenKind.FLOAT,
+                    TokenKind.DOUBLE, TokenKind.BOOLEAN, TokenKind.VOID
+                }:
+                    return ParensResult.CAST
+                return default_result
+            elif tk in LAX_IDENTIFIER:
+                print("LAX_IDENTIFIER:", self._lexer.token(lookahead + 1).kind)
+                if self._lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
+                    # Identifier, Identifier/'_'/'assert'/'enum' -> explicit lambda
+                    return ParensResult.EXPLICIT_LAMBDA
+                if (self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN
+                        and self._lexer.token(lookahead + 2).kind == TokenKind.ARROW):
+                    # // Identifier, ')' '->' -> implicit lambda
+                    # TODO 待增加 isMode 的逻辑
+                    return ParensResult.IMPLICIT_LAMBDA
+                if depth == 0 and self._lexer.token(lookahead + 1).kind == TokenKind.COMMA:
+                    default_result = ParensResult.IMPLICIT_LAMBDA
+                is_type = False
+            elif tk in {TokenKind.FINAL, TokenKind.ELLIPSIS}:
+                return ParensResult.EXPLICIT_LAMBDA
+            elif tk == TokenKind.MONKEYS_AT:
+                is_type = True
+                lookahead = self.skip_annotation(lookahead)
+            elif tk == TokenKind.LBRACKET:
+                if self.peek_token(lookahead, TokenKind.RBRACKET, LAX_IDENTIFIER):
+                    # '[', ']', Identifier/'_'/'assert'/'enum' -> explicit lambda
+                    return ParensResult.EXPLICIT_LAMBDA
+                if self.peek_token(lookahead, TokenKind.RBRACKET, TokenKind.RPAREN):
+                    # '[', ']', ')' -> cast
+                    return ParensResult.CAST
+                if self.peek_token(lookahead, TokenKind.RBRACKET, TokenKind.AMP):
+                    # '[', ']', '&' -> cast (intersection type)
+                    return ParensResult.CAST
+                if self.peek_token(lookahead, TokenKind.RBRACKET):
+                    is_type = True
+                    lookahead += 1
+                else:
+                    return ParensResult.PARENS
+            elif tk == TokenKind.LT:
+                depth += 1
+            elif tk in {TokenKind.GT_GT_GT, TokenKind.GT_GT, TokenKind.GT}:
+                if tk == TokenKind.GT_GT_GT:
+                    depth -= 3
+                elif tk == TokenKind.GT_GT:
+                    depth -= 2
+                elif tk == TokenKind.GT:
+                    depth -= 1
+                if depth == 0:
+                    if self.peek_token(lookahead, TokenKind.RPAREN) or self.peek_token(lookahead, TokenKind.AMP):
+                        # '>', ')' -> cast
+                        # '>', '&' -> cast
+                        return ParensResult.CAST
+                    if self.peek_token(lookahead, LAX_IDENTIFIER, TokenKind.COMMA):
+                        # '>', Identifier/'_'/'assert'/'enum', ',' -> explicit lambda
+                        return ParensResult.EXPLICIT_LAMBDA
+                    if self.peek_token(lookahead, LAX_IDENTIFIER, TokenKind.RPAREN, TokenKind.ARROW):
+                        # '>', Identifier/'_'/'assert'/'enum', ')', '->' -> explicit lambda
+                        return ParensResult.EXPLICIT_LAMBDA
+                    if self.peek_token(lookahead, TokenKind.ELLIPSIS):
+                        # '>', '...' -> explicit lambda
+                        return ParensResult.EXPLICIT_LAMBDA
+                    is_type = True
+                elif depth < 0:
+                    # unbalanced '<', '>' - not a generic type
+                    return ParensResult.PARENS
+            else:
+                return default_result
+
+            lookahead += 1
+
+    def skip_annotation(self, lookahead: int) -> int:
+        """跳过从当前位置之后第 lookahead 个 Token 开始的注解，返回跳过后的 lookahead（此时 lookahead 指向注解的最后一个元素）
+
+        样例："@ interface xxx"，参数的 lookahead 指向 "@"，返回的 lookahead 指向 "interface"
+        """
+        lookahead += 1  # 跳过 @
+        while self.peek_token(lookahead, TokenKind.DOT):
+            lookahead += 2
+
+        if not self.peek_token(lookahead, TokenKind.LPAREN):
+            return lookahead
+        lookahead += 1  # 跳过标识符
+
+        nesting = 0  # 嵌套的括号层数（左括号比右括号多的数量）
+        while True:
+            tk = self._lexer.token(lookahead).kind
+            print(tk, nesting)
+            if tk == TokenKind.EOF:
+                return lookahead
+            if tk == TokenKind.LPAREN:
+                nesting += 1
+            if tk == TokenKind.RPAREN:
+                nesting -= 1
+                if nesting == 0:
+                    return lookahead
+            lookahead += 1
+
+    def peek_token(self, lookahead: int, *kinds: TokenKind):
+        """检查从当前位置之后的地 lookahead 开始的元素与 kinds 是否匹配"""
+        for i, kind in enumerate(kinds):
+            if not self._lexer.token(lookahead + i + 1).kind in kind:
+                return False
+        return True
+
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("-1")).term3())
+    print(JavaParser(LexicalFSM("(int)")).term3())

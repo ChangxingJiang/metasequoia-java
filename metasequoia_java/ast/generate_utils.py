@@ -22,6 +22,7 @@ class Separator(enum.Enum):
     COMMA = ","
     SPACE = " "
     SEMI = " "
+    AMP = "&"
 
 
 def generate_tree_list(elems: List[Tree], sep: Separator):

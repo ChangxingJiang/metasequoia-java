@@ -53,7 +53,7 @@ __all__ = [
     "IfTree",  # if 语句
     "ImportTree",  # 声明引用
     "InstanceOfTree",  # instanceof 表达式
-    "IntersectionTypeTree",  # 交互类型
+    "IntersectionTypeTree",  # 强制类型转换表达式中的交叉类型
     "LabeledStatementTree",  # 包含标签的表达式
     "LambdaExpressionTree",  # lambda 表达式
     "LiteralTree",  # 字面值
@@ -849,7 +849,7 @@ class InstanceOfTree(ExpressionTree):
 
 @dataclasses.dataclass(slots=True)
 class IntersectionTypeTree(Tree):
-    """交叉类型
+    """强制类型转换表达式中的交叉类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IntersectionTypeTree.java
     A tree node for an intersection type in a cast expression.
@@ -857,8 +857,18 @@ class IntersectionTypeTree(Tree):
 
     bounds: List[Tree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(bounds: List[Tree], start_pos: int, end_pos: int, source: str) -> "IntersectionTypeTree":
+        return IntersectionTypeTree(
+            kind=TreeKind.INT_LITERAL,
+            bounds=bounds,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
-        """TODO"""
+        return generate_tree_list(self.bounds, Separator.AMP)
 
 
 @dataclasses.dataclass(slots=True)
@@ -1528,11 +1538,23 @@ class TypeCastTree(ExpressionTree):
     ( type ) expression
     """
 
-    type: Tree = dataclasses.field(kw_only=True)
+    cast_type: Tree = dataclasses.field(kw_only=True)
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(cast_type: Tree, expression: ExpressionTree, start_pos: int, end_pos: int,
+               source: str) -> "TypeCastTree":
+        return TypeCastTree(
+            kind=TreeKind.INT_LITERAL,
+            cast_type=cast_type,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
-        return f"({self.type.generate()}){self.expression.generate()}"
+        return f"({self.cast_type.generate()}){self.expression.generate()}"
 
 
 @dataclasses.dataclass(slots=True)

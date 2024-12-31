@@ -84,7 +84,7 @@ class LexicalFSM:
         while True:
             char = self._char()
 
-            print(f"state: {self.state.name}({self.state.value}), char: {char}")
+            # print(f"state: {self.state.name}({self.state.value}), char: {char}")
 
             operate: Optional["Operator"] = FSM_OPERATION_MAP.get((self.state, char))
 

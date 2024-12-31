@@ -5,7 +5,7 @@ Java 终结符类型的枚举类
 import enum
 
 
-class TokenKind(enum.IntEnum):
+class TokenKind(enum.IntFlag):
     """Java 终结符类型的枚举类
 
     在终结符类型名称设计时，与 JDK 源码名称保持一致，但为了适应 Python 语法规范，在不同单词之间增加了下划线
