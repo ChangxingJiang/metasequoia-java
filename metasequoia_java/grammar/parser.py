@@ -455,6 +455,9 @@ class JavaParser:
                        | "[" Expression "]"
         TypeSelector   = "." Ident [TypeArguments]
         SuperSuffix    = Arguments | "." Ident [Arguments]
+
+        TODO 补充单元测试（匹配 type_arguments 的场景）
+        TODO 补充单元测试（type_argument 场景）
         """
         pos = self._token.pos
         type_args = self.type_arguments_opt()
@@ -475,11 +478,16 @@ class JavaParser:
             if tk == TokenKind.SUB and self._token.kind in {TokenKind.INT_DEC_LITERAL, TokenKind.LONG_DEC_LITERAL}:
                 return self.term3_rest(self.literal(), type_args)
             else:
-                return ast.UnaryTree()
+                expression = self.term3()
+                return ast.UnaryTree.create(
+                    operator=tk,
+                    expression=expression,
+                    **self._info_include(pos)
+                )
 
     def term3_rest(self, t: ast.ExpressionTree, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
         """解析第 3 层级语法元素的剩余部分"""
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("abc.def")).qualident(False))
+    print(JavaParser(LexicalFSM("-1")).term3())

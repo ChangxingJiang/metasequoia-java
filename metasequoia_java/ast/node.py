@@ -18,6 +18,7 @@ from metasequoia_java.ast.element import Modifier
 from metasequoia_java.ast.element import TypeKind
 from metasequoia_java.ast.generate_utils import Separator, change_int_to_string, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
+from metasequoia_java.lexical import TokenKind
 
 __all__ = [
     "AnnotatedTypeTree",  # 包含注解的类型
@@ -1549,7 +1550,27 @@ class UnaryTree(ExpressionTree):
     expression operator
     """
 
+    OPERATOR_KIND_HASH = {
+        TokenKind.PLUS: TreeKind.UNARY_PLUS,  # + a
+        TokenKind.SUB: TreeKind.UNARY_MINUS,  # - a
+        TokenKind.BANG: TreeKind.LOGICAL_COMPLEMENT,  # ! a
+        TokenKind.TILDE: TreeKind.BITWISE_COMPLEMENT,  # ~ a
+        TokenKind.PLUS_PLUS: TreeKind.PREFIX_INCREMENT,  # ++ a
+        TokenKind.SUB_SUB: TreeKind.PREFIX_INCREMENT,  # -- a
+    }
+
     expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(operator: TokenKind, expression: ExpressionTree, start_pos: int, end_pos: int,
+               source: str) -> "UnaryTree":
+        return UnaryTree(
+            kind=UnaryTree.OPERATOR_KIND_HASH[operator],
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
