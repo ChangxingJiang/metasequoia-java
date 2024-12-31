@@ -8,6 +8,7 @@ from metasequoia_java import ast
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
 from metasequoia_java.grammar.parans_result import ParensResult
+from metasequoia_java.grammar.parser_mode import ParserMode
 from metasequoia_java.grammar.token_set import LAX_IDENTIFIER
 from metasequoia_java.lexical import LexicalFSM
 from metasequoia_java.lexical import Token
@@ -28,6 +29,9 @@ class JavaParser:
         self._text = lexer.text
         self._lexer = lexer
         self._token: Optional[Token] = self._lexer.token(0)
+
+        self.mode: ParserMode = ParserMode.NULL  # 当前解析模式
+        self.last_mode: ParserMode = ParserMode.NULL  # 上一个解析模式
 
     def _next_token(self):
         self._token = self._lexer.lex()
@@ -55,6 +59,26 @@ class JavaParser:
             "start_pos": start_pos,
             "end_pos": end_pos
         }
+
+    # ------------------------------ 解析模式相关方法 ------------------------------
+
+    def set_mode(self, mode: ParserMode):
+        self.mode = mode
+
+    def set_last_mode(self, mode: ParserMode):
+        self.last_mode = mode
+
+    def is_mode(self, mode: ParserMode):
+        return self.mode & mode
+
+    def was_type_mode(self):
+        return self.last_mode & ParserMode.TYPE
+
+    def select_expr_mode(self):
+        self.set_mode((self.mode & ParserMode.NO_LAMBDA) | ParserMode.EXPR)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 EXPR
+
+    def select_type_mode(self):
+        self.set_mode((self.mode & ParserMode.NO_LAMBDA) | ParserMode.TYPE)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 TYPE
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
 
@@ -287,9 +311,9 @@ class JavaParser:
         """
         if self._token.kind != TokenKind.LT:
             return None
-        return self.type_arguments()
+        return self.type_arguments(False)
 
-    def type_arguments(self) -> List[ast.ExpressionTree]:
+    def type_arguments(self, diamond_allowed: bool) -> List[ast.ExpressionTree]:
         """多个类型实参
 
         [JDK Code] JavacParser.typeArguments
@@ -301,13 +325,15 @@ class JavaParser:
             raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self._token.kind}")
 
         self._next_token()
-        if self._token.kind == TokenKind.GT:
+        if self._token.kind == TokenKind.GT and diamond_allowed:
+            self.set_mode(self.mode | ParserMode.DIAMOND)
+            self._next_token()
             return []
 
-        args = [self.type_argument()]  # TODO 补充 isMode(EXPR) 的判断逻辑
+        args = [self.type_argument() if not self.is_mode(ParserMode.EXPR) else self.parse_type()]
         while self._token.kind == TokenKind.COMMA:
             self._next_token()
-            args.append(self.type_argument())  # TODO 补充 isMode(EXPR) 的判断逻辑
+            args.append(self.type_argument() if not self.is_mode(ParserMode.EXPR) else self.parse_type())
 
         if self._token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
                                 TokenKind.GT_GT_GT_EQ}:
