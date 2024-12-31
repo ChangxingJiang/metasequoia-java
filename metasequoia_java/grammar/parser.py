@@ -58,14 +58,14 @@ class JavaParser:
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
 
-    def identifier(self) -> ast.IdentifierTree:
+    def ident(self) -> ast.IdentifierTree:
         """解析 Identifier 元素
+
+        [JDK Code] JavacParser.ident
 
         JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
         Identifier:
           IdentifierChars but not a ReservedKeyword or BooleanLiteral or NullLiteral
-
-        [JDK Code] JavacParser.ident
         """
         if self._token.kind != TokenKind.IDENTIFIER:
             raise JavaSyntaxError(f"{self._token.source} 不能作为 Identifier")
@@ -120,9 +120,11 @@ class JavaParser:
         )
 
     def literal(self) -> ast.LiteralTree:
-        """解析 Literal 元素
+        """解析字面值
 
-        JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
+        [Jdk Code] JavacParser.literal
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html#jls-Literal
         Literal:
           IntegerLiteral
           FloatingPointLiteral
@@ -397,11 +399,11 @@ class JavaParser:
         TODO 补充单元测试：allow_annotations = True
         """
         pos = self._token.pos
-        expression: ast.ExpressionTree = self.identifier()
+        expression: ast.ExpressionTree = self.ident()
         while self._token.kind == TokenKind.DOT:
             self._next_token()
             type_annotations = self.type_annotations_opt() if allow_annotations is True else None
-            identifier: ast.IdentifierTree = self.identifier()
+            identifier: ast.IdentifierTree = self.ident()
             expression = ast.MemberSelectTree.create(
                 expression=expression,
                 identifier=identifier,
@@ -488,7 +490,27 @@ class JavaParser:
             # TODO 增加 isMode 的逻辑
             return self.type_argument()
 
-        # 一元表达式：PrefixOp Expression3
+        # 一元表达式
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-15.html#jls-UnaryExpression
+        # UnaryExpression:
+        #   PreIncrementExpression
+        #   PreDecrementExpression
+        #   + UnaryExpression
+        #   - UnaryExpression
+        #   UnaryExpressionNotPlusMinus
+        #
+        # PreIncrementExpression:
+        #   ++ UnaryExpression
+        #
+        # PreDecrementExpression:
+        #   -- UnaryExpression
+        #
+        # UnaryExpressionNotPlusMinus:
+        #   PostfixExpression
+        #   ~ UnaryExpression
+        #   ! UnaryExpression
+        #   CastExpression (不包含)
+        #   SwitchExpression (不包含)
         if self._token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
                                 TokenKind.SUB}:
             # TODO 增加 isMode 的逻辑
@@ -530,7 +552,6 @@ class JavaParser:
                 )
 
             # if pres in {ParensResult.IMPLICIT_LAMBDA, ParensResult.EXPLICIT_LAMBDA}:
-
 
     def term3_rest(self, t: ast.ExpressionTree, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
         """解析第 3 层级语法元素的剩余部分"""
@@ -653,6 +674,8 @@ class JavaParser:
         """跳过从当前位置之后第 lookahead 个 Token 开始的注解，返回跳过后的 lookahead（此时 lookahead 指向注解的最后一个元素）
 
         样例："@ interface xxx"，参数的 lookahead 指向 "@"，返回的 lookahead 指向 "interface"
+
+        [JDK Code] JavacParser.skipAnnotation
         """
         lookahead += 1  # 跳过 @
         while self.peek_token(lookahead, TokenKind.DOT):
