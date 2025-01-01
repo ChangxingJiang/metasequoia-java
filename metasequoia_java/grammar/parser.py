@@ -40,6 +40,9 @@ class JavaParser:
         self.permit_type_annotations_push_back: bool = False
         self.type_annotations_pushed_back: List[ast.AnnotationTree] = []
 
+        # 如果 allow_this_ident 为真，则允许将 "this" 视作标识符
+        self.allow_this_ident: Optional[bool] = None
+
     def next_token(self):
         self.last_token = self.token
         self.token = self.lexer.lex()
@@ -116,8 +119,15 @@ class JavaParser:
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
 
-    def ident(self) -> ast.IdentifierTree:
-        """解析 Identifier 元素
+    def ident_or_underscore(self) -> str:
+        """标识符或下划线
+
+        [JDK Code] JavacParser.identOrUnderscore
+        """
+        return self.ident()
+
+    def ident(self) -> str:
+        """标识符的名称
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         Identifier:
@@ -125,16 +135,27 @@ class JavaParser:
 
         [JDK Code] JavacParser.ident
         """
-        if self.token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"{self.token.source} 不能作为 Identifier")
-
-        pos = self.token.pos
-        name = self.token.name
-        self.next_token()
-        return ast.IdentifierTree.create(
-            name=name,
-            **self._info_exclude(pos)
-        )
+        if self.token.kind == TokenKind.IDENTIFIER:
+            name = self.token.name
+            self.next_token()
+            return name
+        if self.token.kind == TokenKind.ASSERT:
+            self.syntax_error(self.token.pos, f"AssertAsIdentifier")
+        if self.token.kind == TokenKind.ENUM:
+            self.syntax_error(self.token.pos, f"EnumAsIdentifier")
+        if self.token.kind == TokenKind.THIS:
+            if self.allow_this_ident:
+                name = self.token.name
+                self.next_token()
+                return name
+            else:
+                self.syntax_error(self.token.pos, f"ThisAsIdentifier")
+        if self.token.kind == TokenKind.UNDERSCORE:
+            name = self.token.name
+            self.next_token()
+            return name
+        self.accept(TokenKind.IDENTIFIER)
+        raise JavaSyntaxError(f"{self.token.source} 不能作为 Identifier")
 
     def type_name(self) -> ast.IdentifierTree:
         """解析 TypeIdentifier 元素
@@ -461,11 +482,17 @@ class JavaParser:
         TODO 补充单元测试：allow_annotations = True
         """
         pos = self.token.pos
-        expression: ast.ExpressionTree = self.ident()
+        expression: ast.ExpressionTree = ast.IdentifierTree.create(
+            name=self.ident(),
+            **self._info_exclude(pos)
+        )
         while self.token.kind == TokenKind.DOT:
             self.next_token()
             type_annotations = self.type_annotations_opt() if allow_annotations is True else None
-            identifier: ast.IdentifierTree = self.ident()
+            identifier: ast.IdentifierTree = ast.IdentifierTree.create(
+                name=self.ident(),
+                **self._info_exclude(pos)
+            )
             expression = ast.MemberSelectTree.create(
                 expression=expression,
                 identifier=identifier,
@@ -925,7 +952,8 @@ class JavaParser:
             else:
                 break
 
-        # TODO 待增加是否存在重复修饰符
+        if len(flags) > len(set(flags)):
+            self.syntax_error(pos, "RepeatedModifier(存在重复的修饰符)")
 
         tk = self.token.kind
         if tk == TokenKind.ENUM:
@@ -942,8 +970,29 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def variable_declarator_id(self):
-        """TODO"""
+    def variable_declarator_id(self, mods: ast.ModifiersTree, variable_type: ast.ExpressionTree, catch_parameter: bool,
+                               lambda_parameter: bool, record_component: bool):
+        """解析变量声明语句中的标识符
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        VariableDeclaratorId:
+          Identifier [Dims]
+          _
+
+        [JDK Code] JavacParser.variableDeclaratorId
+        VariableDeclaratorId = Ident BracketsOpt
+        """
+        pos = self.token.pos
+        if (self.allow_this_ident is False
+                and lambda_parameter is True
+                and self.token.kind not in LAX_IDENTIFIER
+                and mods.flags == Modifier.PARAMETER
+                and len(mods.annotations) == 0):
+            self.syntax_error(pos, "这是一个 lambda 表达式的参数，且 Token 类型不是标识符，且没有任何修饰符或注解，则意味着编译"
+                                   "器本应假设该 lambda 表达式为显式形式，但它可能包含隐式参数或显式参数的混合")
+
+        if self.token.kind == TokenKind.UNDERSCORE and (catch_parameter or lambda_parameter):
+            pass
 
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
