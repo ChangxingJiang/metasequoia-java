@@ -1294,6 +1294,21 @@ class MethodInvocationTree(ExpressionTree):
     method_select: ExpressionTree = dataclasses.field(kw_only=True)
     arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               type_arguments: List[Tree],
+               method_select: ExpressionTree,
+               arguments: List[ExpressionTree]) -> "MethodInvocationTree":
+        return MethodInvocationTree(
+            kind=TreeKind.METHOD_INVOCATION,
+            type_arguments=type_arguments,
+            method_select=method_select,
+            arguments=arguments,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 

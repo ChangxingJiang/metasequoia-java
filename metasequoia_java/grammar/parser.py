@@ -957,6 +957,58 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
+    def arguments_opt(self, type_args: List[ast.ExpressionTree], expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """可选择的包含括号的实参列表
+
+        [JDK Code] JavacParser.argumentsOpt
+        ArgumentsOpt = [ Arguments ]
+        """
+        if (self.is_mode(Mode.EXPR) and self.token.kind == TokenKind.LPAREN) or type_args is not None:
+            self.select_expr_mode()
+            return self.arguments(type_args, expression)
+        else:
+            return expression
+
+    def argument_list(self) -> List[ast.ExpressionTree]:
+        """不包含括号的实参列表
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ArgumentList:
+          Expression {, Expression}
+
+        [JDK Code] JavacParser.arguments()
+        Arguments = "(" [Expression { COMMA Expression }] ")"
+
+        TODO 待补充单元测试
+        """
+        args = []
+        if self.token.kind != TokenKind.LPAREN:
+            self.syntax_error(self.token.pos, f"expect LPAREN, gut get {self.token.kind.name}")
+        self.next_token()
+        if self.token.kind != TokenKind.RPAREN:
+            args.append(self.parse_expression())
+            while self.token.kind == TokenKind.COMMA:
+                self.next_token()
+                args.append(self.parse_expression())
+        self.accept(TokenKind.RPAREN)
+        return args
+
+    def arguments(self, type_arguments: List[ast.ExpressionTree], expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """包含括号的实参列表
+
+        [JDK Code] JavacParser.arguments(List<JCExpression>, JCExpression)
+
+        TODO 待补充单元测试
+        """
+        pos = self.token.pos
+        arguments = self.argument_list()
+        return ast.MethodInvocationTree.create(
+            type_arguments=type_arguments,
+            method_select=expression,
+            arguments=arguments,
+            **self._info_exclude(pos)
+        )
+
     def brackets_opt(self, expression: ast.ExpressionTree, annotations: Optional[List[ast.AnnotationTree]] = None):
         """可选的数组标记（空方括号）
 
