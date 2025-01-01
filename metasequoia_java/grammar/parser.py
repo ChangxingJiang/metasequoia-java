@@ -325,6 +325,13 @@ class JavaParser:
             )
         raise JavaSyntaxError(f"{self.token.source} 不是字面值")
 
+    def parse_expression(self) -> ast.ExpressionTree:
+        """表达式（可以是表达式或类型）
+
+        [JDK Code] JavacParser.parseExpression
+        """
+        return self.term(Mode.EXPR)
+
     def parse_type(self,
                    allow_var: bool = False,
                    annotations: Optional[List[ast.AnnotationTree]] = None,
@@ -463,6 +470,18 @@ class JavaParser:
     def type_argument(self) -> ast.ExpressionTree:
         """类型实参
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeArgument:
+          ReferenceType
+          Wildcard
+
+        Wildcard:
+          {Annotation} ? [WildcardBounds]
+
+        WildcardBounds:
+          extends ReferenceType
+          super ReferenceType
+
         [JDK Code] JavacParser.typeArgument
         TypeArgument = Type
                      | [Annotations] "?"
@@ -533,7 +552,7 @@ class JavaParser:
         # TODO 待增加 TYPEARRAY 相关逻辑
         return result
 
-    def term(self) -> ast.ExpressionTree:
+    def term(self, new_mode: int) -> ast.ExpressionTree:
         """TODO 名称待整理
 
         [JDK Code] JavacParser.term
@@ -638,13 +657,12 @@ class JavaParser:
             self.next_token()
             if tk == TokenKind.SUB and self.token.kind in {TokenKind.INT_DEC_LITERAL, TokenKind.LONG_DEC_LITERAL}:
                 return self.term3_rest(self.literal(), type_args)
-            else:
-                expression = self.term3()
-                return ast.UnaryTree.create(
-                    operator=tk,
-                    expression=expression,
-                    **self._info_include(pos)
-                )
+            expression = self.term3()
+            return ast.UnaryTree.create(
+                operator=tk,
+                expression=expression,
+                **self._info_include(pos)
+            )
 
         # 括号表达式：
         if self.token.kind == TokenKind.LPAREN:
@@ -686,7 +704,6 @@ class JavaParser:
         default_result = ParensResult.PARENS
         while True:
             tk = self.lexer.token(lookahead).kind
-            print(tk)
             if tk == TokenKind.COMMA:
                 is_type = True
             elif tk in {TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.DOT, TokenKind.AMP}:
@@ -725,7 +742,6 @@ class JavaParser:
                     return ParensResult.CAST
                 return default_result
             elif tk in LAX_IDENTIFIER:
-                print("LAX_IDENTIFIER:", self.lexer.token(lookahead + 1).kind)
                 if self.lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
                     # Identifier, Identifier/'_'/'assert'/'enum' -> explicit lambda
                     return ParensResult.EXPLICIT_LAMBDA
@@ -807,7 +823,6 @@ class JavaParser:
         nesting = 0  # 嵌套的括号层数（左括号比右括号多的数量）
         while True:
             tk = self.lexer.token(lookahead).kind
-            print(tk, nesting)
             if tk == TokenKind.EOF:
                 return lookahead
             if tk == TokenKind.LPAREN:
@@ -817,6 +832,74 @@ class JavaParser:
                 if nesting == 0:
                     return lookahead
             lookahead += 1
+
+    def lambda_expression_or_statement(self, has_parens: bool, explicit_params: bool, pos: int) -> ast.ExpressionTree:
+        """lambda 表达式或 lambda 语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        LambdaExpression:
+          LambdaParameters -> LambdaBody
+
+        [JDK Code] JavacParser.lambdaExpressionOrStatement
+
+        TODO 考虑是否需要增加 lambda 表达式中显式、隐式混用的场景（LambdaClassifier 的逻辑）
+
+        Examples
+        --------
+        >>> result1 = JavaParser(LexicalFSM("()->{}")).lambda_expression_or_statement(True, False, 0)
+        >>> result1.kind.name
+        'LAMBDA_EXPRESSION'
+        >>> result1 = JavaParser(LexicalFSM("(int x)->x + 3")).lambda_expression_or_statement(True, True, 0)
+        >>> result1.kind.name
+        'LAMBDA_EXPRESSION'
+        >>> result1 = JavaParser(LexicalFSM("(x, y)->{ return x + y; }")).lambda_expression_or_statement(True, False, 0)
+        >>> result1.kind.name
+        'LAMBDA_EXPRESSION'
+        """
+        if explicit_params is True:
+            parameters = self.formal_parameters(True, False)
+        else:
+            parameters = self.implicit_parameters(has_parens)
+        return self.lambda_expression_or_statement_rest(parameters, pos)
+
+    def lambda_expression_or_statement_rest(self, parameters: List[ast.VariableTree], pos: int) -> ast.ExpressionTree:
+        """lambda 表达式或 lambda 语句除参数外的剩余部分
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        LambdaBody:
+          Expression
+          Block
+
+        [JDK Code] JavacParser.lambdaExpressionOrStatementRest
+        """
+        self.accept(TokenKind.ARROW)
+        if self.token.kind == TokenKind.LBRACE:
+            return self.lambda_statement(parameters, pos, self.token.pos)
+        return self.lambda_expression(parameters, pos)
+
+    def lambda_statement(self, parameters: List[ast.VariableTree], pos: int, pos2: int) -> ast.ExpressionTree:
+        """lambda 语句的语句部分
+
+        [JDK Code] JavacParser.lambdaStatement
+        """
+        block: ast.BlockTree = self.block(pos2, 0)
+        return ast.LambdaExpressionTree.create_statement(
+            parameters=parameters,
+            body=block,
+            **self._info_exclude(pos)
+        )
+
+    def lambda_expression(self, parameters: List[ast.VariableTree], pos: int) -> ast.ExpressionTree:
+        """lambda 表达式的表达式部分
+
+        [JDK Code] JavacParser.lambdaExpression
+        """
+        expr: ast.ExpressionTree = self.parse_expression()
+        return ast.LambdaExpressionTree.create_expression(
+            parameters=parameters,
+            body=expr,
+            **self._info_exclude(pos)
+        )
 
     def brackets_opt(self, expression: ast.ExpressionTree, annotations: Optional[List[ast.AnnotationTree]] = None):
         """可选的数组标记（空方括号）
@@ -874,6 +957,14 @@ class JavaParser:
                 **self._info_exclude(pos)
             )
         return expression
+
+    def block(self, pos: int, flags: int) -> ast.BlockTree:
+        """解析代码块
+
+        [JDK Code] JavacParser.block
+        Block = "{" BlockStatements "}"
+        """
+        return ast.BlockTree.mock()  # TODO 待开发真实执行逻辑
 
     def modifiers_opt(self, partial: Optional[ast.ModifiersTree] = None) -> ast.ModifiersTree:
         """修饰词
@@ -1312,5 +1403,19 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("name1, name2")).implicit_parameters(False))
-    print(JavaParser(LexicalFSM("(name1, name2)")).implicit_parameters(True))
+    #         样例 1: List<String>
+    #         样例 2: List<?>
+    #         样例 3: List<? extends Number>
+    #         样例 4: List<? super Integer>
+    #         样例 5: List<@NonNull String>
+    #         样例 6: List<? extends Number & Comparable<?>>
+
+    # print(JavaParser(LexicalFSM("List<String>")).type_argument())
+
+    print(
+        JavaParser(LexicalFSM("()->{}")).lambda_expression_or_statement(has_parens=True, explicit_params=False, pos=0))
+    print(JavaParser(LexicalFSM("(int x)->x + 3")).lambda_expression_or_statement(has_parens=True, explicit_params=True,
+                                                                                  pos=0))
+    print(JavaParser(LexicalFSM("(x, y)->{ return x + y; }")).lambda_expression_or_statement(has_parens=True,
+                                                                                             explicit_params=False,
+                                                                                             pos=0))

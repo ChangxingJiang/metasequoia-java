@@ -415,6 +415,17 @@ class BlockTree(StatementTree):
     is_static: bool = dataclasses.field(kw_only=True)
     statements: List[StatementTree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def mock() -> "BlockTree":
+        return BlockTree(
+            kind=TreeKind.BLOCK,
+            is_static=False,
+            statements=[],
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
     def generate(self) -> str:
         static_str = "static " if self.is_static is True else ""
         return f"{static_str}{{{generate_tree_list(self.statements, Separator.SEMI)}}}"
@@ -982,6 +993,32 @@ class LambdaExpressionTree(ExpressionTree):
     parameters: List[VariableTree] = dataclasses.field(kw_only=True)
     body: Tree = dataclasses.field(kw_only=True)
     body_kind: LambdaBodyKind = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create_expression(parameters: List[VariableTree], body: Tree, start_pos: int, end_pos: int,
+                          source: str) -> "LambdaExpressionTree":
+        return LambdaExpressionTree(
+            kind=TreeKind.LAMBDA_EXPRESSION,
+            parameters=parameters,
+            body=body,
+            body_kind=LambdaBodyKind.EXPRESSION,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_statement(parameters: List[VariableTree], body: BlockTree, start_pos: int, end_pos: int,
+                         source: str) -> "LambdaExpressionTree":
+        return LambdaExpressionTree(
+            kind=TreeKind.LAMBDA_EXPRESSION,
+            parameters=parameters,
+            body=body,
+            body_kind=LambdaBodyKind.STATEMENT,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"({generate_tree_list(self.parameters, Separator.COMMA)}) -> {self.body.generate()}"
