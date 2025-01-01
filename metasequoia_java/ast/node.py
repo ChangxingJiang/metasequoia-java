@@ -1435,6 +1435,16 @@ class ParenthesizedTree(ExpressionTree):
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "ParenthesizedTree":
+        return ParenthesizedTree(
+            kind=TreeKind.PARENTHESIZED,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"({self.expression.generate()})"
 
@@ -1670,7 +1680,7 @@ class TypeCastTree(ExpressionTree):
     def create(cast_type: Tree, expression: ExpressionTree, start_pos: int, end_pos: int,
                source: str) -> "TypeCastTree":
         return TypeCastTree(
-            kind=TreeKind.INT_LITERAL,
+            kind=TreeKind.TYPE_CAST,
             cast_type=cast_type,
             expression=expression,
             start_pos=start_pos,
@@ -1781,7 +1791,8 @@ class WildcardTree(ExpressionTree):
     与 JDK 中 com.sun.source.tree.WildcardTree 接口的继承关系不一致，是因为 con.sun.tools.javac.tree.JCTree 类继承了 JCExpression，详见：
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/tree/JCTree.java
 
-    【JDK 接口源码】https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WildcardTree.java
+    JDK 接口源码如下：
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WildcardTree.java
     A tree node for a wildcard type argument.
     Use `getKind` to determine the kind of bound.
 

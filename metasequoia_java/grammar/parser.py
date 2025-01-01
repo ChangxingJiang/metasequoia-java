@@ -9,6 +9,7 @@ from metasequoia_java.ast import TreeKind
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
 from metasequoia_java.ast.element import Modifier
+from metasequoia_java.grammar import enums
 from metasequoia_java.grammar import hash
 from metasequoia_java.grammar.parans_result import ParensResult
 from metasequoia_java.grammar.parser_mode import ParserMode as Mode
@@ -48,8 +49,8 @@ class JavaParser:
         self.receiver_param: Optional[ast.VariableTree] = None
 
     def next_token(self):
-        self.last_token = self.token
-        self.token = self.lexer.lex()
+        self.lexer.next_token()
+        self.last_token, self.token = self.token, self.lexer.token(0)
 
     def peek_token(self, lookahead: int, *kinds: TokenKind):
         """检查从当前位置之后的地 lookahead 开始的元素与 kinds 是否匹配"""
@@ -578,8 +579,23 @@ class JavaParser:
             )
         return first_type
 
-    def term3(self) -> ast.ExpressionTree:
+    def term_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """解析第 0 层级语法元素的剩余部分"""
+        return expression  # TODO 待开发方法逻辑
+
+    def term_1_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """解析第 1 层级语法元素的剩余部分"""
+        return expression  # TODO 待开发方法逻辑
+
+    def term_2_rest(self, expression: ast.ExpressionTree, min_prec: int) -> ast.ExpressionTree:
+        """解析第 2 层级语法元素的剩余部分"""
+        return expression  # TODO 待开发方法逻辑
+
+    def term_3(self) -> ast.ExpressionTree:
         """解析第 3 层级语法元素
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html（不包含在代码中已单独注释的语义组）
+
 
         [JDK Code] JavacParser.term3
         Expression3    = PrefixOp Expression3
@@ -614,8 +630,17 @@ class JavaParser:
         TypeSelector   = "." Ident [TypeArguments]
         SuperSuffix    = Arguments | "." Ident [Arguments]
 
-        TODO 补充单元测试（匹配 type_arguments 的场景）
-        TODO 补充单元测试（type_argument 场景）
+        TODO 待补充单元测试：类型实参
+        TODO 待补充单元测试：类型实参
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("++a")).term_3().kind.name
+        'PREFIX_INCREMENT'
+        >>> JavaParser(LexicalFSM("(int)")).term_3().kind.name
+        'TYPE_CAST'
+        >>> JavaParser(LexicalFSM("(x, y)->{ return x + y; }")).term_3().kind.name
+        'LAMBDA_EXPRESSION'
         """
         pos = self.token.pos
         type_args = self.type_arguments_opt()
@@ -650,24 +675,24 @@ class JavaParser:
         #   SwitchExpression 【不包含】
         if self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
                                TokenKind.SUB}:
-            # TODO 增加 isMode 的逻辑
-            if type_args is not None:
-                raise JavaSyntaxError("语法不合法")
+            if type_args is not None and self.is_mode(Mode.EXPR):
+                self.syntax_error(pos, "Illegal")  # TODO 待增加说明信息
             tk = self.token.kind
             self.next_token()
+            self.select_expr_mode()
             if tk == TokenKind.SUB and self.token.kind in {TokenKind.INT_DEC_LITERAL, TokenKind.LONG_DEC_LITERAL}:
-                return self.term3_rest(self.literal(), type_args)
-            expression = self.term3()
+                self.select_expr_mode()
+                return self.term_3_rest(self.literal(), type_args)
+
+            expression = self.term_3()
             return ast.UnaryTree.create(
                 operator=tk,
                 expression=expression,
                 **self._info_include(pos)
             )
 
-        # 括号表达式：
         if self.token.kind == TokenKind.LPAREN:
-            # TODO 增加 isMode 的逻辑
-            if type_args is not None:
+            if type_args is not None and self.is_mode(Mode.EXPR):
                 raise JavaSyntaxError("语法不合法")
             pres: ParensResult = self.analyze_parens()
 
@@ -678,20 +703,51 @@ class JavaParser:
             #   ( ReferenceType {AdditionalBound} ) LambdaExpression
             if pres == ParensResult.CAST:
                 self.accept(TokenKind.LPAREN)
+                self.select_type_mode()
                 cast_type = self.parse_intersection_type(pos, self.parse_type())
                 self.accept(TokenKind.RPAREN)
-                expression = self.term3()
-                return ast.TypeCastTree(
+                self.select_expr_mode()
+                expression = self.term_3()
+                return ast.TypeCastTree.create(
                     cast_type=cast_type,
                     expression=expression,
                     **self._info_include(pos)
                 )
 
-            if pres in {ParensResult.IMPLICIT_LAMBDA, ParensResult.EXPLICIT_LAMBDA}:
-                pass
+            # lambda 表达式
+            if pres == ParensResult.IMPLICIT_LAMBDA:
+                expression = self.lambda_expression_or_statement(True, False, pos)
+            elif pres == ParensResult.EXPLICIT_LAMBDA:
+                expression = self.lambda_expression_or_statement(True, True, pos)
 
-    def term3_rest(self, t: ast.ExpressionTree, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
+            # 括号表达式
+            else:  # ParensResult.PARENS
+                self.accept(TokenKind.LPAREN)
+                self.select_expr_mode()
+                expression = self.term_rest(self.term_1_rest(self.term_2_rest(self.term_3(),
+                                                                              enums.OperatorPrecedence.OR_PREC)))
+                self.accept(TokenKind.RPAREN)
+                expression = ast.ParenthesizedTree.create(
+                    expression=expression,
+                    **self._info_exclude(pos)
+                )
+            return self.term_3_rest(expression, type_args)
+
+        if self.token.kind == TokenKind.THIS:
+            if self.is_mode(Mode.EXPR):
+                self.select_expr_mode()
+                expression = ast.IdentifierTree.create(
+                    name="this",
+                    **self._info_include(pos)
+                )
+                self.next_token()
+                if type_args is None:
+                    self.type_arguments_opt()
+
+    def term_3_rest(self, expression: ast.ExpressionTree,
+                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
         """解析第 3 层级语法元素的剩余部分"""
+        return expression  # TODO 待开发方法逻辑
 
     def analyze_parens(self) -> ParensResult:
         """分析括号中的内容
@@ -916,9 +972,9 @@ class JavaParser:
         >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident"))
         IdentifierTree(kind=<TreeKind.IDENTIFIER: 22>, source=None, start_pos=None, end_pos=None, name='ident')
         >>> JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
-        []
+        '[]'
         >>> JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
-        [][]
+        '[][]'
         """
         if annotations is None:
             annotations = []
@@ -1115,7 +1171,12 @@ class JavaParser:
         ...                                                        None, False, False).variable_type.kind
         <TreeKind.ARRAY_TYPE: 5>
         """
-        pos = modifiers.start_pos if modifiers.start_pos is not None else variable_type.start_pos
+        if modifiers.start_pos is not None:
+            pos = modifiers.start_pos
+        elif variable_type is not None:
+            pos = variable_type.start_pos
+        else:
+            pos = self.token.pos
         if (self.allow_this_ident is False
                 and lambda_parameter is True
                 and self.token.kind not in LAX_IDENTIFIER
@@ -1410,12 +1471,5 @@ if __name__ == "__main__":
     #         样例 5: List<@NonNull String>
     #         样例 6: List<? extends Number & Comparable<?>>
 
-    # print(JavaParser(LexicalFSM("List<String>")).type_argument())
-
-    print(
-        JavaParser(LexicalFSM("()->{}")).lambda_expression_or_statement(has_parens=True, explicit_params=False, pos=0))
-    print(JavaParser(LexicalFSM("(int x)->x + 3")).lambda_expression_or_statement(has_parens=True, explicit_params=True,
-                                                                                  pos=0))
-    print(JavaParser(LexicalFSM("(x, y)->{ return x + y; }")).lambda_expression_or_statement(has_parens=True,
-                                                                                             explicit_params=False,
-                                                                                             pos=0))
+    print(JavaParser(LexicalFSM("++a")).term_3().kind.name)
+    print(JavaParser(LexicalFSM("(int)")).term_3().kind.name)
