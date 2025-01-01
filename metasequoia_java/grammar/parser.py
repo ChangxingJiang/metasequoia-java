@@ -59,7 +59,8 @@ class JavaParser:
         if self.token.kind == kind:
             self.next_token()
         else:
-            raise JavaSyntaxError(f"expect {kind}, but get {self.token.kind}")
+            raise JavaSyntaxError(f"expect TokenKind {kind.name}({kind.value}), "
+                                  f"but get {self.token.kind.name}({self.token.kind.value})")
 
     def _info_include(self, start_pos: Optional[int]) -> Dict[str, Any]:
         """根据开始位置 start_pos 和当前 token 的结束位置（即包含当前 token），获取当前节点的源代码和位置信息"""
@@ -520,6 +521,9 @@ class JavaParser:
         TODO 待增加 allowVar 相关逻辑
         TODO 待增加单元测试
         """
+        self.next_token()  # TODO 临时返回 Mock 结果
+        return ast.PrimitiveTypeTree.mock("INT")  # TODO 临时返回 Mock 结果
+
         result = self.term()
         if result.kind == TokenKind.IDENTIFIER and result.source in {"var", "yield", "record", "sealed", "permits"}:
             raise JavaSyntaxError(f"expect unannotated_type, but get {result.kind}")
@@ -868,7 +872,7 @@ class JavaParser:
             )
         return expression
 
-    def modifiers_opt(self, partial: Optional[ast.ModifiersTree]) -> ast.ModifiersTree:
+    def modifiers_opt(self, partial: Optional[ast.ModifiersTree] = None) -> ast.ModifiersTree:
         """修饰词
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1017,7 +1021,7 @@ class JavaParser:
         ...                                                        None, False, False).variable_type.kind
         <TreeKind.ARRAY_TYPE: 5>
         """
-        pos = self.token.pos
+        pos = modifiers.start_pos if modifiers.start_pos is not None else variable_type.start_pos
         if (self.allow_this_ident is False
                 and lambda_parameter is True
                 and self.token.kind not in LAX_IDENTIFIER
@@ -1055,7 +1059,7 @@ class JavaParser:
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
 
-    def formal_parameter(self, lambda_parameter: bool, record_component: bool) -> ast.VariableTree:
+    def formal_parameter(self, lambda_parameter: bool = False, record_component: bool = False) -> ast.VariableTree:
         """形参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1063,17 +1067,44 @@ class JavaParser:
           {VariableModifier} UnannType VariableDeclaratorId
           VariableArityParameter
 
+        VariableArityParameter:
+          {VariableModifier} UnannType {Annotation} ... Identifier
+
         [JDK Code] JavacParser.formalParameter
         FormalParameter = { FINAL | '@' Annotation } Type VariableDeclaratorId
         LastFormalParameter = { FINAL | '@' Annotation } Type '...' Ident | FormalParameter
 
-        Parameters
-        ----------
-        lambda_parameter : bool
-            TODO 待补充
-        record_component : bool
-            TODO 待补充
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("int name1")).formal_parameter().kind.name
+        'VARIABLE'
+        >>> JavaParser(LexicalFSM("int name1")).formal_parameter().name
+        'name1'
         """
+        if record_component is True:
+            modifiers = self.modifiers_opt()
+        else:
+            modifiers = self.opt_final(flags=[Modifier.PARAMETER])
+
+        if record_component is True:
+            modifiers.flags |= {Modifier.RECORD, Modifier.FINAL, Modifier.PRIVATE, Modifier.GENERATED_MEMBER}
+
+        self.permit_type_annotations_push_back = True
+        param_type = self.parse_type(allow_var=False)
+        self.permit_type_annotations_push_back = False
+
+        if self.token.kind == TokenKind.ELLIPSIS:
+            varargs_annotations: List[ast.AnnotationTree] = self.type_annotations_pushed_back
+            modifiers.flags.append(Modifier.VARARGS)
+            # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
+            param_type = ast.AnnotatedTypeTree.create(
+                annotations=varargs_annotations,
+                underlying_type=param_type,
+                **self._info_include(None)
+            )
+            self.next_token()
+        self.type_annotations_pushed_back = []
+        return self.variable_declarator_id(modifiers, param_type, False, lambda_parameter)
 
     def is_non_sealed_class_start(self, local: bool):
         """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
@@ -1137,7 +1168,18 @@ class JavaParser:
                     or next_token.name == "sealed")
         return False
 
+    def opt_final(self, flags: List[Modifier]):
+        """可选的 final 关键字
+
+        [JDK Code] JavacParser.optFinal
+        """
+        modifiers = self.modifiers_opt()
+        if len({flag for flag in modifiers.flags if flag not in {Modifier.FINAL, Modifier.DEPRECATED}}) > 0:
+            self.syntax_error(self.token.pos, f"存在不是 FINAL 的修饰符: {flags}")
+        modifiers.flags.extend(flags)
+        return modifiers
+
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(), None, False,
-                                                                 False).variable_type)
+    print(JavaParser(LexicalFSM("int name1")).formal_parameter().kind)
+    print(JavaParser(LexicalFSM("int name1")).formal_parameter().name)

@@ -39,12 +39,16 @@ class Modifier(enum.Enum):
     ENUM = "enum"
     INTERFACE = "interface"
 
-    # 其他虚拟修饰符
+    # 其他虚拟修饰符  TODO 考虑将 tags 和修饰符拆分开
     PARAMETER = "parameter"
+    RECORD = "record"
+    GENERATED_MEMBER = "generated_member"
+    VARARGS = "varargs"
 
     def is_virtual(self) -> bool:
         """是否为虚拟修饰符"""
-        return self in {Modifier.DEPRECATED, Modifier.ANNOTATION, Modifier.ENUM, Modifier.INTERFACE, Modifier.PARAMETER}
+        return self in {Modifier.DEPRECATED, Modifier.ANNOTATION, Modifier.ENUM, Modifier.INTERFACE, Modifier.PARAMETER,
+                        Modifier.RECORD, Modifier.GENERATED_MEMBER, Modifier.VARARGS}
 
 
 class TypeKind(enum.Enum):

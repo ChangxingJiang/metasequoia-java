@@ -1426,6 +1426,16 @@ class PrimitiveTypeTree(ExpressionTree):
 
     primitive_type_kind: TypeKind = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def mock(type_name: str) -> "PrimitiveTypeTree":
+        return PrimitiveTypeTree(
+            kind=TreeKind.PRIMITIVE_TYPE,
+            primitive_type_kind=TypeKind[type_name],
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
     def generate(self) -> str:
         return self.primitive_type_kind.value
 
