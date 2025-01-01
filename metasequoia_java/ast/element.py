@@ -23,14 +23,25 @@ class Modifier(enum.Enum):
     ABSTRACT = "abstract"
     DEFAULT = "default"
     STATIC = "static"
-    SEALED = "sealed"  # 【JDK 17+】
-    NON_SEALED = "non-sealed"  # 【JDK 17+】
     FINAL = "final"
     TRANSIENT = "transient"
     VOLATILE = "volatile"
     SYNCHRONIZED = "synchronized"
     NATIVE = "native"
     STRICTFP = "strictfp"
+
+    SEALED = "sealed"  # 【JDK 17+】
+    NON_SEALED = "non-sealed"  # 【JDK 17+】
+
+    # 虚拟修饰符
+    DEPRECATED = "deprecated"  # JavaDoc 中包含 @deprecated 标记
+    ANNOTATION = "annotation"
+    ENUM = "enum"
+    INTERFACE = "interface"
+
+    def is_virtual(self) -> bool:
+        """是否为虚拟修饰符"""
+        return self in {Modifier.DEPRECATED, Modifier.ANNOTATION, Modifier.ENUM, Modifier.INTERFACE}
 
 
 class TypeKind(enum.Enum):

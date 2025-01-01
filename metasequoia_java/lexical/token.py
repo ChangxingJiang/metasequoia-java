@@ -60,6 +60,10 @@ class Affiliation:
     def text(self) -> str:
         return self._text
 
+    def is_deprecated(self) -> bool:
+        return (self._style in {AffiliationStyle.JAVADOC_LINE, AffiliationStyle.JAVADOC_BLOCK}
+                and "@deprecated" in self._text)
+
 
 class Token:
     """语法元素"""
@@ -130,6 +134,17 @@ class Token:
 
     def __repr__(self) -> str:
         return f"{self.kind.name}({self.source}){self.affiliations}"
+
+    def deprecated_flag(self) -> bool:
+        """注释文档中是否包含 @deprecated 符号"""
+        for affiliation in self._get_doc_comments():
+            if affiliation.is_deprecated():
+                return True
+        return False
+
+    def _get_doc_comments(self) -> List[Affiliation]:
+        return [affiliation for affiliation in self._affiliations
+                if affiliation.style in {AffiliationStyle.JAVADOC_LINE, AffiliationStyle.JAVADOC_BLOCK}]
 
 
 class IntToken(Token):

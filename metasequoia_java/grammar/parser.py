@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional
 from metasequoia_java import ast
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
+from metasequoia_java.ast.element import Modifier
+from metasequoia_java.grammar import hash
 from metasequoia_java.grammar.parans_result import ParensResult
-from metasequoia_java.grammar.parser_mode import ParserMode
+from metasequoia_java.grammar.parser_mode import ParserMode as Mode
 from metasequoia_java.grammar.token_set import LAX_IDENTIFIER
 from metasequoia_java.lexical import LexicalFSM
 from metasequoia_java.lexical import Token
@@ -30,11 +32,18 @@ class JavaParser:
         self._lexer = lexer
         self._token: Optional[Token] = self._lexer.token(0)
 
-        self.mode: ParserMode = ParserMode.NULL  # 当前解析模式
-        self.last_mode: ParserMode = ParserMode.NULL  # 上一个解析模式
+        self.mode: Mode = Mode.NULL  # 当前解析模式
+        self.last_mode: Mode = Mode.NULL  # 上一个解析模式
 
     def _next_token(self):
         self._token = self._lexer.lex()
+
+    def peek_token(self, lookahead: int, *kinds: TokenKind):
+        """检查从当前位置之后的地 lookahead 开始的元素与 kinds 是否匹配"""
+        for i, kind in enumerate(kinds):
+            if not self._lexer.token(lookahead + i + 1).kind in kind:
+                return False
+        return True
 
     def _accept(self, kind: TokenKind):
         if self._token.kind == kind:
@@ -42,8 +51,10 @@ class JavaParser:
         else:
             raise JavaSyntaxError(f"expect {kind}, but get {self._token.kind}")
 
-    def _info_include(self, start_pos: int) -> Dict[str, Any]:
+    def _info_include(self, start_pos: Optional[int]) -> Dict[str, Any]:
         """根据开始位置 start_pos 和当前 token 的结束位置（即包含当前 token），获取当前节点的源代码和位置信息"""
+        if start_pos is None:
+            return {"source": None, "start_pos": None, "end_pos": None}
         end_pos = self._token.end_pos
         return {
             "source": self._text[start_pos: end_pos],
@@ -51,8 +62,10 @@ class JavaParser:
             "end_pos": end_pos
         }
 
-    def _info_exclude(self, start_pos: int) -> Dict[str, Any]:
+    def _info_exclude(self, start_pos: Optional[int]) -> Dict[str, Any]:
         """根据开始位置 start_pos 和当前 token 的开始位置（即不包含当前 token），获取当前节点的源代码和位置信息"""
+        if start_pos is None:
+            return {"source": None, "start_pos": None, "end_pos": None}
         end_pos = self._token.pos
         return {
             "source": self._text[start_pos: end_pos],
@@ -62,34 +75,49 @@ class JavaParser:
 
     # ------------------------------ 解析模式相关方法 ------------------------------
 
-    def set_mode(self, mode: ParserMode):
+    def set_mode(self, mode: Mode):
         self.mode = mode
 
-    def set_last_mode(self, mode: ParserMode):
+    def set_last_mode(self, mode: Mode):
         self.last_mode = mode
 
-    def is_mode(self, mode: ParserMode):
+    def is_mode(self, mode: Mode):
         return self.mode & mode
 
     def was_type_mode(self):
-        return self.last_mode & ParserMode.TYPE
+        return self.last_mode & Mode.TYPE
 
     def select_expr_mode(self):
-        self.set_mode((self.mode & ParserMode.NO_LAMBDA) | ParserMode.EXPR)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 EXPR
+        self.set_mode((self.mode & Mode.NO_LAMBDA) | Mode.EXPR)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 EXPR
 
     def select_type_mode(self):
-        self.set_mode((self.mode & ParserMode.NO_LAMBDA) | ParserMode.TYPE)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 TYPE
+        self.set_mode((self.mode & Mode.NO_LAMBDA) | Mode.TYPE)  # 如果当前 mode 有 NO_LAMBDA 则保留，并添加 TYPE
+
+    # ------------------------------ 报错信息相关方法 ------------------------------
+
+    def syntax_error(self, pos: int, message: str):
+        """报告语法错误"""
+        raise JavaSyntaxError(f"报告语法错误: pos={pos}, message={message}")
+
+    def illegal(self, pos: Optional[int] = None):
+        """报告表达式或类型的非法开始 Token"""
+        if pos is None:
+            pos = self._token.pos
+        if self.is_mode(Mode.EXPR):
+            self.syntax_error(pos, "IllegalStartOfExpr")
+        else:
+            self.syntax_error(pos, "IllegalStartOfType")
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
 
     def ident(self) -> ast.IdentifierTree:
         """解析 Identifier 元素
 
-        [JDK Code] JavacParser.ident
-
-        JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         Identifier:
           IdentifierChars but not a ReservedKeyword or BooleanLiteral or NullLiteral
+
+        [JDK Code] JavacParser.ident
         """
         if self._token.kind != TokenKind.IDENTIFIER:
             raise JavaSyntaxError(f"{self._token.source} 不能作为 Identifier")
@@ -105,10 +133,11 @@ class JavaParser:
     def type_name(self) -> ast.IdentifierTree:
         """解析 TypeIdentifier 元素
 
-        [JDK Code] JavacParser.typeName
-        JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         TypeIdentifier:
           Identifier but not permits, record, sealed, var, or yield
+
+        [JDK Code] JavacParser.typeName
         """
         if self._token.kind != TokenKind.IDENTIFIER:
             raise JavaSyntaxError(f"expect type_identifier, but get {self._token.source}")
@@ -126,7 +155,7 @@ class JavaParser:
     def unqualified_method_identifier(self) -> ast.IdentifierTree:
         """解析 UnqualifiedMethodIdentifier 元素
 
-        JDK 文档地址：https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         UnqualifiedMethodIdentifier:
           Identifier but not yield
         """
@@ -146,9 +175,7 @@ class JavaParser:
     def literal(self) -> ast.LiteralTree:
         """解析字面值
 
-        [Jdk Code] JavacParser.literal
-
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-3.html#jls-Literal
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         Literal:
           IntegerLiteral
           FloatingPointLiteral
@@ -157,6 +184,8 @@ class JavaParser:
           StringLiteral
           TextBlock
           NullLiteral
+
+        [Jdk Code] JavacParser.literal
         """
         pos = self._token.pos
         if self._token.kind in {TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL}:
@@ -326,14 +355,14 @@ class JavaParser:
 
         self._next_token()
         if self._token.kind == TokenKind.GT and diamond_allowed:
-            self.set_mode(self.mode | ParserMode.DIAMOND)
+            self.set_mode(self.mode | Mode.DIAMOND)
             self._next_token()
             return []
 
-        args = [self.type_argument() if not self.is_mode(ParserMode.EXPR) else self.parse_type()]
+        args = [self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type()]
         while self._token.kind == TokenKind.COMMA:
             self._next_token()
-            args.append(self.type_argument() if not self.is_mode(ParserMode.EXPR) else self.parse_type())
+            args.append(self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type())
 
         if self._token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
                                 TokenKind.GT_GT_GT_EQ}:
@@ -452,7 +481,7 @@ class JavaParser:
     def parse_intersection_type(self, pos: int, first_type: ast.ExpressionTree):
         """解析 CAST 语句中的交叉类型
 
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-4.html#jls-AdditionalBound
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         AdditionalBound:
           & InterfaceType
 
@@ -513,11 +542,13 @@ class JavaParser:
 
         # 类型实参
         if self._token.kind == TokenKind.QUES:
-            # TODO 增加 isMode 的逻辑
-            return self.type_argument()
+            if self.is_mode(Mode.TYPE) and self.is_mode(Mode.TYPE_ARG) and not self.is_mode(Mode.NO_PARAMS):
+                self.select_type_mode()
+                return self.type_argument()
+            self.illegal()
 
         # 一元表达式
-        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-15.html#jls-UnaryExpression
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         # UnaryExpression:
         #   PreIncrementExpression
         #   PreDecrementExpression
@@ -561,7 +592,7 @@ class JavaParser:
                 raise JavaSyntaxError("语法不合法")
             pres: ParensResult = self.analyze_parens()
 
-            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-15.html#jls-CastExpression
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
             # CastExpression:
             #   ( PrimitiveType ) UnaryExpression
             #   ( ReferenceType {AdditionalBound} ) UnaryExpressionNotPlusMinus
@@ -577,7 +608,8 @@ class JavaParser:
                     **self._info_include(pos)
                 )
 
-            # if pres in {ParensResult.IMPLICIT_LAMBDA, ParensResult.EXPLICIT_LAMBDA}:
+            if pres in {ParensResult.IMPLICIT_LAMBDA, ParensResult.EXPLICIT_LAMBDA}:
+                pass
 
     def term3_rest(self, t: ast.ExpressionTree, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
         """解析第 3 层级语法元素的剩余部分"""
@@ -725,13 +757,215 @@ class JavaParser:
                     return lookahead
             lookahead += 1
 
-    def peek_token(self, lookahead: int, *kinds: TokenKind):
-        """检查从当前位置之后的地 lookahead 开始的元素与 kinds 是否匹配"""
-        for i, kind in enumerate(kinds):
-            if not self._lexer.token(lookahead + i + 1).kind in kind:
-                return False
-        return True
+    def modifiers_opt(self, partial: Optional[ast.ModifiersTree]) -> ast.ModifiersTree:
+        """修饰词
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ClassModifier:
+          (one of)
+          Annotation public protected private
+          abstract static final sealed non-sealed strictfp
+
+        FieldModifier:
+          (one of)
+          Annotation public protected private
+          static final transient volatile
+
+        MethodModifier:
+          (one of)
+          Annotation public protected private
+          abstract static final synchronized native strictfp
+
+        VariableModifier:
+          Annotation
+          final
+
+        ConstructorModifier:
+          (one of)
+          Annotation public protected private
+
+        InterfaceModifier:
+          (one of)
+          Annotation public protected private
+          abstract static sealed non-sealed strictfp
+
+        ConstantModifier:
+          (one of)
+          Annotation public
+          static final
+
+        InterfaceMethodModifier:
+          (one of)
+          Annotation public private
+          abstract default static strictfp
+
+        AnnotationInterfaceElementModifier:
+          (one of)
+          Annotation public
+          abstract
+
+        [JDK Code] JavacParser.modifiersOpt
+        ModifiersOpt = { Modifier }
+        Modifier = PUBLIC | PROTECTED | PRIVATE | STATIC | ABSTRACT | FINAL
+                 | NATIVE | SYNCHRONIZED | TRANSIENT | VOLATILE | "@"
+                 | "@" Annotation
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("non-sealed class")).modifiers_opt(None).flags
+        [<Modifier.NON_SEALED: 'non-sealed'>]
+        >>> JavaParser(LexicalFSM("public class")).modifiers_opt(None).flags
+        [<Modifier.PUBLIC: 'public'>]
+        >>> JavaParser(LexicalFSM("public static class")).modifiers_opt(None).flags
+        [<Modifier.PUBLIC: 'public'>, <Modifier.STATIC: 'static'>]
+        >>> JavaParser(LexicalFSM("public static final NUMBER")).modifiers_opt(None).flags
+        [<Modifier.PUBLIC: 'public'>, <Modifier.STATIC: 'static'>, <Modifier.FINAL: 'final'>]
+        """
+        if partial is not None:
+            flags = partial.flags
+            annotations = partial.annotations
+            pos = partial.start_pos
+        else:
+            flags = []
+            annotations = []
+            pos = self._token.pos
+
+        if self._token.deprecated_flag():
+            flags.append(Modifier.DEPRECATED)
+
+        while True:
+            tk = self._token.kind
+            if flag := hash.TOKEN_TO_MODIFIER.get(tk):
+                flags.append(flag)
+                self._next_token()
+            elif tk == TokenKind.MONKEYS_AT:
+                last_pos = self._token.pos
+                self._next_token()
+                if self._token.kind != TokenKind.INTERFACE:
+                    annotation = self.annotation(last_pos, None)  # TODO 待修改参数
+                    # if first modifier is an annotation, set pos to annotation's
+                    if len(flags) == 0 and len(annotations) == 0:
+                        pos = annotation.start_pos
+                    annotations.append(annotation)
+                    flags = []
+            elif tk == TokenKind.IDENTIFIER:
+                if self.is_non_sealed_class_start(False):
+                    flags.append(Modifier.NON_SEALED)
+                    self._next_token()
+                    self._next_token()
+                    self._next_token()
+                if self.is_sealed_class_start(False):
+                    flags.append(Modifier.SEALED)
+                    self._next_token()
+                break
+            else:
+                break
+
+        # TODO 待增加是否存在重复修饰符
+
+        tk = self._token.kind
+        if tk == TokenKind.ENUM:
+            flags.append(Modifier.ENUM)
+        elif tk == TokenKind.INTERFACE:
+            flags.append(Modifier.INTERFACE)
+
+        if len([flag for flag in flags if not flag.is_virtual()]) == 0 and len(annotations) == 0:
+            pos = None
+
+        return ast.ModifiersTree.create(
+            flags=flags,
+            annotations=annotations,
+            **self._info_exclude(pos)
+        )
+
+    def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
+        """TODO"""
+
+    def format_parameter(self, lambda_parameter: bool, record_component: bool) -> ast.VariableTree:
+        """形参
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        FormalParameter:
+          {VariableModifier} UnannType VariableDeclaratorId
+          VariableArityParameter
+
+        [JDK Code] JavacParser.formalParameter
+        FormalParameter = { FINAL | '@' Annotation } Type VariableDeclaratorId
+        LastFormalParameter = { FINAL | '@' Annotation } Type '...' Ident | FormalParameter
+
+        Parameters
+        ----------
+        lambda_parameter : bool
+            TODO 待补充
+        record_component : bool
+            TODO 待补充
+        """
+
+    def is_non_sealed_class_start(self, local: bool):
+        """判断当前位置是否是 non-sealed 关键字 TODO 待确认注释准确性
+
+        [JDK Code] JavacParser.isNonSealedClassStart
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("non-sealed class")).is_non_sealed_class_start(False)
+        True
+        >>> JavaParser(LexicalFSM("non-sealed function")).is_non_sealed_class_start(False)
+        False
+        """
+        return (self.is_non_sealed_identifier(self._token, 0)
+                and self.allowed_after_sealed_or_non_sealed(self._lexer.token(3), local, True))
+
+    def is_non_sealed_identifier(self, some_token: Token, lookahead: int):
+        """判断当前位置的标识符是否为 non-sealed 关键字
+
+        [JDK Code] JavacParser.isNonSealedIdentifier
+        """
+        if some_token.name == "non" and self.peek_token(lookahead, TokenKind.SUB, TokenKind.IDENTIFIER):
+            token_sub: Token = self._lexer.token(lookahead + 1)
+            token_sealed: Token = self._lexer.token(lookahead + 2)
+            return (some_token.end_pos == token_sub.pos
+                    and token_sub.end_pos == token_sealed.pos
+                    and token_sealed.name == "sealed")
+        return False
+
+    def is_sealed_class_start(self, local: bool):
+        """判断当前位置是否是 sealed 关键字 TODO 待确认注释准确性
+
+        [JDK Code] JavacParser.isSealedClassStart
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("sealed class")).is_sealed_class_start(False)
+        True
+        >>> JavaParser(LexicalFSM("sealed function")).is_sealed_class_start(False)
+        False
+        """
+        return (self._token.name == "sealed"
+                and self.allowed_after_sealed_or_non_sealed(self._lexer.token(1), local, False))
+
+    def allowed_after_sealed_or_non_sealed(self, next_token: Token, local: bool, current_is_non_sealed: bool):
+        """检查 next_token 是否为 sealed 关键字或 non-sealed 关键字之后的 Token 是否合法
+
+        [JDK Code] JavacParser.allowedAfterSealedOrNonSealed
+        """
+        tk = next_token.kind
+        if tk == TokenKind.MONKEYS_AT:
+            return self._lexer.token(2).kind != TokenKind.INTERFACE or current_is_non_sealed
+        if local is True:
+            return tk in {TokenKind.ABSTRACT, TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE,
+                          TokenKind.ENUM}
+        elif tk in {TokenKind.PUBLIC, TokenKind.PROTECTED, TokenKind.PRIVATE, TokenKind.ABSTRACT, TokenKind.STATIC,
+                    TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE, TokenKind.ENUM}:
+            return True
+        elif tk == TokenKind.IDENTIFIER:
+            return (self.is_non_sealed_identifier(next_token, 3 if current_is_non_sealed else 1)
+                    or next_token.name == "sealed")
+        return False
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("(int)")).term3())
+    print(JavaParser(LexicalFSM("non-sealed class")).modifiers_opt(None).flags)
+    print(JavaParser(LexicalFSM("public class")).modifiers_opt(None).flags)
+    print(JavaParser(LexicalFSM("public static class")).modifiers_opt(None).flags)
+    print(JavaParser(LexicalFSM("public static final NUMBER")).modifiers_opt(None).flags)

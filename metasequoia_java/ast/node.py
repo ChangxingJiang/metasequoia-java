@@ -288,11 +288,28 @@ class ModifiersTree(Tree):
     flags: List[Modifier] = dataclasses.field(kw_only=True)
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(flags: List[Modifier], annotations: List[AnnotationTree], start_pos: int, end_pos: int,
+               source: str) -> "ModifiersTree":
+        return ModifiersTree(
+            kind=TreeKind.IDENTIFIER,
+            flags=flags,
+            annotations=annotations,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @property
+    def actual_flags(self):
+        """不包含虚拟修饰符的修饰符列表"""
+        return [flag for flag in self.flags if not flag.is_virtual()]
+
     def generate(self) -> str:
         if len(self.annotations) > 0:
-            return (f"{generate_enum_list(self.flags, Separator.SPACE)} "
+            return (f"{generate_enum_list(self.actual_flags, Separator.SPACE)} "
                     f"{generate_tree_list(self.annotations, Separator.SPACE)}")
-        return f"{generate_enum_list(self.flags, Separator.SPACE)}"
+        return f"{generate_enum_list(self.actual_flags, Separator.SPACE)}"
 
 
 @dataclasses.dataclass(slots=True)

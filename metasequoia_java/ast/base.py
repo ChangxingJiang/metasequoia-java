@@ -27,9 +27,9 @@ class Tree(abc.ABC):
     """
 
     kind: TreeKind = dataclasses.field(kw_only=True)  # 节点类型
-    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码  # TODO 待移除 Optional
-    start_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的开始位置  # TODO 待移除 Optional
-    end_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的结束位置  # TODO 待移除 Optional
+    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码，当且仅当当前节点没有对应代码时为 None
+    start_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的开始位置，当且仅当当前节点没有对应代码时为 None
+    end_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的结束位置，当且仅当当前节点没有对应代码时为 None
 
     @property
     def is_literal(self) -> bool:
