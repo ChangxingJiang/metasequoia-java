@@ -44,6 +44,9 @@ class JavaParser:
         # 如果 allow_this_ident 为真，则允许将 "this" 视作标识符
         self.allow_this_ident: Optional[bool] = None
 
+        # 方法接收的第一个 this 参数类型
+        self.receiver_param: Optional[ast.VariableTree] = None
+
     def next_token(self):
         self.last_token = self.token
         self.token = self.lexer.lex()
@@ -624,8 +627,8 @@ class JavaParser:
         #   PostfixExpression
         #   ~ UnaryExpression
         #   ! UnaryExpression
-        #   CastExpression (不包含)
-        #   SwitchExpression (不包含)
+        #   CastExpression 【不包含】
+        #   SwitchExpression 【不包含】
         if self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
                                TokenKind.SUB}:
             # TODO 增加 isMode 的逻辑
@@ -1059,16 +1062,124 @@ class JavaParser:
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
 
-    def formal_parameter(self, lambda_parameter: bool = False, record_component: bool = False) -> ast.VariableTree:
+    def formal_parameters(self,
+                          lambda_parameter: bool = False,
+                          record_component: bool = False) -> List[ast.VariableTree]:
+        """形参的列表
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        匹配: ( [ReceiverParameter ,] [FormalParameterList] )
+
+        FormalParameterList:
+          FormalParameter {, FormalParameter}
+
+        LambdaParameters: 【部分包含】
+          ( [LambdaParameterList] )
+          ConciseLambdaParameter
+
+        LambdaParameterList:
+          NormalLambdaParameter {, NormalLambdaParameter}
+          ConciseLambdaParameter {, ConciseLambdaParameter} 【不包含】
+
+        [JDK Code] JavacParser.formalParameters
+        FormalParameters = "(" [ FormalParameterList ] ")"
+        FormalParameterList = [ FormalParameterListNovarargs , ] LastFormalParameter
+        FormalParameterListNovarargs = [ FormalParameterListNovarargs , ] FormalParameter
+
+        Examples
+        --------
+        >>> result = JavaParser(LexicalFSM("(int name1, String name2)")).formal_parameters()
+        >>> len(result)
+        2
+        >>> result[0].name
+        'name1'
+        >>> result[1].name
+        'name2'
+        """
+        self.accept(TokenKind.LPAREN)
+        params: List[ast.VariableTree] = []
+        if self.token.kind != TokenKind.RPAREN:
+            self.allow_this_ident = not lambda_parameter and not record_component
+            last_param = self.formal_parameter(lambda_parameter, record_component)
+            if last_param.name_expression is not None:
+                self.receiver_param = last_param
+            else:
+                params.append(last_param)
+            self.allow_this_ident = False
+            while self.token.kind == TokenKind.COMMA:
+                self.next_token()
+                params.append(self.formal_parameter(lambda_parameter, record_component))
+        if self.token.kind != TokenKind.RPAREN:
+            self.syntax_error(self.token.pos, f"expect COMMA, RPAREN or LBRACKET, but get {self.token.kind}")
+        self.next_token()
+        return params
+
+    def implicit_parameters(self, has_parens: bool):
+        """隐式形参的列表
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        LambdaParameters: 【部分包含】
+          ( [LambdaParameterList] )
+          ConciseLambdaParameter
+
+        LambdaParameterList:
+          NormalLambdaParameter {, NormalLambdaParameter} 【不包含】
+          ConciseLambdaParameter {, ConciseLambdaParameter}
+
+        [JDK Code] JavacParser.implicitParameters
+
+        Examples
+        --------
+        >>> result = JavaParser(LexicalFSM("name1, name2")).implicit_parameters(False)
+        >>> len(result)
+        2
+        >>> result[0].name
+        'name1'
+        >>> result[1].name
+        'name2'
+        >>> result = JavaParser(LexicalFSM("(name1, name2)")).implicit_parameters(True)
+        >>> len(result)
+        2
+        >>> result[0].name
+        'name1'
+        >>> result[1].name
+        'name2'
+        """
+        if has_parens is True:
+            self.accept(TokenKind.LPAREN)
+        params = []
+        if self.token.kind not in {TokenKind.RPAREN, TokenKind.ARROW}:
+            params.append(self.implicit_parameter())
+            while self.token.kind == TokenKind.COMMA:
+                self.next_token()
+                params.append(self.implicit_parameter())
+        if has_parens is True:
+            self.accept(TokenKind.RPAREN)
+        return params
+
+    def formal_parameter(self,
+                         lambda_parameter: bool = False,
+                         record_component: bool = False) -> ast.VariableTree:
         """形参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ReceiverParameter:
+          {Annotation} UnannType [Identifier .] this
+
         FormalParameter:
           {VariableModifier} UnannType VariableDeclaratorId
           VariableArityParameter
 
         VariableArityParameter:
           {VariableModifier} UnannType {Annotation} ... Identifier
+
+        NormalLambdaParameter:
+          {VariableModifier} LambdaParameterType VariableDeclaratorId
+          VariableArityParameter
+
+        LambdaParameterType:
+          UnannType
+          var
 
         [JDK Code] JavacParser.formalParameter
         FormalParameter = { FINAL | '@' Annotation } Type VariableDeclaratorId
@@ -1105,6 +1216,26 @@ class JavaParser:
             self.next_token()
         self.type_annotations_pushed_back = []
         return self.variable_declarator_id(modifiers, param_type, False, lambda_parameter)
+
+    def implicit_parameter(self) -> ast.VariableTree:
+        """隐式形参
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ConciseLambdaParameter:
+          Identifier
+          _
+
+        [JDK Code] JavacParser.implicitParameter
+
+        >>> result = JavaParser(LexicalFSM("name1")).implicit_parameter()
+        >>> result.name
+        'name1'
+        """
+        modifiers = ast.ModifiersTree.create(
+            flags=[Modifier.PARAMETER],
+            **self._info_include(self.token.pos)  # TODO 下标待修正
+        )
+        return self.variable_declarator_id(modifiers, None, False, True)
 
     def is_non_sealed_class_start(self, local: bool):
         """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
@@ -1181,5 +1312,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("int name1")).formal_parameter().kind)
-    print(JavaParser(LexicalFSM("int name1")).formal_parameter().name)
+    print(JavaParser(LexicalFSM("name1, name2")).implicit_parameters(False))
+    print(JavaParser(LexicalFSM("(name1, name2)")).implicit_parameters(True))

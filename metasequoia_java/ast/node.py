@@ -299,8 +299,11 @@ class ModifiersTree(Tree):
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(flags: List[Modifier], annotations: List[AnnotationTree], start_pos: int, end_pos: int,
-               source: str) -> "ModifiersTree":
+    def create(start_pos: int, end_pos: int, source: str,
+               flags: List[Modifier],
+               annotations: Optional[List[AnnotationTree]] = None) -> "ModifiersTree":
+        if annotations is None:
+            annotations = []
         return ModifiersTree(
             kind=TreeKind.MODIFIERS,
             flags=flags,
