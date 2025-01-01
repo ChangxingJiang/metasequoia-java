@@ -591,7 +591,7 @@ class MoveFixed(Operator):
         return Token(
             kind=self._kind,
             pos=pos,
-            end_pos=fsm.pos + 1,
+            end_pos=fsm.pos,
             affiliations=fsm.pop_affiliation(),
             source=self._source
         )
@@ -1039,18 +1039,9 @@ for state_, operation_map in FSM_OPERATION_MAP_SOURCE.items():
             FSM_OPERATION_MAP[(state_, ch)] = FSM_OPERATION_MAP_DEFAULT[state_]
 
 if __name__ == "__main__":
-    lexical_fsm = LexicalFSM("1/* xxx */\n2")
+    lexical_fsm = LexicalFSM("int[] ident = List.of(3)")
     token_list = []
     while token := lexical_fsm.lex():
-        print("token:", token)
+        print("token:", token, token.pos, token.end_pos)
         if token.kind == TokenKind.EOF:
             break
-
-    lexical_fsm = LexicalFSM("1/* xxx */\n2")
-    token_list = []
-    while True:
-        token = lexical_fsm.token(0)
-        print("token:", token)
-        if token.kind == TokenKind.EOF:
-            break
-        lexical_fsm.next_token()

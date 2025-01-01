@@ -28,36 +28,42 @@ class JavaParser:
     """
 
     def __init__(self, lexer: LexicalFSM):
-        self._text = lexer.text
-        self._lexer = lexer
-        self._token: Optional[Token] = self._lexer.token(0)
+        self.text = lexer.text
+        self.lexer = lexer
+        self.last_token: Optional[Token] = None  # 上一个 Token
+        self.token: Optional[Token] = self.lexer.token(0)  # 当前 Token
 
         self.mode: Mode = Mode.NULL  # 当前解析模式
         self.last_mode: Mode = Mode.NULL  # 上一个解析模式
 
-    def _next_token(self):
-        self._token = self._lexer.lex()
+        # 如果 permit_type_annotations_push_back 为假，那么当解析器遇到额外的注解时会直接抛出错误；否则会将额外的注解存入 type_annotations_push_back 变量中
+        self.permit_type_annotations_push_back: bool = False
+        self.type_annotations_pushed_back: List[ast.AnnotationTree] = []
+
+    def next_token(self):
+        self.last_token = self.token
+        self.token = self.lexer.lex()
 
     def peek_token(self, lookahead: int, *kinds: TokenKind):
         """检查从当前位置之后的地 lookahead 开始的元素与 kinds 是否匹配"""
         for i, kind in enumerate(kinds):
-            if not self._lexer.token(lookahead + i + 1).kind in kind:
+            if not self.lexer.token(lookahead + i + 1).kind in kind:
                 return False
         return True
 
-    def _accept(self, kind: TokenKind):
-        if self._token.kind == kind:
-            self._next_token()
+    def accept(self, kind: TokenKind):
+        if self.token.kind == kind:
+            self.next_token()
         else:
-            raise JavaSyntaxError(f"expect {kind}, but get {self._token.kind}")
+            raise JavaSyntaxError(f"expect {kind}, but get {self.token.kind}")
 
     def _info_include(self, start_pos: Optional[int]) -> Dict[str, Any]:
         """根据开始位置 start_pos 和当前 token 的结束位置（即包含当前 token），获取当前节点的源代码和位置信息"""
         if start_pos is None:
             return {"source": None, "start_pos": None, "end_pos": None}
-        end_pos = self._token.end_pos
+        end_pos = self.token.end_pos
         return {
-            "source": self._text[start_pos: end_pos],
+            "source": self.text[start_pos: end_pos],
             "start_pos": start_pos,
             "end_pos": end_pos
         }
@@ -66,9 +72,9 @@ class JavaParser:
         """根据开始位置 start_pos 和当前 token 的开始位置（即不包含当前 token），获取当前节点的源代码和位置信息"""
         if start_pos is None:
             return {"source": None, "start_pos": None, "end_pos": None}
-        end_pos = self._token.pos
+        end_pos = self.last_token.end_pos
         return {
-            "source": self._text[start_pos: end_pos],
+            "source": self.text[start_pos: end_pos],
             "start_pos": start_pos,
             "end_pos": end_pos
         }
@@ -102,7 +108,7 @@ class JavaParser:
     def illegal(self, pos: Optional[int] = None):
         """报告表达式或类型的非法开始 Token"""
         if pos is None:
-            pos = self._token.pos
+            pos = self.token.pos
         if self.is_mode(Mode.EXPR):
             self.syntax_error(pos, "IllegalStartOfExpr")
         else:
@@ -119,12 +125,12 @@ class JavaParser:
 
         [JDK Code] JavacParser.ident
         """
-        if self._token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"{self._token.source} 不能作为 Identifier")
+        if self.token.kind != TokenKind.IDENTIFIER:
+            raise JavaSyntaxError(f"{self.token.source} 不能作为 Identifier")
 
-        pos = self._token.pos
-        name = self._token.name
-        self._next_token()
+        pos = self.token.pos
+        name = self.token.name
+        self.next_token()
         return ast.IdentifierTree.create(
             name=name,
             **self._info_exclude(pos)
@@ -139,14 +145,14 @@ class JavaParser:
 
         [JDK Code] JavacParser.typeName
         """
-        if self._token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self._token.source}")
-        if self._token.name in {"permits", "record", "sealed", "var", "yield"}:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self._token.name}")
+        if self.token.kind != TokenKind.IDENTIFIER:
+            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.source}")
+        if self.token.name in {"permits", "record", "sealed", "var", "yield"}:
+            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.name}")
 
-        pos = self._token.pos
-        name = self._token.name
-        self._next_token()
+        pos = self.token.pos
+        name = self.token.name
+        self.next_token()
         return ast.IdentifierTree.create(
             name=name,
             **self._info_exclude(pos)
@@ -159,14 +165,14 @@ class JavaParser:
         UnqualifiedMethodIdentifier:
           Identifier but not yield
         """
-        if self._token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"{self._token.source} 不能作为 UnqualifiedMethodIdentifier")
-        if self._token.name in {"yield"}:
-            raise JavaSyntaxError(f"{self._token.name} 不能作为 UnqualifiedMethodIdentifier")
+        if self.token.kind != TokenKind.IDENTIFIER:
+            raise JavaSyntaxError(f"{self.token.source} 不能作为 UnqualifiedMethodIdentifier")
+        if self.token.name in {"yield"}:
+            raise JavaSyntaxError(f"{self.token.name} 不能作为 UnqualifiedMethodIdentifier")
 
-        pos = self._token.pos
-        name = self._token.name
-        self._next_token()
+        pos = self.token.pos
+        name = self.token.name
+        self.next_token()
         return ast.IdentifierTree.create(
             name=name,
             **self._info_exclude(pos)
@@ -187,57 +193,57 @@ class JavaParser:
 
         [Jdk Code] JavacParser.literal
         """
-        pos = self._token.pos
-        if self._token.kind in {TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL}:
+        pos = self.token.pos
+        if self.token.kind in {TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL}:
             return ast.IntLiteralTree.create(
-                style=INT_LITERAL_STYLE_HASH[self._token.kind],
-                value=self._token.int_value(),
+                style=INT_LITERAL_STYLE_HASH[self.token.kind],
+                value=self.token.int_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind in {TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL}:
+        if self.token.kind in {TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL}:
             return ast.LongLiteralTree.create(
-                style=LONG_LITERAL_STYLE_HASH[self._token.kind],
-                value=self._token.int_value(),
+                style=LONG_LITERAL_STYLE_HASH[self.token.kind],
+                value=self.token.int_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.FLOAT_LITERAL:
+        if self.token.kind == TokenKind.FLOAT_LITERAL:
             return ast.FloatLiteralTree.create(
-                value=self._token.float_value(),
+                value=self.token.float_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.DOUBLE_LITERAL:
+        if self.token.kind == TokenKind.DOUBLE_LITERAL:
             return ast.DoubleLiteralTree.create(
-                value=self._token.float_value(),
+                value=self.token.float_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.TRUE:
+        if self.token.kind == TokenKind.TRUE:
             return ast.TrueLiteralTree.create(
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.FALSE:
+        if self.token.kind == TokenKind.FALSE:
             return ast.FalseLiteralTree.create(
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.CHAR_LITERAL:
+        if self.token.kind == TokenKind.CHAR_LITERAL:
             return ast.CharacterLiteralTree.create(
-                value=self._token.char_value(),
+                value=self.token.char_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.STRING_LITERAL:
+        if self.token.kind == TokenKind.STRING_LITERAL:
             return ast.StringLiteralTree.create_string(
-                value=self._token.string_value(),
+                value=self.token.string_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.TEXT_BLOCK:
+        if self.token.kind == TokenKind.TEXT_BLOCK:
             return ast.StringLiteralTree.create_text_block(
-                value=self._token.string_value(),
+                value=self.token.string_value(),
                 **self._info_include(pos)
             )
-        if self._token.kind == TokenKind.NULL:
+        if self.token.kind == TokenKind.NULL:
             return ast.NullLiteralTree.create(
                 **self._info_include(pos)
             )
-        raise JavaSyntaxError(f"{self._token.source} 不是字面值")
+        raise JavaSyntaxError(f"{self.token.source} 不是字面值")
 
     def parse_type(self,
                    allow_var: bool = False,
@@ -260,7 +266,7 @@ class JavaParser:
         TODO 待补充单元测试
         """
         if pos is None:
-            pos = self._token.pos
+            pos = self.token.pos
         if annotations is None:
             annotations = self.type_annotations_opt()
 
@@ -288,19 +294,19 @@ class JavaParser:
 
         TODO 待补充单元测试
         """
-        if self._token.kind != TokenKind.LT:
+        if self.token.kind != TokenKind.LT:
             return []
 
-        self._next_token()
-        if parse_empty is True and self._token.kind == TokenKind.GT:
-            self._accept(TokenKind.GT)
+        self.next_token()
+        if parse_empty is True and self.token.kind == TokenKind.GT:
+            self.accept(TokenKind.GT)
             return []
 
         ty_params: List[ast.TypeParameterTree] = [self.type_parameter()]
-        while self._token.kind == TokenKind.COMMA:
-            self._next_token()
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
             ty_params.append(self.type_parameter())
-        self._accept(TokenKind.GT)
+        self.accept(TokenKind.GT)
         return ty_params
 
     def type_parameter(self) -> ast.TypeParameterTree:
@@ -313,15 +319,15 @@ class JavaParser:
 
         TODO 待补充单元测试
         """
-        pos = self._token.pos
+        pos = self.token.pos
         annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
         name: ast.IdentifierTree = self.type_name()
         bounds: List[ast.ExpressionTree] = []
-        if self._token.kind == TokenKind.EXTENDS:
-            self._next_token()
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
             bounds.append(self.parse_type())
-            while self._token.kind == TokenKind.AMP:
-                self._next_token()
+            while self.token.kind == TokenKind.AMP:
+                self.next_token()
                 bounds.append(self.parse_type())
         return ast.TypeParameterTree.create(
             name=name,
@@ -338,7 +344,7 @@ class JavaParser:
 
         TODO 待补充单元测试
         """
-        if self._token.kind != TokenKind.LT:
+        if self.token.kind != TokenKind.LT:
             return None
         return self.type_arguments(False)
 
@@ -350,27 +356,27 @@ class JavaParser:
 
         TODO 待补充单元测试
         """
-        if self._token.kind != TokenKind.LT:
-            raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self._token.kind}")
+        if self.token.kind != TokenKind.LT:
+            raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self.token.kind}")
 
-        self._next_token()
-        if self._token.kind == TokenKind.GT and diamond_allowed:
+        self.next_token()
+        if self.token.kind == TokenKind.GT and diamond_allowed:
             self.set_mode(self.mode | Mode.DIAMOND)
-            self._next_token()
+            self.next_token()
             return []
 
         args = [self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type()]
-        while self._token.kind == TokenKind.COMMA:
-            self._next_token()
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
             args.append(self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type())
 
-        if self._token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
-                                TokenKind.GT_GT_GT_EQ}:
-            self._token = self._lexer.split()
-        elif self._token.kind == TokenKind.GT:
-            self._next_token()
+        if self.token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
+                               TokenKind.GT_GT_GT_EQ}:
+            self.token = self.lexer.split()
+        elif self.token.kind == TokenKind.GT:
+            self.next_token()
         else:
-            raise JavaSyntaxError(f"expect GT or COMMA in type_arguments, but find {self._token.kind}")
+            raise JavaSyntaxError(f"expect GT or COMMA in type_arguments, but find {self.token.kind}")
 
         return args
 
@@ -392,25 +398,25 @@ class JavaParser:
 
         TODO 待补充单元测试（等待 parse_type、type_annotations_opt）
         """
-        pos_1 = self._token.pos
+        pos_1 = self.token.pos
         annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
-        if self._token.kind != TokenKind.QUES:
+        if self.token.kind != TokenKind.QUES:
             return self.parse_type(False, annotations)
-        pos_2 = self._token.pos
-        self._next_token()
-        if self._token.kind == TokenKind.EXTENDS:
-            self._next_token()
+        pos_2 = self.token.pos
+        self.next_token()
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
             wildcard = ast.WildcardTree.create_extends_wildcard(
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
-        elif self._token.kind == TokenKind.SUPER:
-            self._next_token()
+        elif self.token.kind == TokenKind.SUPER:
+            self.next_token()
             wildcard = ast.WildcardTree.create_super_wildcard(
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
-        elif self._token.kind == TokenKind.GT:
+        elif self.token.kind == TokenKind.GT:
             wildcard = ast.WildcardTree.create_unbounded_wildcard(
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
@@ -428,6 +434,7 @@ class JavaParser:
 
     def type_annotations_opt(self) -> List[ast.AnnotationTree]:
         """TODO"""
+        return []
 
     def unannotated_type(self, allow_var: bool = False) -> ast.ExpressionTree:
         """解析不包含注解的类型
@@ -453,10 +460,10 @@ class JavaParser:
 
         TODO 补充单元测试：allow_annotations = True
         """
-        pos = self._token.pos
+        pos = self.token.pos
         expression: ast.ExpressionTree = self.ident()
-        while self._token.kind == TokenKind.DOT:
-            self._next_token()
+        while self.token.kind == TokenKind.DOT:
+            self.next_token()
             type_annotations = self.type_annotations_opt() if allow_annotations is True else None
             identifier: ast.IdentifierTree = self.ident()
             expression = ast.MemberSelectTree.create(
@@ -488,8 +495,8 @@ class JavaParser:
         [JDK Code] JavacParser.parseIntersectionType
         """
         bounds = [first_type]
-        while self._token.kind == TokenKind.AMP:
-            self._accept(TokenKind.AMP)
+        while self.token.kind == TokenKind.AMP:
+            self.accept(TokenKind.AMP)
             bounds.append(self.parse_type())
         if len(bounds) > 1:
             return ast.IntersectionTypeTree.create(
@@ -537,11 +544,11 @@ class JavaParser:
         TODO 补充单元测试（匹配 type_arguments 的场景）
         TODO 补充单元测试（type_argument 场景）
         """
-        pos = self._token.pos
+        pos = self.token.pos
         type_args = self.type_arguments_opt()
 
         # 类型实参
-        if self._token.kind == TokenKind.QUES:
+        if self.token.kind == TokenKind.QUES:
             if self.is_mode(Mode.TYPE) and self.is_mode(Mode.TYPE_ARG) and not self.is_mode(Mode.NO_PARAMS):
                 self.select_type_mode()
                 return self.type_argument()
@@ -568,14 +575,14 @@ class JavaParser:
         #   ! UnaryExpression
         #   CastExpression (不包含)
         #   SwitchExpression (不包含)
-        if self._token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
-                                TokenKind.SUB}:
+        if self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
+                               TokenKind.SUB}:
             # TODO 增加 isMode 的逻辑
             if type_args is not None:
                 raise JavaSyntaxError("语法不合法")
-            tk = self._token.kind
-            self._next_token()
-            if tk == TokenKind.SUB and self._token.kind in {TokenKind.INT_DEC_LITERAL, TokenKind.LONG_DEC_LITERAL}:
+            tk = self.token.kind
+            self.next_token()
+            if tk == TokenKind.SUB and self.token.kind in {TokenKind.INT_DEC_LITERAL, TokenKind.LONG_DEC_LITERAL}:
                 return self.term3_rest(self.literal(), type_args)
             else:
                 expression = self.term3()
@@ -586,7 +593,7 @@ class JavaParser:
                 )
 
         # 括号表达式：
-        if self._token.kind == TokenKind.LPAREN:
+        if self.token.kind == TokenKind.LPAREN:
             # TODO 增加 isMode 的逻辑
             if type_args is not None:
                 raise JavaSyntaxError("语法不合法")
@@ -598,9 +605,9 @@ class JavaParser:
             #   ( ReferenceType {AdditionalBound} ) UnaryExpressionNotPlusMinus
             #   ( ReferenceType {AdditionalBound} ) LambdaExpression
             if pres == ParensResult.CAST:
-                self._accept(TokenKind.LPAREN)
+                self.accept(TokenKind.LPAREN)
                 cast_type = self.parse_intersection_type(pos, self.parse_type())
-                self._accept(TokenKind.RPAREN)
+                self.accept(TokenKind.RPAREN)
                 expression = self.term3()
                 return ast.TypeCastTree(
                     cast_type=cast_type,
@@ -624,34 +631,34 @@ class JavaParser:
         lookahead = 0
         default_result = ParensResult.PARENS
         while True:
-            tk = self._lexer.token(lookahead).kind
+            tk = self.lexer.token(lookahead).kind
             print(tk)
             if tk == TokenKind.COMMA:
                 is_type = True
             elif tk in {TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.DOT, TokenKind.AMP}:
                 continue  # 跳过
             elif tk == TokenKind.QUES:
-                if self._lexer.token(lookahead + 1).kind in {TokenKind.EXTENDS, TokenKind.SUPER}:
+                if self.lexer.token(lookahead + 1).kind in {TokenKind.EXTENDS, TokenKind.SUPER}:
                     is_type = True  # wildcards
             elif tk in {TokenKind.BYTE, TokenKind.SHORT, TokenKind.INT, TokenKind.LONG, TokenKind.FLOAT,
                         TokenKind.FLOAT, TokenKind.DOUBLE, TokenKind.BOOLEAN, TokenKind.CHAR, TokenKind.VOID}:
-                if self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
+                if self.lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
                     # Type, ')' -> cast
                     return ParensResult.CAST
-                if self._lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
+                if self.lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
                     # Type, Identifier/'_'/'assert'/'enum' -> explicit lambda
                     return ParensResult.EXPLICIT_LAMBDA
             elif tk == TokenKind.LPAREN:
                 if lookahead != 0:
                     # // '(' in a non-starting position -> parens
                     return ParensResult.PARENS
-                if self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
+                if self.lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
                     # // '(', ')' -> explicit lambda
                     return ParensResult.EXPLICIT_LAMBDA
             elif tk == TokenKind.RPAREN:
                 if is_type is True:
                     return ParensResult.CAST
-                if self._lexer.token(lookahead + 1).kind in {
+                if self.lexer.token(lookahead + 1).kind in {
                     TokenKind.CASE, TokenKind.TILDE, TokenKind.LPAREN, TokenKind.THIS, TokenKind.SUPER,
                     TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL,
                     TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL,
@@ -664,16 +671,16 @@ class JavaParser:
                     return ParensResult.CAST
                 return default_result
             elif tk in LAX_IDENTIFIER:
-                print("LAX_IDENTIFIER:", self._lexer.token(lookahead + 1).kind)
-                if self._lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
+                print("LAX_IDENTIFIER:", self.lexer.token(lookahead + 1).kind)
+                if self.lexer.token(lookahead + 1).kind in LAX_IDENTIFIER:
                     # Identifier, Identifier/'_'/'assert'/'enum' -> explicit lambda
                     return ParensResult.EXPLICIT_LAMBDA
-                if (self._lexer.token(lookahead + 1).kind == TokenKind.RPAREN
-                        and self._lexer.token(lookahead + 2).kind == TokenKind.ARROW):
+                if (self.lexer.token(lookahead + 1).kind == TokenKind.RPAREN
+                        and self.lexer.token(lookahead + 2).kind == TokenKind.ARROW):
                     # // Identifier, ')' '->' -> implicit lambda
                     # TODO 待增加 isMode 的逻辑
                     return ParensResult.IMPLICIT_LAMBDA
-                if depth == 0 and self._lexer.token(lookahead + 1).kind == TokenKind.COMMA:
+                if depth == 0 and self.lexer.token(lookahead + 1).kind == TokenKind.COMMA:
                     default_result = ParensResult.IMPLICIT_LAMBDA
                 is_type = False
             elif tk in {TokenKind.FINAL, TokenKind.ELLIPSIS}:
@@ -745,7 +752,7 @@ class JavaParser:
 
         nesting = 0  # 嵌套的括号层数（左括号比右括号多的数量）
         while True:
-            tk = self._lexer.token(lookahead).kind
+            tk = self.lexer.token(lookahead).kind
             print(tk, nesting)
             if tk == TokenKind.EOF:
                 return lookahead
@@ -756,6 +763,63 @@ class JavaParser:
                 if nesting == 0:
                     return lookahead
             lookahead += 1
+
+    def brackets_opt(self, expression: ast.ExpressionTree, annotations: Optional[List[ast.AnnotationTree]] = None):
+        """可选的数组标记（空方括号）
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Dims:
+          {Annotation} [ ] {{Annotation} [ ]}
+
+        [JDK Code] JavacParser.bracketsOpt
+        BracketsOpt = { [Annotations] "[" "]" }*
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident"))
+        IdentifierTree(kind=<TreeKind.IDENTIFIER: 22>, source=None, start_pos=None, end_pos=None, name='ident')
+        >>> JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
+        []
+        >>> JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
+        [][]
+        """
+        if annotations is None:
+            annotations = []
+
+        next_level_annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        if self.token.kind == TokenKind.LBRACKET:
+            pos = self.token.pos
+            self.next_token()
+            expression = self.brackets_opt_cont(expression, pos, next_level_annotations)
+        elif len(next_level_annotations) > 0:
+            if self.permit_type_annotations_push_back is True:
+                self.type_annotations_pushed_back = next_level_annotations
+            else:
+                return self.illegal(next_level_annotations[0].start_pos)
+
+        if len(annotations) > 0:
+            return ast.AnnotatedTypeTree.create(
+                annotations=annotations,
+                underlying_type=expression,
+                **self._info_include(self.token.pos)
+            )
+        return expression
+
+    def brackets_opt_cont(self, expression: ast.ExpressionTree, pos: int, annotations: List[ast.AnnotationTree]):
+        """构造数组类型对象"""
+        self.accept(TokenKind.RBRACKET)
+        expression = self.brackets_opt(expression)
+        expression = ast.ArrayTypeTree.create(
+            expression=expression,
+            **self._info_exclude(pos)
+        )
+        if len(annotations):
+            expression = ast.AnnotatedTypeTree.create(
+                annotations=annotations,
+                underlying_type=expression,
+                **self._info_exclude(pos)
+            )
+        return expression
 
     def modifiers_opt(self, partial: Optional[ast.ModifiersTree]) -> ast.ModifiersTree:
         """修饰词
@@ -828,20 +892,20 @@ class JavaParser:
         else:
             flags = []
             annotations = []
-            pos = self._token.pos
+            pos = self.token.pos
 
-        if self._token.deprecated_flag():
+        if self.token.deprecated_flag():
             flags.append(Modifier.DEPRECATED)
 
         while True:
-            tk = self._token.kind
+            tk = self.token.kind
             if flag := hash.TOKEN_TO_MODIFIER.get(tk):
                 flags.append(flag)
-                self._next_token()
+                self.next_token()
             elif tk == TokenKind.MONKEYS_AT:
-                last_pos = self._token.pos
-                self._next_token()
-                if self._token.kind != TokenKind.INTERFACE:
+                last_pos = self.token.pos
+                self.next_token()
+                if self.token.kind != TokenKind.INTERFACE:
                     annotation = self.annotation(last_pos, None)  # TODO 待修改参数
                     # if first modifier is an annotation, set pos to annotation's
                     if len(flags) == 0 and len(annotations) == 0:
@@ -851,19 +915,19 @@ class JavaParser:
             elif tk == TokenKind.IDENTIFIER:
                 if self.is_non_sealed_class_start(False):
                     flags.append(Modifier.NON_SEALED)
-                    self._next_token()
-                    self._next_token()
-                    self._next_token()
+                    self.next_token()
+                    self.next_token()
+                    self.next_token()
                 if self.is_sealed_class_start(False):
                     flags.append(Modifier.SEALED)
-                    self._next_token()
+                    self.next_token()
                 break
             else:
                 break
 
         # TODO 待增加是否存在重复修饰符
 
-        tk = self._token.kind
+        tk = self.token.kind
         if tk == TokenKind.ENUM:
             flags.append(Modifier.ENUM)
         elif tk == TokenKind.INTERFACE:
@@ -878,10 +942,13 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
+    def variable_declarator_id(self):
+        """TODO"""
+
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
 
-    def format_parameter(self, lambda_parameter: bool, record_component: bool) -> ast.VariableTree:
+    def formal_parameter(self, lambda_parameter: bool, record_component: bool) -> ast.VariableTree:
         """形参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -902,7 +969,7 @@ class JavaParser:
         """
 
     def is_non_sealed_class_start(self, local: bool):
-        """判断当前位置是否是 non-sealed 关键字 TODO 待确认注释准确性
+        """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
 
         [JDK Code] JavacParser.isNonSealedClassStart
 
@@ -913,8 +980,8 @@ class JavaParser:
         >>> JavaParser(LexicalFSM("non-sealed function")).is_non_sealed_class_start(False)
         False
         """
-        return (self.is_non_sealed_identifier(self._token, 0)
-                and self.allowed_after_sealed_or_non_sealed(self._lexer.token(3), local, True))
+        return (self.is_non_sealed_identifier(self.token, 0)
+                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(3), local, True))
 
     def is_non_sealed_identifier(self, some_token: Token, lookahead: int):
         """判断当前位置的标识符是否为 non-sealed 关键字
@@ -922,15 +989,15 @@ class JavaParser:
         [JDK Code] JavacParser.isNonSealedIdentifier
         """
         if some_token.name == "non" and self.peek_token(lookahead, TokenKind.SUB, TokenKind.IDENTIFIER):
-            token_sub: Token = self._lexer.token(lookahead + 1)
-            token_sealed: Token = self._lexer.token(lookahead + 2)
+            token_sub: Token = self.lexer.token(lookahead + 1)
+            token_sealed: Token = self.lexer.token(lookahead + 2)
             return (some_token.end_pos == token_sub.pos
                     and token_sub.end_pos == token_sealed.pos
                     and token_sealed.name == "sealed")
         return False
 
     def is_sealed_class_start(self, local: bool):
-        """判断当前位置是否是 sealed 关键字 TODO 待确认注释准确性
+        """如果当前 Token 为 sealed 关键字则返回 True，否则返回 False
 
         [JDK Code] JavacParser.isSealedClassStart
 
@@ -941,8 +1008,8 @@ class JavaParser:
         >>> JavaParser(LexicalFSM("sealed function")).is_sealed_class_start(False)
         False
         """
-        return (self._token.name == "sealed"
-                and self.allowed_after_sealed_or_non_sealed(self._lexer.token(1), local, False))
+        return (self.token.name == "sealed"
+                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(1), local, False))
 
     def allowed_after_sealed_or_non_sealed(self, next_token: Token, local: bool, current_is_non_sealed: bool):
         """检查 next_token 是否为 sealed 关键字或 non-sealed 关键字之后的 Token 是否合法
@@ -951,7 +1018,7 @@ class JavaParser:
         """
         tk = next_token.kind
         if tk == TokenKind.MONKEYS_AT:
-            return self._lexer.token(2).kind != TokenKind.INTERFACE or current_is_non_sealed
+            return self.lexer.token(2).kind != TokenKind.INTERFACE or current_is_non_sealed
         if local is True:
             return tk in {TokenKind.ABSTRACT, TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE,
                           TokenKind.ENUM}
@@ -965,7 +1032,6 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("non-sealed class")).modifiers_opt(None).flags)
-    print(JavaParser(LexicalFSM("public class")).modifiers_opt(None).flags)
-    print(JavaParser(LexicalFSM("public static class")).modifiers_opt(None).flags)
-    print(JavaParser(LexicalFSM("public static final NUMBER")).modifiers_opt(None).flags)
+    print(JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")))
+    print(JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source)
+    print(JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source)

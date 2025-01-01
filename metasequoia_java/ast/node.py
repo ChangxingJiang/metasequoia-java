@@ -209,10 +209,20 @@ class ArrayTypeTree(ExpressionTree):
     - type[]
     """
 
-    type: Tree = dataclasses.dataclass(slots=True)
+    expression: Tree = dataclasses.dataclass(slots=True)
+
+    @staticmethod
+    def create(expression: Tree, start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
+        return ArrayTypeTree(
+            kind=TreeKind.IDENTIFIER,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
-        return f"{self.type.generate()}[]"
+        return f"{self.expression.generate()}[]"
 
 
 @dataclasses.dataclass(slots=True)
@@ -453,6 +463,16 @@ class IdentifierTree(ExpressionTree):
             start_pos=start_pos,
             end_pos=end_pos,
             source=source
+        )
+
+    @staticmethod
+    def mock(name: str) -> "IdentifierTree":
+        return IdentifierTree(
+            kind=TreeKind.IDENTIFIER,
+            name=name,
+            start_pos=None,
+            end_pos=None,
+            source=None
         )
 
     def generate(self) -> str:
