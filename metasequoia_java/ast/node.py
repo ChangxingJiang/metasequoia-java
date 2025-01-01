@@ -214,7 +214,7 @@ class ArrayTypeTree(ExpressionTree):
     @staticmethod
     def create(expression: Tree, start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
         return ArrayTypeTree(
-            kind=TreeKind.IDENTIFIER,
+            kind=TreeKind.ARRAY_TYPE,
             expression=expression,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -302,12 +302,23 @@ class ModifiersTree(Tree):
     def create(flags: List[Modifier], annotations: List[AnnotationTree], start_pos: int, end_pos: int,
                source: str) -> "ModifiersTree":
         return ModifiersTree(
-            kind=TreeKind.IDENTIFIER,
+            kind=TreeKind.MODIFIERS,
             flags=flags,
             annotations=annotations,
             start_pos=start_pos,
             end_pos=end_pos,
             source=source
+        )
+
+    @staticmethod
+    def mock() -> "ModifiersTree":
+        return ModifiersTree(
+            kind=TreeKind.MODIFIERS,
+            flags=[],
+            annotations=[],
+            start_pos=None,
+            end_pos=None,
+            source=None
         )
 
     @property
@@ -335,10 +346,37 @@ class VariableTree(StatementTree):
     """
 
     modifiers: ModifiersTree = dataclasses.field(kw_only=True)
-    name: str = dataclasses.field(kw_only=True)
-    name_expression: ExpressionTree = dataclasses.field(kw_only=True)
-    type: Tree = dataclasses.field(kw_only=True)
-    initializer: ExpressionTree = dataclasses.field(kw_only=True)
+    name: Optional[str] = dataclasses.field(kw_only=True, default=None)
+    name_expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True, default=None)
+    variable_type: Tree = dataclasses.field(kw_only=True)
+    initializer: Optional[ExpressionTree] = dataclasses.field(kw_only=True, default=None)
+
+    @staticmethod
+    def create_by_name(modifiers: ModifiersTree, name: Optional[str], variable_type: Tree,
+                       start_pos: int, end_pos: int, source: str) -> "VariableTree":
+        return VariableTree(
+            kind=TreeKind.VARIABLE,
+            modifiers=modifiers,
+            name=name,
+            variable_type=variable_type,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_by_name_expression(modifiers: ModifiersTree, name_expression: Optional[ExpressionTree],
+                                  variable_type: Tree,
+                                  start_pos: int, end_pos: int, source: str) -> "VariableTree":
+        return VariableTree(
+            kind=TreeKind.VARIABLE,
+            modifiers=modifiers,
+            name_expression=name_expression,
+            variable_type=variable_type,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1376,7 +1414,7 @@ class PatternCaseLabelTree(CaseLabelTree):
 
 
 @dataclasses.dataclass(slots=True)
-class PrimitiveTypeTree(Tree):
+class PrimitiveTypeTree(ExpressionTree):
     """原生类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PrimitiveTypeTree.java

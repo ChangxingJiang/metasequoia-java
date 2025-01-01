@@ -5,6 +5,7 @@
 from typing import Any, Dict, List, Optional
 
 from metasequoia_java import ast
+from metasequoia_java.ast import TreeKind
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
 from metasequoia_java.ast.element import Modifier
@@ -134,6 +135,11 @@ class JavaParser:
           IdentifierChars but not a ReservedKeyword or BooleanLiteral or NullLiteral
 
         [JDK Code] JavacParser.ident
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("abc")).ident()
+        'abc'
         """
         if self.token.kind == TokenKind.IDENTIFIER:
             name = self.token.name
@@ -156,6 +162,55 @@ class JavaParser:
             return name
         self.accept(TokenKind.IDENTIFIER)
         raise JavaSyntaxError(f"{self.token.source} 不能作为 Identifier")
+
+    def qualident(self, allow_annos: bool):
+        """多个用 DOT 分隔的标识符
+
+        [JDK Document]
+        ModuleName:
+          Identifier
+          ModuleName . Identifier
+
+        PackageName:
+          Identifier
+          PackageName . Identifier
+
+        [JDK Code] JavacParser.qualident
+        Qualident = Ident { DOT [Annotations] Ident }
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("abc.def")).qualident(False).kind
+        <TreeKind.MEMBER_SELECT: 19>
+        >>> JavaParser(LexicalFSM("abc.def")).qualident(False).source
+        'abc.def'
+
+        TODO 补充单元测试：allow_annotations = True
+        """
+        pos = self.token.pos
+        expression: ast.ExpressionTree = ast.IdentifierTree.create(
+            name=self.ident(),
+            **self._info_exclude(pos)
+        )
+        while self.token.kind == TokenKind.DOT:
+            self.next_token()
+            type_annotations = self.type_annotations_opt() if allow_annos is True else None
+            identifier: ast.IdentifierTree = ast.IdentifierTree.create(
+                name=self.ident(),
+                **self._info_exclude(pos)
+            )
+            expression = ast.MemberSelectTree.create(
+                expression=expression,
+                identifier=identifier,
+                **self._info_include(pos)
+            )
+            if type_annotations:
+                expression = ast.AnnotatedTypeTree.create(
+                    annotations=type_annotations,
+                    underlying_type=expression,
+                    **self._info_include(pos)
+                )
+        return expression
 
     def type_name(self) -> ast.IdentifierTree:
         """解析 TypeIdentifier 元素
@@ -470,41 +525,6 @@ class JavaParser:
             raise JavaSyntaxError(f"expect unannotated_type, but get {result.kind}")
         # TODO 待增加 TYPEARRAY 相关逻辑
         return result
-
-    def qualident(self, allow_annotations: bool):
-        """解析名称
-
-        对应 JDK 文档中的：ModuleName, PackageName
-
-        [JDK Code] JavacParser.qualident
-        Qualident = Ident { DOT [Annotations] Ident }
-
-        TODO 补充单元测试：allow_annotations = True
-        """
-        pos = self.token.pos
-        expression: ast.ExpressionTree = ast.IdentifierTree.create(
-            name=self.ident(),
-            **self._info_exclude(pos)
-        )
-        while self.token.kind == TokenKind.DOT:
-            self.next_token()
-            type_annotations = self.type_annotations_opt() if allow_annotations is True else None
-            identifier: ast.IdentifierTree = ast.IdentifierTree.create(
-                name=self.ident(),
-                **self._info_exclude(pos)
-            )
-            expression = ast.MemberSelectTree.create(
-                expression=expression,
-                identifier=identifier,
-                **self._info_include(pos)
-            )
-            if type_annotations:
-                expression = ast.AnnotatedTypeTree.create(
-                    annotations=type_annotations,
-                    underlying_type=expression,
-                    **self._info_include(pos)
-                )
-        return expression
 
     def term(self) -> ast.ExpressionTree:
         """TODO 名称待整理
@@ -970,8 +990,11 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def variable_declarator_id(self, mods: ast.ModifiersTree, variable_type: ast.ExpressionTree, catch_parameter: bool,
-                               lambda_parameter: bool, record_component: bool):
+    def variable_declarator_id(self,
+                               modifiers: ast.ModifiersTree,
+                               variable_type: Optional[ast.ExpressionTree],
+                               catch_parameter: bool,
+                               lambda_parameter: bool):
         """解析变量声明语句中的标识符
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -981,18 +1004,53 @@ class JavaParser:
 
         [JDK Code] JavacParser.variableDeclaratorId
         VariableDeclaratorId = Ident BracketsOpt
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).kind
+        <TreeKind.VARIABLE: 54>
+        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).source
+        'abc'
+        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).kind
+        <TreeKind.VARIABLE: 54>
+        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(),
+        ...                                                        None, False, False).variable_type.kind
+        <TreeKind.ARRAY_TYPE: 5>
         """
         pos = self.token.pos
         if (self.allow_this_ident is False
                 and lambda_parameter is True
                 and self.token.kind not in LAX_IDENTIFIER
-                and mods.flags == Modifier.PARAMETER
-                and len(mods.annotations) == 0):
+                and modifiers.flags == Modifier.PARAMETER
+                and len(modifiers.annotations) == 0):
             self.syntax_error(pos, "这是一个 lambda 表达式的参数，且 Token 类型不是标识符，且没有任何修饰符或注解，则意味着编译"
                                    "器本应假设该 lambda 表达式为显式形式，但它可能包含隐式参数或显式参数的混合")
 
         if self.token.kind == TokenKind.UNDERSCORE and (catch_parameter or lambda_parameter):
-            pass
+            expression = ast.IdentifierTree.create(
+                name=self.ident_or_underscore(),
+                **self._info_exclude(pos)
+            )
+        else:
+            expression = self.qualident(False)
+
+        if expression.kind == TreeKind.IDENTIFIER and expression.name != "this":
+            variable_type = self.brackets_opt(variable_type)
+            return ast.VariableTree.create_by_name(
+                modifiers=modifiers,
+                name=expression.name,
+                variable_type=variable_type,
+                **self._info_exclude(pos)
+            )
+        if lambda_parameter and variable_type is None:
+            self.syntax_error(pos, "we have a lambda parameter that is not an identifier this is a syntax error")
+        else:
+            return ast.VariableTree.create_by_name_expression(
+                modifiers=modifiers,
+                name_expression=expression,
+                variable_type=variable_type,
+                **self._info_include(pos)
+            )
 
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
@@ -1081,6 +1139,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")))
-    print(JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source)
-    print(JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source)
+    print(JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(), None, False,
+                                                                 False).variable_type)
