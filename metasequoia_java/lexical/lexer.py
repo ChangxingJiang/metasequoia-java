@@ -971,7 +971,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
 
     # :
     LexicalState.COLON: {
-        "：": MoveFixedSetState(kind=TokenKind.COL_COL, source="::", state=LexicalState.INIT),
+        ":": MoveFixedSetState(kind=TokenKind.COL_COL, source="::", state=LexicalState.INIT),
         DEFAULT: FixedSetState(kind=TokenKind.COLON, source=":", state=LexicalState.INIT),
     },
 
@@ -1039,7 +1039,7 @@ for state_, operation_map in FSM_OPERATION_MAP_SOURCE.items():
             FSM_OPERATION_MAP[(state_, ch)] = FSM_OPERATION_MAP_DEFAULT[state_]
 
 if __name__ == "__main__":
-    lexical_fsm = LexicalFSM("int[] ident = List.of(3)")
+    lexical_fsm = LexicalFSM("::name")
     token_list = []
     while token := lexical_fsm.lex():
         print("token:", token, token.pos, token.end_pos)

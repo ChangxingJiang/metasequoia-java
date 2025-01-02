@@ -314,6 +314,18 @@ class ModifiersTree(Tree):
         )
 
     @staticmethod
+    def create_empty() -> "ModifiersTree":
+        """创建没有任何修饰符的 ModifiersTree 节点，且该节点没有实际的位置和代码"""
+        return ModifiersTree(
+            kind=TreeKind.MODIFIERS,
+            flags=[],
+            annotations=[],
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
+    @staticmethod
     def mock() -> "ModifiersTree":
         return ModifiersTree(
             kind=TreeKind.MODIFIERS,
@@ -582,12 +594,52 @@ class ClassTree(StatementTree):
     """
 
     modifiers: ModifiersTree = dataclasses.field(kw_only=True)
-    simple_name: str = dataclasses.field(kw_only=True)
+    simple_name: Optional[str] = dataclasses.field(kw_only=True)  # 如果为匿名类则为 None
     type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
-    extends_clause: Tree = dataclasses.field(kw_only=True)
-    implements_clause: Tree = dataclasses.field(kw_only=True)
+    extends_clause: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果没有继承关系则为 None
+    implements_clause: List[Tree] = dataclasses.field(kw_only=True)
     permits_clause: List[Tree] = dataclasses.field(kw_only=True)  # 【JDK 17+】
     members: List[Tree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(modifiers: ModifiersTree,
+               simple_name: str,
+               type_parameters: List[TypeParameterTree],
+               extends_clause: Tree,
+               implements_clause: List[Tree],
+               permits_clause: List[Tree],
+               members: List[Tree],
+               start_pos: int, end_pos: int, source: str) -> "ClassTree":
+        return ClassTree(
+            kind=TreeKind.CLASS,
+            modifiers=modifiers,
+            simple_name=simple_name,
+            type_parameters=type_parameters,
+            extends_clause=extends_clause,
+            implements_clause=implements_clause,
+            permits_clause=permits_clause,
+            members=members,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_anonymous_class(modifiers: ModifiersTree, members: List[Tree],
+                               start_pos: int, end_pos: int, source: str):
+        return ClassTree(
+            kind=TreeKind.CLASS,
+            modifiers=modifiers,
+            simple_name=None,
+            type_parameters=[],
+            extends_clause=None,
+            implements_clause=[],
+            permits_clause=[],
+            members=members,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1237,13 +1289,30 @@ class MemberReferenceTree(ExpressionTree):
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MemberReferenceTree.java
     A tree node for a member reference expression.
 
-    样例：expression # [ identifier | new ]
+    样例：expression :: [ identifier | new ]
     """
 
     mode: ReferenceMode = dataclasses.field(kw_only=True)
-    qualifier_expression: ExpressionTree = dataclasses.field(kw_only=True)
     name: str = dataclasses.field(kw_only=True)
+    qualifier_expression: ExpressionTree = dataclasses.field(kw_only=True)
     type_arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(mode: ReferenceMode,
+               name: str,
+               qualifier_expression: ExpressionTree,
+               type_arguments: List[ExpressionTree],
+               start_pos: int, end_pos: int, source: str) -> "MemberReferenceTree":
+        return MemberReferenceTree(
+            kind=TreeKind.MEMBER_REFERENCE,
+            mode=mode,
+            name=name,
+            qualifier_expression=qualifier_expression,
+            type_arguments=type_arguments,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1351,11 +1420,28 @@ class NewArrayTree(ExpressionTree):
     样例 2：new type dimensions [ ] initializers
     """
 
-    type: Tree = dataclasses.field(kw_only=True)
+    array_type: Tree = dataclasses.field(kw_only=True)
     dimensions: List[ExpressionTree] = dataclasses.field(kw_only=True)
     initializers: List[ExpressionTree] = dataclasses.field(kw_only=True)
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
-    dim_annotations: List[List[AnnotationTree]] = dataclasses.field(kw_only=True)
+    annotations: Optional[List[AnnotationTree]] = dataclasses.field(kw_only=True, default=None)
+    dim_annotations: Optional[List[List[AnnotationTree]]] = dataclasses.field(kw_only=True, default=None)
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               array_type: ExpressionTree,
+               dimensions: List[ExpressionTree],
+               initializers: List[ExpressionTree],
+               dim_annotations: Optional[List[List[AnnotationTree]]] = None) -> "NewArrayTree":
+        return NewArrayTree(
+            kind=TreeKind.NEW_ARRAY,
+            array_type=array_type,
+            dimensions=dimensions,
+            initializers=initializers,
+            dim_annotations=dim_annotations,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1387,6 +1473,25 @@ class NewClassTree(ExpressionTree):
     identifier: ExpressionTree = dataclasses.field(kw_only=True)
     arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
     class_body: Optional[ClassTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(enclosing: Optional[ExpressionTree],
+               type_arguments: List[Tree],
+               identifier: ExpressionTree,
+               arguments: List[ExpressionTree],
+               class_body: Optional[ClassTree],
+               start_pos: int, end_pos: int, source: str) -> "NewClassTree":
+        return NewClassTree(
+            kind=TreeKind.NEW_CLASS,
+            enclosing_expression=enclosing,
+            type_arguments=type_arguments,
+            identifier=identifier,
+            arguments=arguments,
+            class_body=class_body,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO 待验证分隔符"""
@@ -1429,11 +1534,23 @@ class ParameterizedTypeTree(Tree):
     type < typeArguments >
     """
 
-    type: Tree = dataclasses.field(kw_only=True)
+    type_name: Tree = dataclasses.field(kw_only=True)
     type_arguments: List[Tree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(type_name: Tree, type_arguments: List[Tree],
+               start_pos: int, end_pos: int, source: str) -> "ParameterizedTypeTree":
+        return ParameterizedTypeTree(
+            kind=TreeKind.PARAMETERIZED_TYPE,
+            type_name=type_name,
+            type_arguments=type_arguments,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
-        return f"{self.type.generate()}<{generate_tree_list(self.type_arguments, Separator.COMMA)}>"
+        return f"{self.type_name.generate()}<{generate_tree_list(self.type_arguments, Separator.COMMA)}>"
 
 
 @dataclasses.dataclass(slots=True)
@@ -1489,20 +1606,30 @@ class PrimitiveTypeTree(ExpressionTree):
     primitiveTypeKind
     """
 
-    primitive_type_kind: TypeKind = dataclasses.field(kw_only=True)
+    type_kind: TypeKind = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(type_kind: TypeKind, start_pos: int, end_pos: int, source: str) -> "PrimitiveTypeTree":
+        return PrimitiveTypeTree(
+            kind=TreeKind.PRIMITIVE_TYPE,
+            type_kind=type_kind,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     @staticmethod
     def mock(type_name: str) -> "PrimitiveTypeTree":
         return PrimitiveTypeTree(
             kind=TreeKind.PRIMITIVE_TYPE,
-            primitive_type_kind=TypeKind[type_name],
+            type_kind=TypeKind[type_name],
             start_pos=None,
             end_pos=None,
             source=None
         )
 
     def generate(self) -> str:
-        return self.primitive_type_kind.value
+        return self.type_kind.value
 
 
 @dataclasses.dataclass(slots=True)
