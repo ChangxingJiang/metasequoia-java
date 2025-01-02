@@ -480,6 +480,14 @@ class JavaParser:
         >>> parser.select_expr_mode()
         >>> parser.term3().kind.name
         'MEMBER_REFERENCE'
+        >>> parser = JavaParser(LexicalFSM("new int[]{1, 2, 3}"))
+        >>> parser.select_expr_mode()
+        >>> parser.term3().kind.name
+        'NEW_ARRAY'
+        >>> parser = JavaParser(LexicalFSM("new ClassName (name1, name2) {}"))
+        >>> parser.select_expr_mode()
+        >>> parser.term3().kind.name
+        'NEW_CLASS'
         """
         pos = self.token.pos
         type_args = self.type_arguments_opt()
@@ -617,6 +625,18 @@ class JavaParser:
             # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
             # UnqualifiedClassInstanceCreationExpression:
             #   new [TypeArguments] ClassOrInterfaceTypeToInstantiate ( [ArgumentList] ) [ClassBody]
+            #
+            # ArrayCreationExpression:
+            #   ArrayCreationExpressionWithoutInitializer
+            #   ArrayCreationExpressionWithInitializer
+            #
+            # ArrayCreationExpressionWithoutInitializer:
+            #   new PrimitiveType DimExprs [Dims]
+            #   new ClassOrInterfaceType DimExprs [Dims]
+            #
+            # ArrayCreationExpressionWithInitializer:
+            #   new PrimitiveType Dims ArrayInitializer
+            #   new ClassOrInterfaceType Dims ArrayInitializer
             if type_args is not None or not self.is_mode(Mode.EXPR):
                 self.illegal(self.token.pos)
             self.select_expr_mode()
@@ -624,6 +644,7 @@ class JavaParser:
             if self.token.kind == TokenKind.LT:
                 type_args = self.type_argument_list(False)
             expression = self.creator(pos, type_args)
+            return self.term3_rest(expression, None)
 
     def term3_rest(self, expression: ast.ExpressionTree,
                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
@@ -1362,6 +1383,13 @@ class JavaParser:
     def array_creator_rest(self, new_pos: int, elem_type: ast.ExpressionTree) -> ast.ExpressionTree:
         """数组的构造方法的剩余部分
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        DimExprs:
+          DimExpr {DimExpr}
+
+        DimExpr:
+          {Annotation} [ Expression ]
+
         [JDK Code] JavacParser.arrayCreatorRest
         ArrayCreatorRest = [Annotations] "[" ( "]" BracketsOpt ArrayInitializer
                                | Expression "]" {[Annotations]  "[" Expression "]"} BracketsOpt )
@@ -1384,44 +1412,45 @@ class JavaParser:
         if self.token.kind == TokenKind.RBRACKET:
             self.accept(TokenKind.RBRACKET)
             elem_type = self.brackets_opt(elem_type, annotations)
-            if self.token.kind == TokenKind.LBRACE:
-                array = self.array_initializer(new_pos, elem_type)
-                if len(annotations) > 0:
-                    # 如果将注解没有写在 [ ] 之中，则需要修正它
-                    assert isinstance(elem_type, ast.AnnotatedTypeTree)
-                    assert elem_type.annotations == annotations
-                    array.annotations = elem_type.annotations
-                    array.array_type = elem_type.underlying_type
-                return array
-            else:
-                dims: List[ast.ExpressionTree] = []
-                dim_annotations: List[List[ast.AnnotationTree]] = [annotations]
-                dims.append(self.parse_expression())
-                self.accept(TokenKind.RBRACKET)
-                while self.token.kind in {TokenKind.LBRACKET, TokenKind.MONKEYS_AT}:
-                    maybe_dim_annotations = self.type_annotations_opt()
-                    pos = self.token.pos
-                    self.next_token()
-                    if self.token.kind == TokenKind.RBRACKET:
-                        elem_type = self.brackets_opt_cont(elem_type, pos, maybe_dim_annotations)
-                    else:
-                        dim_annotations.append(maybe_dim_annotations)
-                        dims.append(self.parse_expression())
-                        self.accept(TokenKind.RBRACKET)
+            if self.token.kind != TokenKind.LBRACE:
+                self.raise_syntax_error(self.token.pos, "ArrayDimensionMissing")
+            array = self.array_initializer(new_pos, elem_type)
+            if len(annotations) > 0:
+                # 如果将注解没有写在 [ ] 之中，则需要修正它
+                assert isinstance(elem_type, ast.AnnotatedTypeTree)
+                assert elem_type.annotations == annotations
+                array.annotations = elem_type.annotations
+                array.array_type = elem_type.underlying_type
+            return array
+        else:
+            dims: List[ast.ExpressionTree] = []
+            dim_annotations: List[List[ast.AnnotationTree]] = [annotations]
+            dims.append(self.parse_expression())
+            self.accept(TokenKind.RBRACKET)
+            while self.token.kind in {TokenKind.LBRACKET, TokenKind.MONKEYS_AT}:
+                maybe_dim_annotations = self.type_annotations_opt()
+                pos = self.token.pos
+                self.next_token()
+                if self.token.kind == TokenKind.RBRACKET:
+                    elem_type = self.brackets_opt_cont(elem_type, pos, maybe_dim_annotations)
+                else:
+                    dim_annotations.append(maybe_dim_annotations)
+                    dims.append(self.parse_expression())
+                    self.accept(TokenKind.RBRACKET)
 
-                err_pos = self.token.pos
-                initializers = self.array_initializer_elements()
-                if initializers is not None:
-                    self.raise_syntax_error(err_pos, "IllegalArrayCreationBothDimensionAndInitialization")
+            err_pos = self.token.pos
+            initializers = self.array_initializer_elements()
+            if initializers is not None:
+                self.raise_syntax_error(err_pos, "IllegalArrayCreationBothDimensionAndInitialization")
 
-                new_array = ast.NewArrayTree.create(
-                    array_type=elem_type,
-                    dimensions=dims,
-                    initializers=initializers,
-                    dim_annotations=dim_annotations,
-                    **self._info_exclude(new_pos)
-                )
-                return new_array
+            new_array = ast.NewArrayTree.create(
+                array_type=elem_type,
+                dimensions=dims,
+                initializers=initializers,
+                dim_annotations=dim_annotations,
+                **self._info_exclude(new_pos)
+            )
+            return new_array
 
     def class_creator_rest(self,
                            new_pos: int,
