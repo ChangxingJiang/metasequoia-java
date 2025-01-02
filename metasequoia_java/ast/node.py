@@ -1294,7 +1294,7 @@ class MemberReferenceTree(ExpressionTree):
 
     mode: ReferenceMode = dataclasses.field(kw_only=True)
     name: str = dataclasses.field(kw_only=True)
-    qualifier_expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
     type_arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
@@ -1307,7 +1307,7 @@ class MemberReferenceTree(ExpressionTree):
             kind=TreeKind.MEMBER_REFERENCE,
             mode=mode,
             name=name,
-            qualifier_expression=qualifier_expression,
+            expression=qualifier_expression,
             type_arguments=type_arguments,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1524,7 +1524,7 @@ class OpensTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ParameterizedTypeTree(Tree):
+class ParameterizedTypeTree(ExpressionTree):
     """包含类型参数的类型表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ParameterizedTypeTree.java

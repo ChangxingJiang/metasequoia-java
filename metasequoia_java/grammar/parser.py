@@ -455,6 +455,7 @@ class JavaParser:
         TODO 待补充单元测试：类型实参
         TODO 待补充单元测试：括号表达式
         TODO 待补充单元测试：this
+        TODO 待补充单元测试：MONKEY_AT
 
         Examples
         --------
@@ -490,7 +491,7 @@ class JavaParser:
         'NEW_CLASS'
         """
         pos = self.token.pos
-        type_args = self.type_arguments_opt()
+        type_args = self.type_argument_list_opt()
 
         # 类型实参
         if self.token.kind == TokenKind.QUES:
@@ -645,6 +646,43 @@ class JavaParser:
                 type_args = self.type_argument_list(False)
             expression = self.creator(pos, type_args)
             return self.term3_rest(expression, None)
+
+        # 可能是有注解的强制类型转换（annotated cast types），或方法引用（method references）
+        if self.token.kind == TokenKind.MONKEYS_AT:
+            type_annotations = self.type_annotations_opt()
+            if not type_annotations:
+                self.raise_syntax_error(self.token.pos, "expected type annotations, but found none!")
+
+            expression = self.term3()
+            if not self.is_mode(Mode.TYPE):
+                if expression.kind == TreeKind.MEMBER_REFERENCE:
+                    assert isinstance(expression, ast.MemberReferenceTree)
+                    expression.expression = ast.AnnotatedTypeTree.create(
+                        annotations=type_annotations,
+                        underlying_type=expression.expression,
+                        **self._info_exclude(self.token.pos)
+                    )
+                    return self.term3_rest(expression, type_args)
+                elif expression.kind == TreeKind.MEMBER_SELECT:
+                    # TODO 待增加日志中的失败信息：NoAnnotationsOnDotClass
+                    return expression
+                else:
+                    self.illegal(type_annotations[0].start_pos)
+            else:
+                # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
+                expression = ast.AnnotatedTypeTree.create(
+                    annotations=type_annotations,
+                    underlying_type=expression,
+                    **self._info_include(None)
+                )
+                return self.term3_rest(expression, type_args)
+
+        if self.token.kind in {TokenKind.UNDERSCORE, TokenKind.IDENTIFIER, TokenKind.ASSERT, TokenKind.ENUM}:
+            if type_args is not None:
+                self.illegal()
+            if self.is_mode(Mode.EXPR) and not self.is_mode(Mode.NO_LAMBDA) and self.peek_token(0, TokenKind.ARROW):
+                expression = self.lambda_expression_or_statement(has_parens=False, explicit_params=False, pos=pos)
+                expression = self.type_argument_list_opt()
 
     def term3_rest(self, expression: ast.ExpressionTree,
                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
@@ -1017,16 +1055,45 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def type_arguments_opt(self) -> Optional[List[ast.ExpressionTree]]:
-        """可选的多个类型实参
+    def type_arguments_opt(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """可选的类型实参
 
-        [JDK Code] JavacParser.typeArgumentsOpt
+        [JDK Code] JavacParser.typeArgumentsOpt(JCExpression t)
         TypeArgumentsOpt = [ TypeArguments ]
 
-        TODO 待补充单元测试
+        Examples
+        --------
+        >>> parser = JavaParser(LexicalFSM("<name1>"))
+        >>> parser.select_expr_mode()
+        >>> parser.type_arguments_opt(ast.ExpressionTree.mock()).kind.name
+        'PARAMETERIZED_TYPE'
+        """
+        if self.token.kind == TokenKind.LT and self.is_mode(Mode.EXPR) and not self.is_mode(Mode.NO_PARAMS):
+            self.select_type_mode()
+            return self.type_arguments(expression, False)
+        return expression
+
+    def type_argument_list_opt(self, use_mode: Mode = Mode.TYPE) -> Optional[List[ast.ExpressionTree]]:
+        """可选的多个类型实参的列表
+
+        [JDK Code 1] JavacParser.typeArgumentsOpt()
+        [JDK Code 2] JavacParser.typeArgumentsOpt(int useMode)
+        TypeArgumentsOpt = [ TypeArguments ]
+
+        Examples
+        --------
+        >>> parser = JavaParser(LexicalFSM("<name1>"))
+        >>> parser.select_type_mode()
+        >>> len(parser.type_argument_list_opt())
+        1
+        >>> JavaParser(LexicalFSM("")).type_argument_list_opt() is None
+        True
         """
         if self.token.kind != TokenKind.LT:
             return None
+        if not self.is_mode(use_mode) or self.is_mode(Mode.NO_PARAMS):
+            self.illegal()
+        self.set_mode(use_mode)
         return self.type_argument_list(False)
 
     def type_argument_list(self, diamond_allowed: bool) -> List[ast.ExpressionTree]:
@@ -2115,4 +2182,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("ClassName (name1, name2) {}")).creator(0, []))
+    print(JavaParser(LexicalFSM("<name1>")).type_arguments_opt(ast.ExpressionTree.mock()))
