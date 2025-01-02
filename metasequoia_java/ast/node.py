@@ -194,6 +194,18 @@ class ArrayAccessTree(ExpressionTree):
     expression: ExpressionTree = dataclasses.field(kw_only=True)
     index: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree, index: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ArrayAccessTree":
+        return ArrayAccessTree(
+            kind=TreeKind.ARRAY_TYPE,
+            expression=expression,
+            index=index,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{self.expression.generate()}[{self.index.generate()}]"
 
@@ -867,7 +879,7 @@ class EnhancedForLoopTree(StatementTree):
 
 @dataclasses.dataclass(slots=True)
 class ErroneousTree(ExpressionTree):
-    """TODO 名称待整理
+    """格式错误的表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ErroneousTree.java
     A tree node to stand in for a malformed expression.
