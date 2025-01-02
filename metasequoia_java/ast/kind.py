@@ -4,7 +4,6 @@
 
 import enum
 
-
 __all__ = [
     "TreeKind"
 ]
@@ -134,3 +133,5 @@ class TreeKind(enum.Enum):
     USES = enum.auto()  # UsesTree
     OTHER = enum.auto()
     YIELD = enum.auto()  # YieldTree
+
+    MOCK = enum.auto()

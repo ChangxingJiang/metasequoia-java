@@ -110,7 +110,7 @@ class JavaParser:
 
     # ------------------------------ 报错信息相关方法 ------------------------------
 
-    def syntax_error(self, pos: int, message: str):
+    def raise_syntax_error(self, pos: int, message: str):
         """报告语法错误"""
         raise JavaSyntaxError(f"报告语法错误: pos={pos}, message={message}")
 
@@ -119,9 +119,9 @@ class JavaParser:
         if pos is None:
             pos = self.token.pos
         if self.is_mode(Mode.EXPR):
-            self.syntax_error(pos, "IllegalStartOfExpr")
+            self.raise_syntax_error(pos, "IllegalStartOfExpr")
         else:
-            self.syntax_error(pos, "IllegalStartOfType")
+            self.raise_syntax_error(pos, "IllegalStartOfType")
 
     # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
 
@@ -151,16 +151,16 @@ class JavaParser:
             self.next_token()
             return name
         if self.token.kind == TokenKind.ASSERT:
-            self.syntax_error(self.token.pos, f"AssertAsIdentifier")
+            self.raise_syntax_error(self.token.pos, f"AssertAsIdentifier")
         if self.token.kind == TokenKind.ENUM:
-            self.syntax_error(self.token.pos, f"EnumAsIdentifier")
+            self.raise_syntax_error(self.token.pos, f"EnumAsIdentifier")
         if self.token.kind == TokenKind.THIS:
             if self.allow_this_ident:
                 name = self.token.name
                 self.next_token()
                 return name
             else:
-                self.syntax_error(self.token.pos, f"ThisAsIdentifier")
+                self.raise_syntax_error(self.token.pos, f"ThisAsIdentifier")
         if self.token.kind == TokenKind.UNDERSCORE:
             name = self.token.name
             self.next_token()
@@ -258,6 +258,8 @@ class JavaParser:
             name=name,
             **self._info_exclude(pos)
         )
+
+    # ---------- 以上顺序未调整 ----------
 
     def literal(self) -> ast.LiteralTree:
         """解析字面值
@@ -369,196 +371,6 @@ class JavaParser:
             )
         return result
 
-    def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
-        """可选的多个类型参数
-
-        Parameters
-        ----------
-        parse_empty : bool, default = False
-            是否解析空参数
-
-        [JDK Code] JavacParser.typeParametersOpt
-        TypeParametersOpt = ["<" TypeParameter {"," TypeParameter} ">"]
-
-        TODO 待补充单元测试
-        """
-        if self.token.kind != TokenKind.LT:
-            return []
-
-        self.next_token()
-        if parse_empty is True and self.token.kind == TokenKind.GT:
-            self.accept(TokenKind.GT)
-            return []
-
-        ty_params: List[ast.TypeParameterTree] = [self.type_parameter()]
-        while self.token.kind == TokenKind.COMMA:
-            self.next_token()
-            ty_params.append(self.type_parameter())
-        self.accept(TokenKind.GT)
-        return ty_params
-
-    def type_parameter(self) -> ast.TypeParameterTree:
-        """类型参数
-
-        [JDK Code] JavacParser.typeParameter
-        TypeParameter = [Annotations] TypeVariable [TypeParameterBound]
-        TypeParameterBound = EXTENDS Type {"&" Type}
-        TypeVariable = Ident
-
-        TODO 待补充单元测试
-        """
-        pos = self.token.pos
-        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
-        name: ast.IdentifierTree = self.type_name()
-        bounds: List[ast.ExpressionTree] = []
-        if self.token.kind == TokenKind.EXTENDS:
-            self.next_token()
-            bounds.append(self.parse_type())
-            while self.token.kind == TokenKind.AMP:
-                self.next_token()
-                bounds.append(self.parse_type())
-        return ast.TypeParameterTree.create(
-            name=name,
-            bounds=bounds,
-            annotations=annotations,
-            **self._info_include(pos)
-        )
-
-    def type_arguments_opt(self) -> Optional[List[ast.ExpressionTree]]:
-        """可选的多个类型实参
-
-        [JDK Code] JavacParser.typeArgumentsOpt
-        TypeArgumentsOpt = [ TypeArguments ]
-
-        TODO 待补充单元测试
-        """
-        if self.token.kind != TokenKind.LT:
-            return None
-        return self.type_arguments(False)
-
-    def type_arguments(self, diamond_allowed: bool) -> List[ast.ExpressionTree]:
-        """多个类型实参
-
-        [JDK Code] JavacParser.typeArguments
-        TypeArguments  = "<" TypeArgument {"," TypeArgument} ">"
-
-        TODO 待补充单元测试
-        """
-        if self.token.kind != TokenKind.LT:
-            raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self.token.kind}")
-
-        self.next_token()
-        if self.token.kind == TokenKind.GT and diamond_allowed:
-            self.set_mode(self.mode | Mode.DIAMOND)
-            self.next_token()
-            return []
-
-        args = [self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type()]
-        while self.token.kind == TokenKind.COMMA:
-            self.next_token()
-            args.append(self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type())
-
-        if self.token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
-                               TokenKind.GT_GT_GT_EQ}:
-            self.token = self.lexer.split()
-        elif self.token.kind == TokenKind.GT:
-            self.next_token()
-        else:
-            raise JavaSyntaxError(f"expect GT or COMMA in type_arguments, but find {self.token.kind}")
-
-        return args
-
-    def type_argument(self) -> ast.ExpressionTree:
-        """类型实参
-
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
-        TypeArgument:
-          ReferenceType
-          Wildcard
-
-        Wildcard:
-          {Annotation} ? [WildcardBounds]
-
-        WildcardBounds:
-          extends ReferenceType
-          super ReferenceType
-
-        [JDK Code] JavacParser.typeArgument
-        TypeArgument = Type
-                     | [Annotations] "?"
-                     | [Annotations] "?" EXTENDS Type {"&" Type}
-                     | [Annotations] "?" SUPER Type
-
-        样例 1: List<String>
-        样例 2: List<?>
-        样例 3: List<? extends Number>
-        样例 4: List<? super Integer>
-        样例 5: List<@NonNull String>
-        样例 6: List<? extends Number & Comparable<?>>
-
-        TODO 待补充单元测试（等待 parse_type、type_annotations_opt）
-        """
-        pos_1 = self.token.pos
-        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
-        if self.token.kind != TokenKind.QUES:
-            return self.parse_type(False, annotations)
-        pos_2 = self.token.pos
-        self.next_token()
-        if self.token.kind == TokenKind.EXTENDS:
-            self.next_token()
-            wildcard = ast.WildcardTree.create_extends_wildcard(
-                bound=self.parse_type(),
-                **self._info_include(pos_2)
-            )
-        elif self.token.kind == TokenKind.SUPER:
-            self.next_token()
-            wildcard = ast.WildcardTree.create_super_wildcard(
-                bound=self.parse_type(),
-                **self._info_include(pos_2)
-            )
-        elif self.token.kind == TokenKind.GT:
-            wildcard = ast.WildcardTree.create_unbounded_wildcard(
-                bound=self.parse_type(),
-                **self._info_include(pos_2)
-            )
-        else:
-            raise JavaSyntaxError(f"类型实参语法错误")
-
-        if annotations:
-            return ast.AnnotatedTypeTree.create(
-                annotations=annotations,
-                underlying_type=wildcard,
-                **self._info_include(pos_1)
-            )
-        return wildcard
-
-    def type_annotations_opt(self) -> List[ast.AnnotationTree]:
-        """TODO"""
-        return []
-
-    def unannotated_type(self, allow_var: bool = False) -> ast.ExpressionTree:
-        """解析不包含注解的类型
-
-        [JDK Code] JavacParser.unannotatedType
-
-        TODO 待增加 allowVar 相关逻辑
-        TODO 待增加单元测试
-        """
-        self.next_token()  # TODO 临时返回 Mock 结果
-        return ast.PrimitiveTypeTree.mock("INT")  # TODO 临时返回 Mock 结果
-
-        result = self.term()
-        if result.kind == TokenKind.IDENTIFIER and result.source in {"var", "yield", "record", "sealed", "permits"}:
-            raise JavaSyntaxError(f"expect unannotated_type, but get {result.kind}")
-        # TODO 待增加 TYPEARRAY 相关逻辑
-        return result
-
-    def term(self, new_mode: int) -> ast.ExpressionTree:
-        """TODO 名称待整理
-
-        [JDK Code] JavacParser.term
-        """
-
     def parse_intersection_type(self, pos: int, first_type: ast.ExpressionTree):
         """解析 CAST 语句中的交叉类型
 
@@ -578,6 +390,28 @@ class JavaParser:
                 **self._info_include(pos)
             )
         return first_type
+
+    def unannotated_type(self, allow_var: bool = False, new_mode: int = Mode.TYPE) -> ast.ExpressionTree:
+        """解析不包含注解的类型
+
+        [JDK Code] JavacParser.unannotatedType
+
+        TODO 待增加 allowVar 相关逻辑
+        TODO 待增加单元测试
+        """
+        result = self.term(new_mode)
+        if result.kind == TokenKind.IDENTIFIER and result.source in {"var", "yield", "record", "sealed", "permits"}:
+            raise JavaSyntaxError(f"expect unannotated_type, but get {result.kind}")
+        # TODO 待增加 TYPEARRAY 相关逻辑
+        return result
+
+    def term(self, new_mode: int) -> ast.ExpressionTree:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.term
+        """
+        self.next_token()
+        return ast.ExpressionTree.mock()  # TODO 待开发实际逻辑
 
     def term_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
         """解析第 0 层级语法元素的剩余部分"""
@@ -631,7 +465,8 @@ class JavaParser:
         SuperSuffix    = Arguments | "." Ident [Arguments]
 
         TODO 待补充单元测试：类型实参
-        TODO 待补充单元测试：类型实参
+        TODO 待补充单元测试：括号表达式
+        TODO 待补充单元测试：this
 
         Examples
         --------
@@ -676,7 +511,7 @@ class JavaParser:
         if self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB, TokenKind.BANG, TokenKind.TILDE, TokenKind.PLUS,
                                TokenKind.SUB}:
             if type_args is not None and self.is_mode(Mode.EXPR):
-                self.syntax_error(pos, "Illegal")  # TODO 待增加说明信息
+                self.raise_syntax_error(pos, "Illegal")  # TODO 待增加说明信息
             tk = self.token.kind
             self.next_token()
             self.select_expr_mode()
@@ -734,15 +569,28 @@ class JavaParser:
             return self.term_3_rest(expression, type_args)
 
         if self.token.kind == TokenKind.THIS:
-            if self.is_mode(Mode.EXPR):
-                self.select_expr_mode()
-                expression = ast.IdentifierTree.create(
-                    name="this",
-                    **self._info_include(pos)
-                )
-                self.next_token()
-                if type_args is None:
-                    self.type_arguments_opt()
+            if not self.is_mode(Mode.EXPR):
+                self.raise_syntax_error(self.token.pos, "illegal")
+            self.select_expr_mode()
+            expression = ast.IdentifierTree.create(
+                name="this",
+                **self._info_include(pos)
+            )
+            self.next_token()
+            if type_args is None:
+                expression = self.arguments_opt(None, expression)
+            else:
+                expression = self.arguments(type_args, expression)
+            return self.term_3_rest(expression, None)
+
+        if self.token.kind == TokenKind.SUPER:
+            if not self.is_mode(Mode.EXPR):
+                self.raise_syntax_error(self.token.pos, "illegal")
+            self.select_expr_mode()
+            expression = ast.IdentifierTree.create(
+                name="super",
+                **self._info_include(pos)
+            )
 
     def term_3_rest(self, expression: ast.ExpressionTree,
                     type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
@@ -957,11 +805,47 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def arguments_opt(self, type_args: List[ast.ExpressionTree], expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def super_suffix(self, type_args: Optional[List[ast.ExpressionTree]],
+                     expression: ast.ExpressionTree) -> ast.ExpressionTree:
+        """super 关键字之后的元素
+
+        [JDK Code] JavacParser.superSuffix(List<JCExpression>, JCExpression)
+        SuperSuffix = Arguments | "." [TypeArguments] Ident [Arguments]
+        """
+        self.next_token()
+        if self.token.kind == TokenKind.LPAREN and type_args is not None:
+            expression = self.arguments(type_args, expression)
+        elif self.token.kind == TokenKind.COL_COL:
+            if type_args is not None:
+                self.raise_syntax_error(self.token.pos, "illegal")
+            expression = self.member_reference_suffix(expression)
+
+    def arguments_opt(self,
+                      type_args: Optional[List[ast.ExpressionTree]],
+                      expression: ast.ExpressionTree) -> ast.ExpressionTree:
         """可选择的包含括号的实参列表
 
         [JDK Code] JavacParser.argumentsOpt
         ArgumentsOpt = [ Arguments ]
+
+        Examples
+        --------
+        >>> parser = JavaParser(LexicalFSM("(name1)"))
+        >>> parser.select_expr_mode()
+        >>> res1 = parser.arguments_opt(None, ast.ExpressionTree.mock())
+        >>> res1.kind.name
+        'METHOD_INVOCATION'
+        >>> if isinstance(res1, ast.MethodInvocationTree):
+        ...     len(res1.arguments)
+        1
+        >>> parser = JavaParser(LexicalFSM("(name1, name2)"))
+        >>> parser.select_expr_mode()
+        >>> res1 = parser.arguments_opt(None, ast.ExpressionTree.mock())
+        >>> res1.kind.name
+        'METHOD_INVOCATION'
+        >>> if isinstance(res1, ast.MethodInvocationTree):
+        ...     len(res1.arguments)
+        2
         """
         if (self.is_mode(Mode.EXPR) and self.token.kind == TokenKind.LPAREN) or type_args is not None:
             self.select_expr_mode()
@@ -978,12 +862,10 @@ class JavaParser:
 
         [JDK Code] JavacParser.arguments()
         Arguments = "(" [Expression { COMMA Expression }] ")"
-
-        TODO 待补充单元测试
         """
         args = []
         if self.token.kind != TokenKind.LPAREN:
-            self.syntax_error(self.token.pos, f"expect LPAREN, gut get {self.token.kind.name}")
+            self.raise_syntax_error(self.token.pos, f"expect LPAREN, gut get {self.token.kind.name}")
         self.next_token()
         if self.token.kind != TokenKind.RPAREN:
             args.append(self.parse_expression())
@@ -997,8 +879,6 @@ class JavaParser:
         """包含括号的实参列表
 
         [JDK Code] JavacParser.arguments(List<JCExpression>, JCExpression)
-
-        TODO 待补充单元测试
         """
         pos = self.token.pos
         arguments = self.argument_list()
@@ -1008,6 +888,132 @@ class JavaParser:
             arguments=arguments,
             **self._info_exclude(pos)
         )
+
+    def type_arguments_opt(self) -> Optional[List[ast.ExpressionTree]]:
+        """可选的多个类型实参
+
+        [JDK Code] JavacParser.typeArgumentsOpt
+        TypeArgumentsOpt = [ TypeArguments ]
+
+        TODO 待补充单元测试
+        """
+        if self.token.kind != TokenKind.LT:
+            return None
+        return self.type_arguments(False)
+
+    def type_arguments(self, diamond_allowed: bool) -> List[ast.ExpressionTree]:
+        """多个类型实参
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeArguments:
+          < TypeArgumentList >
+
+        TypeArgumentList:
+          TypeArgument {, TypeArgument}
+
+        [JDK Code] JavacParser.typeArguments
+        TypeArguments  = "<" TypeArgument {"," TypeArgument} ">"
+
+        Parameters
+        ----------
+        diamond_allowed : bool
+            是否允许没有实参的类型实参，即 "<>"
+
+        >>> len(JavaParser(LexicalFSM("<>")).type_arguments(True))
+        0
+        >>> len(JavaParser(LexicalFSM("<String>")).type_arguments(True))
+        1
+        >>> len(JavaParser(LexicalFSM("<String, int>")).type_arguments(True))
+        2
+        """
+        if self.token.kind != TokenKind.LT:
+            raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self.token.kind}")
+
+        self.next_token()
+        if self.token.kind == TokenKind.GT and diamond_allowed:
+            self.set_mode(self.mode | Mode.DIAMOND)
+            self.next_token()
+            return []
+
+        args = [self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type()]
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
+            args.append(self.type_argument() if not self.is_mode(Mode.EXPR) else self.parse_type())
+
+        if self.token.kind in {TokenKind.GT_GT, TokenKind.GT_EQ, TokenKind.GT_GT_GT, TokenKind.GT_GT_EQ,
+                               TokenKind.GT_GT_GT_EQ}:
+            self.token = self.lexer.split()
+        elif self.token.kind == TokenKind.GT:
+            self.next_token()
+        else:
+            raise JavaSyntaxError(f"expect GT or COMMA in type_arguments, "
+                                  f"but find {self.token.kind.name}({self.token.kind.value})")
+
+        return args
+
+    def type_argument(self) -> ast.ExpressionTree:
+        """类型实参
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeArgument:
+          ReferenceType
+          Wildcard
+
+        Wildcard:
+          {Annotation} ? [WildcardBounds]
+
+        WildcardBounds:
+          extends ReferenceType
+          super ReferenceType
+
+        [JDK Code] JavacParser.typeArgument
+        TypeArgument = Type
+                     | [Annotations] "?"
+                     | [Annotations] "?" EXTENDS Type {"&" Type}
+                     | [Annotations] "?" SUPER Type
+
+        样例 1: List<String>
+        样例 2: List<?>
+        样例 3: List<? extends Number>
+        样例 4: List<? super Integer>
+        样例 5: List<@NonNull String>
+        样例 6: List<? extends Number & Comparable<?>>
+
+        TODO 待补充单元测试（等待 parse_type、type_annotations_opt）
+        """
+        pos_1 = self.token.pos
+        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        if self.token.kind != TokenKind.QUES:
+            return self.parse_type(False, annotations)
+        pos_2 = self.token.pos
+        self.next_token()
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
+            wildcard = ast.WildcardTree.create_extends_wildcard(
+                bound=self.parse_type(),
+                **self._info_include(pos_2)
+            )
+        elif self.token.kind == TokenKind.SUPER:
+            self.next_token()
+            wildcard = ast.WildcardTree.create_super_wildcard(
+                bound=self.parse_type(),
+                **self._info_include(pos_2)
+            )
+        elif self.token.kind == TokenKind.GT:
+            wildcard = ast.WildcardTree.create_unbounded_wildcard(
+                bound=self.parse_type(),
+                **self._info_include(pos_2)
+            )
+        else:
+            raise JavaSyntaxError(f"类型实参语法错误")
+
+        if annotations:
+            return ast.AnnotatedTypeTree.create(
+                annotations=annotations,
+                underlying_type=wildcard,
+                **self._info_include(pos_1)
+            )
+        return wildcard
 
     def brackets_opt(self, expression: ast.ExpressionTree, annotations: Optional[List[ast.AnnotationTree]] = None):
         """可选的数组标记（空方括号）
@@ -1066,6 +1072,23 @@ class JavaParser:
             )
         return expression
 
+    def member_reference_suffix(self, expression: ast.ExpressionTree, pos: Optional[int] = None) -> ast.ExpressionTree:
+        """方法引用表达式的后缀
+
+        [JDK Code] JavacParser.memberReferenceSuffix
+        MemberReferenceSuffix = "::" [TypeArguments] Ident
+                              | "::" [TypeArguments] "new"
+        """
+        if pos is None:
+            pos = self.token.pos
+            self.accept(TokenKind.COL_COL)
+        self.select_expr_mode()
+        type_args: Optional[List[ast.ExpressionTree]] = None
+        if self.token.kind == TokenKind.LT:
+            type_args = self.type_arguments(False)
+        if self.token.kind == TokenKind.NEW:
+            pass
+
     def block(self, pos: int, flags: int) -> ast.BlockTree:
         """解析代码块
 
@@ -1073,6 +1096,10 @@ class JavaParser:
         Block = "{" BlockStatements "}"
         """
         return ast.BlockTree.mock()  # TODO 待开发真实执行逻辑
+
+    def type_annotations_opt(self) -> List[ast.AnnotationTree]:
+        """TODO"""
+        return []
 
     def modifiers_opt(self, partial: Optional[ast.ModifiersTree] = None) -> ast.ModifiersTree:
         """修饰词
@@ -1179,7 +1206,7 @@ class JavaParser:
                 break
 
         if len(flags) > len(set(flags)):
-            self.syntax_error(pos, "RepeatedModifier(存在重复的修饰符)")
+            self.raise_syntax_error(pos, "RepeatedModifier(存在重复的修饰符)")
 
         tk = self.token.kind
         if tk == TokenKind.ENUM:
@@ -1195,6 +1222,9 @@ class JavaParser:
             annotations=annotations,
             **self._info_exclude(pos)
         )
+
+    def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
+        """TODO"""
 
     def variable_declarator_id(self,
                                modifiers: ast.ModifiersTree,
@@ -1234,8 +1264,8 @@ class JavaParser:
                 and self.token.kind not in LAX_IDENTIFIER
                 and modifiers.flags == Modifier.PARAMETER
                 and len(modifiers.annotations) == 0):
-            self.syntax_error(pos, "这是一个 lambda 表达式的参数，且 Token 类型不是标识符，且没有任何修饰符或注解，则意味着编译"
-                                   "器本应假设该 lambda 表达式为显式形式，但它可能包含隐式参数或显式参数的混合")
+            self.raise_syntax_error(pos, "这是一个 lambda 表达式的参数，且 Token 类型不是标识符，且没有任何修饰符或注解，则意味着编译"
+                                         "器本应假设该 lambda 表达式为显式形式，但它可能包含隐式参数或显式参数的混合")
 
         if self.token.kind == TokenKind.UNDERSCORE and (catch_parameter or lambda_parameter):
             expression = ast.IdentifierTree.create(
@@ -1254,7 +1284,7 @@ class JavaParser:
                 **self._info_exclude(pos)
             )
         if lambda_parameter and variable_type is None:
-            self.syntax_error(pos, "we have a lambda parameter that is not an identifier this is a syntax error")
+            self.raise_syntax_error(pos, "we have a lambda parameter that is not an identifier this is a syntax error")
         else:
             return ast.VariableTree.create_by_name_expression(
                 modifiers=modifiers,
@@ -1263,8 +1293,60 @@ class JavaParser:
                 **self._info_include(pos)
             )
 
-    def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
-        """TODO"""
+    def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
+        """可选的多个类型参数
+
+        Parameters
+        ----------
+        parse_empty : bool, default = False
+            是否解析空参数
+
+        [JDK Code] JavacParser.typeParametersOpt
+        TypeParametersOpt = ["<" TypeParameter {"," TypeParameter} ">"]
+
+        TODO 待补充单元测试
+        """
+        if self.token.kind != TokenKind.LT:
+            return []
+
+        self.next_token()
+        if parse_empty is True and self.token.kind == TokenKind.GT:
+            self.accept(TokenKind.GT)
+            return []
+
+        ty_params: List[ast.TypeParameterTree] = [self.type_parameter()]
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
+            ty_params.append(self.type_parameter())
+        self.accept(TokenKind.GT)
+        return ty_params
+
+    def type_parameter(self) -> ast.TypeParameterTree:
+        """类型参数
+
+        [JDK Code] JavacParser.typeParameter
+        TypeParameter = [Annotations] TypeVariable [TypeParameterBound]
+        TypeParameterBound = EXTENDS Type {"&" Type}
+        TypeVariable = Ident
+
+        TODO 待补充单元测试
+        """
+        pos = self.token.pos
+        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        name: ast.IdentifierTree = self.type_name()
+        bounds: List[ast.ExpressionTree] = []
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
+            bounds.append(self.parse_type())
+            while self.token.kind == TokenKind.AMP:
+                self.next_token()
+                bounds.append(self.parse_type())
+        return ast.TypeParameterTree.create(
+            name=name,
+            bounds=bounds,
+            annotations=annotations,
+            **self._info_include(pos)
+        )
 
     def formal_parameters(self,
                           lambda_parameter: bool = False,
@@ -1314,7 +1396,7 @@ class JavaParser:
                 self.next_token()
                 params.append(self.formal_parameter(lambda_parameter, record_component))
         if self.token.kind != TokenKind.RPAREN:
-            self.syntax_error(self.token.pos, f"expect COMMA, RPAREN or LBRACKET, but get {self.token.kind}")
+            self.raise_syntax_error(self.token.pos, f"expect COMMA, RPAREN or LBRACKET, but get {self.token.kind}")
         self.next_token()
         return params
 
@@ -1510,7 +1592,7 @@ class JavaParser:
         """
         modifiers = self.modifiers_opt()
         if len({flag for flag in modifiers.flags if flag not in {Modifier.FINAL, Modifier.DEPRECATED}}) > 0:
-            self.syntax_error(self.token.pos, f"存在不是 FINAL 的修饰符: {flags}")
+            self.raise_syntax_error(self.token.pos, f"存在不是 FINAL 的修饰符: {flags}")
         modifiers.flags.extend(flags)
         return modifiers
 
@@ -1523,5 +1605,4 @@ if __name__ == "__main__":
     #         样例 5: List<@NonNull String>
     #         样例 6: List<? extends Number & Comparable<?>>
 
-    print(JavaParser(LexicalFSM("++a")).term_3().kind.name)
-    print(JavaParser(LexicalFSM("(int)")).term_3().kind.name)
+    print(JavaParser(LexicalFSM("<>")).type_argument())

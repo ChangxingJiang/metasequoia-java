@@ -27,9 +27,18 @@ class Tree(abc.ABC):
     """
 
     kind: TreeKind = dataclasses.field(kw_only=True)  # 节点类型
-    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码，当且仅当当前节点没有对应代码时为 None
     start_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的开始位置，当且仅当当前节点没有对应代码时为 None
     end_pos: Optional[int] = dataclasses.field(kw_only=True)  # 在原始代码中的结束位置，当且仅当当前节点没有对应代码时为 None
+    source: Optional[str] = dataclasses.field(kw_only=True)  # 原始代码，当且仅当当前节点没有对应代码时为 None
+
+    @staticmethod
+    def mock() -> "Tree":
+        return MockTree(
+            kind=TreeKind.MOCK,
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
 
     @property
     def is_literal(self) -> bool:
@@ -41,12 +50,37 @@ class Tree(abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
+class MockTree(Tree):
+    """模拟节点"""
+
+    def generate(self) -> str:
+        return "MockNode"
+
+
+@dataclasses.dataclass(slots=True)
 class ExpressionTree(Tree, abc.ABC):
     """各类表达式节点的抽象基类
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExpressionTree.java
     A tree node used as the base class for the different types of expressions.
     """
+
+    @staticmethod
+    def mock() -> "ExpressionTree":
+        return MockExpressionTree(
+            kind=TreeKind.MOCK,
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
+
+@dataclasses.dataclass(slots=True)
+class MockExpressionTree(ExpressionTree):
+    """模拟节点"""
+
+    def generate(self) -> str:
+        return "MockExpressionNode"
 
 
 @dataclasses.dataclass(slots=True)
