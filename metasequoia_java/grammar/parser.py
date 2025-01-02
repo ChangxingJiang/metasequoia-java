@@ -123,14 +123,29 @@ class JavaParser:
         else:
             self.raise_syntax_error(pos, "IllegalStartOfType")
 
-    # ------------------------------ Chapter 3 : Lexical Structure ------------------------------
+    # ------------------------------ 其他解析方法 ------------------------------
 
-    def ident_or_underscore(self) -> str:
-        """标识符或下划线
+    def unqualified_method_identifier(self) -> ast.IdentifierTree:
+        """解析 UnqualifiedMethodIdentifier 元素
 
-        [JDK Code] JavacParser.identOrUnderscore
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        UnqualifiedMethodIdentifier:
+          Identifier but not yield
         """
-        return self.ident()
+        if self.token.kind != TokenKind.IDENTIFIER:
+            raise JavaSyntaxError(f"{self.token.source} 不能作为 UnqualifiedMethodIdentifier")
+        if self.token.name in {"yield"}:
+            raise JavaSyntaxError(f"{self.token.name} 不能作为 UnqualifiedMethodIdentifier")
+
+        pos = self.token.pos
+        name = self.token.name
+        self.next_token()
+        return ast.IdentifierTree.create(
+            name=name,
+            **self._info_exclude(pos)
+        )
+
+    # ------------------------------ 解析方法 ------------------------------
 
     def ident(self) -> str:
         """标识符的名称
@@ -167,6 +182,13 @@ class JavaParser:
             return name
         self.accept(TokenKind.IDENTIFIER)
         raise JavaSyntaxError(f"{self.token.source} 不能作为 Identifier")
+
+    def ident_or_underscore(self) -> str:
+        """标识符或下划线
+
+        [JDK Code] JavacParser.identOrUnderscore
+        """
+        return self.ident()
 
     def qualident(self, allow_annos: bool):
         """多个用 DOT 分隔的标识符
@@ -216,50 +238,6 @@ class JavaParser:
                     **self._info_include(pos)
                 )
         return expression
-
-    def type_name(self) -> ast.IdentifierTree:
-        """解析 TypeIdentifier 元素
-
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
-        TypeIdentifier:
-          Identifier but not permits, record, sealed, var, or yield
-
-        [JDK Code] JavacParser.typeName
-        """
-        if self.token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.source}")
-        if self.token.name in {"permits", "record", "sealed", "var", "yield"}:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.name}")
-
-        pos = self.token.pos
-        name = self.token.name
-        self.next_token()
-        return ast.IdentifierTree.create(
-            name=name,
-            **self._info_exclude(pos)
-        )
-
-    def unqualified_method_identifier(self) -> ast.IdentifierTree:
-        """解析 UnqualifiedMethodIdentifier 元素
-
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
-        UnqualifiedMethodIdentifier:
-          Identifier but not yield
-        """
-        if self.token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"{self.token.source} 不能作为 UnqualifiedMethodIdentifier")
-        if self.token.name in {"yield"}:
-            raise JavaSyntaxError(f"{self.token.name} 不能作为 UnqualifiedMethodIdentifier")
-
-        pos = self.token.pos
-        name = self.token.name
-        self.next_token()
-        return ast.IdentifierTree.create(
-            name=name,
-            **self._info_exclude(pos)
-        )
-
-    # ---------- 以上顺序未调整 ----------
 
     def literal(self) -> ast.LiteralTree:
         """解析字面值
@@ -972,14 +950,18 @@ class JavaParser:
                      | [Annotations] "?" EXTENDS Type {"&" Type}
                      | [Annotations] "?" SUPER Type
 
-        样例 1: List<String>
-        样例 2: List<?>
-        样例 3: List<? extends Number>
-        样例 4: List<? super Integer>
-        样例 5: List<@NonNull String>
-        样例 6: List<? extends Number & Comparable<?>>
-
-        TODO 待补充单元测试（等待 parse_type、type_annotations_opt）
+        Examples
+        --------
+        >>> # JavaParser(LexicalFSM("String>")).type_argument()
+        >>> JavaParser(LexicalFSM("?>")).type_argument().kind.name
+        'UNBOUNDED_WILDCARD'
+        >>> JavaParser(LexicalFSM("? extends Number>")).type_argument().kind.name
+        'EXTENDS_WILDCARD'
+        >>> JavaParser(LexicalFSM("? super Number>")).type_argument().kind.name
+        'SUPER_WILDCARD'
+        >>> # JavaParser(LexicalFSM("@NonNull String>")).type_argument()
+        >>> JavaParser(LexicalFSM("? super Number & Comparable<?>>")).type_argument().kind.name
+        'SUPER_WILDCARD'
         """
         pos_1 = self.token.pos
         annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
@@ -1293,6 +1275,28 @@ class JavaParser:
                 **self._info_include(pos)
             )
 
+    def type_name(self) -> ast.IdentifierTree:
+        """解析 TypeIdentifier 元素
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeIdentifier:
+          Identifier but not permits, record, sealed, var, or yield
+
+        [JDK Code] JavacParser.typeName
+        """
+        if self.token.kind != TokenKind.IDENTIFIER:
+            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.source}")
+        if self.token.name in {"permits", "record", "sealed", "var", "yield"}:
+            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.name}")
+
+        pos = self.token.pos
+        name = self.token.name
+        self.next_token()
+        return ast.IdentifierTree.create(
+            name=name,
+            **self._info_exclude(pos)
+        )
+
     def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
         """可选的多个类型参数
 
@@ -1605,4 +1609,8 @@ if __name__ == "__main__":
     #         样例 5: List<@NonNull String>
     #         样例 6: List<? extends Number & Comparable<?>>
 
-    print(JavaParser(LexicalFSM("<>")).type_argument())
+    print(JavaParser(LexicalFSM("String>")).type_argument())
+    print(JavaParser(LexicalFSM("?>")).type_argument())
+    print(JavaParser(LexicalFSM("? extends Number>")).type_argument())
+    print(JavaParser(LexicalFSM("? super Number>")).type_argument())
+    print(JavaParser(LexicalFSM("? super Number & Comparable<?>>")).type_argument())
