@@ -91,6 +91,18 @@ class StatementTree(Tree, abc.ABC):
     A tree node used as the base class for the different kinds of statements.
     """
 
+    @staticmethod
+    def mock() -> "StatementTree":
+        return MockStatement(start_pos=None, end_pos=None, source=None)
+
+
+@dataclasses.dataclass(slots=True)
+class MockStatement(StatementTree):
+    """模拟 Statement 节点"""
+
+    def generate(self) -> str:
+        return "<MockStatement>"
+
 
 @dataclasses.dataclass(slots=True)
 class DirectiveTree(Tree, abc.ABC):

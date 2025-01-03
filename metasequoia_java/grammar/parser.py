@@ -509,6 +509,61 @@ class JavaParser:
         """解析第 3 层级语法元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html（不包含在代码中已单独注释了 [JDK Document] 的语义组）
+        Primary:
+          PrimaryNoNewArray
+          ArrayCreationExpression
+
+        PrimaryNoNewArray:
+          Literal
+          ClassLiteral
+          this
+          TypeName . this
+          ( Expression )
+          ClassInstanceCreationExpression
+          FieldAccess
+          ArrayAccess
+          MethodInvocation
+          MethodReference
+
+        ClassLiteral:
+          TypeName {[ ]} . class
+          NumericType {[ ]} . class
+          boolean {[ ]} . class
+          void . class
+
+        ArrayAccess:
+          ExpressionName [ Expression ]
+          PrimaryNoNewArray [ Expression ]
+          ArrayCreationExpressionWithInitializer [ Expression ]
+
+        FieldAccess:
+          Primary . Identifier
+          super . Identifier
+          TypeName . super . Identifier
+
+        MethodInvocation:
+          MethodName ( [ArgumentList] )
+          TypeName . [TypeArguments] Identifier ( [ArgumentList] )
+          ExpressionName . [TypeArguments] Identifier ( [ArgumentList] )
+          Primary . [TypeArguments] Identifier ( [ArgumentList] )
+          super . [TypeArguments] Identifier ( [ArgumentList] )
+          TypeName . super . [TypeArguments] Identifier ( [ArgumentList] )
+
+        MethodReference:
+          ExpressionName :: [TypeArguments] Identifier
+          Primary :: [TypeArguments] Identifier
+          ReferenceType :: [TypeArguments] Identifier
+          super :: [TypeArguments] Identifier
+          TypeName . super :: [TypeArguments] Identifier
+          ClassType :: [TypeArguments] new
+          ArrayType :: new
+
+        UnaryExpressionNotPlusMinus:
+          PostfixExpression
+          ~ UnaryExpression
+          ! UnaryExpression
+          CastExpression
+          SwitchExpression
 
         [JDK Code] JavacParser.term3
         Expression3    = PrefixOp Expression3
@@ -547,12 +602,13 @@ class JavaParser:
         TODO 待补充单元测试：括号表达式
         TODO 待补充单元测试：this
         TODO 待补充单元测试：MONKEY_AT
+        TODO 待补充单元测试：switch 语句
 
         Examples
         --------
         >>> JavaParser(LexicalFSM("++a")).term3().kind.name
         'PREFIX_INCREMENT'
-        >>> JavaParser(LexicalFSM("(int)")).term3().kind.name
+        >>> JavaParser(LexicalFSM("(int) a")).term3().kind.name
         'TYPE_CAST'
         >>> JavaParser(LexicalFSM("(x, y)->{ return x + y; }")).term3().kind.name
         'LAMBDA_EXPRESSION'
@@ -1007,34 +1063,109 @@ class JavaParser:
                 self.next_token()
                 return expression
 
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         # SwitchExpression:
         #   switch ( Expression ) SwitchBlock
         if self.token.kind == TokenKind.SWITCH:
             self.allow_yield_statement = True
             switch_pos = self.token.pos
             self.next_token()
-            selector = self.par_expression()
+            expression = self.par_expression()
             self.accept(TokenKind.LBRACE)
             cases: List[ast.CaseTree] = []
             while True:
                 pos = self.token.pos
                 if self.token.kind in {TokenKind.CASE, TokenKind.DEFAULT}:
-                    cases.append(self.switch_expression_statement_group())
+                    cases.extend(self.switch_expression_statement_group())
+                elif self.token.kind in {TokenKind.RBRACE, TokenKind.EOF}:
+                    switch_expression = ast.SwitchExpressionTree.create(
+                        expression=expression,
+                        cases=cases,
+                        **self._info_exclude(switch_pos)
+                    )
+                    switch_expression.end_pos = self.token.pos  # TODO 待考虑 source 的逻辑
+                    self.accept(TokenKind.RBRACE)
+                    return switch_expression
+                else:
+                    self.raise_syntax_error(self.token.pos, f"expect CASE, DEFAULT or RBRACE, "
+                                                            f"but get {self.token.kind.name}")
+
+        self.illegal()
 
     def switch_expression_statement_group(self) -> List[ast.CaseTree]:
-        """TODO 名称待整理"""
+        """解析 Switch 表达式中的一组 Case 语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        SwitchBlock:
+          { SwitchRule {SwitchRule} }
+          { {SwitchBlockStatementGroup} {SwitchLabel :} }
+
+        SwitchRule:
+          SwitchLabel -> Expression ;
+          SwitchLabel -> Block
+          SwitchLabel -> ThrowStatement
+
+        SwitchBlockStatementGroup:
+          SwitchLabel : {SwitchLabel :} BlockStatements
+
+        [JDK Code] JavacParser.switchExpressionStatementGroup()
+
+        TODO 补充单元测试（等待 parse_expression、parse_statement 和 block_statements）
+        """
         case_pos = self.token.pos
         case_expression_list: List[ast.CaseTree] = []
-        pats: List[ast.CaseLabelTree] = []
+        labels: List[ast.CaseLabelTree] = []
 
         if self.token.kind == TokenKind.DEFAULT:
             self.next_token()
-            pats.append(ast.DefaultCaseLabelTree.create(**self._info_exclude(case_pos)))
+            labels.append(ast.DefaultCaseLabelTree.create(**self._info_exclude(case_pos)))
         else:
             self.accept(TokenKind.CASE)
             allow_default = False
             while True:
-                label: ast.CaseLabelTree = self.parse_case_label(allow_default)
+                label: ast.CaseLabelTree = self.parse_case_label(allow_default=allow_default)
+                labels.append(label)
+                if self.token.kind != TokenKind.COMMA:
+                    break
+                self.next_token()  # 跳过 COMMA
+                # TODO 待确定 isNone 的逻辑是否正确
+                allow_default = (label.kind == TreeKind.CONSTANT_CASE_LABEL
+                                 and isinstance(label, ast.ConstantCaseLabelTree)
+                                 and label.expression.kind == TreeKind.NULL_LITERAL)
+            guard = self.parse_guard(labels[-1])
+            if self.token.kind == TokenKind.ARROW:
+                self.next_token()
+                if self.token.kind == TokenKind.THROW or self.token.kind == TokenKind.LBRACE:
+                    statements = [self.parse_statement()]
+                    case_expression_list.append(ast.CaseTree.create_rule(
+                        labels=labels,
+                        guard=guard,
+                        statements=statements,
+                        body=statements[0],
+                        **self._info_exclude(case_pos)
+                    ))
+                else:
+                    value = self.parse_expression()
+                    statements = [ast.YieldTree.create(value=value, **self._info_exclude(value.start_pos))]
+                    case_expression_list.append(ast.CaseTree.create_statement(
+                        labels=labels,
+                        guard=guard,
+                        statements=statements,
+                        body=value,
+                        **self._info_exclude(case_pos)
+                    ))
+                    self.accept(TokenKind.SEMI)
+            else:
+                self.accept(TokenKind.COLON)
+                statements = self.block_statements()
+                case_expression_list.append(ast.CaseTree.create_statement(
+                    labels=labels,
+                    guard=guard,
+                    statements=statements,
+                    body=None,
+                    **self._info_exclude(case_pos)
+                ))
+            return case_expression_list
 
     def term3_rest(self, expression: ast.ExpressionTree,
                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
@@ -2142,12 +2273,56 @@ class JavaParser:
         """
         return ast.BlockTree.mock()  # TODO 待开发真实执行逻辑
 
+    def block_statements(self) -> List[ast.StatementTree]:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.blockStatements
+        BlockStatements = { BlockStatement }
+        BlockStatement  = LocalVariableDeclarationStatement
+                        | ClassOrInterfaceOrEnumDeclaration
+                        | [Ident ":"] Statement
+        LocalVariableDeclarationStatement
+                        = { FINAL | '@' Annotation } Type VariableDeclarators ";"
+        """
+        return []  # TODO 待开发真实执行逻辑
+
+    def parse_statement(self) -> ast.StatementTree:
+        """解析语句
+
+        [JDK Code] JavacParser.parseStatement()
+        """
+        return ast.StatementTree.mock()  # TODO 待开发真实执行逻辑
+
     def parse_case_label(self, allow_default: bool) -> ast.CaseLabelTree:
         """switch 语句中的 case 子句
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        SwitchLabel:
+          case CaseConstant {, CaseConstant}
+          case null [, default]
+          case CasePattern {, CasePattern} [Guard] 【不包含 Guard】
+          default
+
+        CaseConstant:
+          ConditionalExpression
+
+        CasePattern:
+          Pattern
+
         [JDK Code] JavacParser.parseCaseLabel(boolean allowDefault)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("default")).parse_case_label(True).kind.name
+        'DEFAULT_CASE_LABEL'
+        >>> JavaParser(LexicalFSM("1")).parse_case_label(True).kind.name
+        'CONSTANT_CASE_LABEL'
+        >>> JavaParser(LexicalFSM("_ xxx")).parse_case_label(True).kind.name
+        'PATTERN_CASE_LABEL'
         """
         pattern_pos = self.token.pos
+
+        # default
         if self.token.kind == TokenKind.DEFAULT:
             if not allow_default:
                 self.raise_syntax_error(pattern_pos, "DefaultLabelNotAllowed")
@@ -2155,6 +2330,8 @@ class JavaParser:
             return ast.DefaultCaseLabelTree.create(**self._info_exclude(pattern_pos))
 
         modifiers = self.opt_final([])
+
+        # case CasePattern {, CasePattern}
         if (modifiers.flags or modifiers.annotations
                 or self.analyze_pattern(lookahead=0) == grammar_enum.PatternResult.PATTERN):
             pattern = self.parse_pattern(pattern_pos, modifiers, None, False, True)
@@ -2162,12 +2339,36 @@ class JavaParser:
                 pattern=pattern,
                 **self._info_exclude(pattern_pos)
             )
+
+        # case CaseConstant {, CaseConstant}
         else:
             expression = self.term(new_mode=Mode.EXPR | Mode.NO_LAMBDA)
             return ast.ConstantCaseLabelTree.create(
                 expression=expression,
                 **self._info_exclude(pattern_pos)
             )
+
+    def parse_guard(self, label: ast.CaseLabelTree) -> Optional[ast.ExpressionTree]:
+        """解析 when Expression 的逻辑
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Guard:
+          when Expression
+
+        [JDK Code] JavacParser.parseGuard(JCCaseLabel)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("when expr")).parse_guard(ast.PatternCaseLabelTree.mock()) is not None
+        True
+        """
+        if not (self.token.kind == TokenKind.IDENTIFIER and self.token.name == "when"):
+            return None
+        pos = self.token.pos
+        self.next_token()
+        if label.kind != TreeKind.PATTERN_CASE_LABEL:
+            self.raise_syntax_error(pos, "GuardNotAllowed")
+        return self.term(new_mode=Mode.EXPR | Mode.NO_LAMBDA)
 
     def analyze_pattern(self, lookahead: int) -> grammar_enum.PatternResult:
         """分析 pattern 的类型
@@ -2832,4 +3033,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM(" & type2")).parse_intersection_type(0, ast.ExpressionTree.mock()))
+    print(JavaParser(LexicalFSM("(int)"), mode=Mode.EXPR).term3())

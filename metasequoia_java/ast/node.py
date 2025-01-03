@@ -194,6 +194,15 @@ class AnyPatternTree(PatternTree):
             source=source
         )
 
+    @staticmethod
+    def mock() -> "AnyPatternTree":
+        return AnyPatternTree(
+            kind=TreeKind.ANY_PATTERN,
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -517,12 +526,44 @@ class CaseTree(Tree):
         statements
     """
 
-    expressions: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    expressions: Optional[List[ExpressionTree]] = dataclasses.field(kw_only=True, default=None)  # @Deprecated
     labels: List[CaseLabelTree] = dataclasses.field(kw_only=True)  # 【JDK 21+】
     guard: ExpressionTree = dataclasses.field(kw_only=True)  # 【JDK 21+】
     statements: List[StatementTree] = dataclasses.field(kw_only=True)
     body: Optional[Tree] = dataclasses.field(kw_only=True)  # 【JDK 14+】
     case_kind: CaseKind = dataclasses.field(kw_only=True)  # 【JDK 14+】
+
+    @staticmethod
+    def create_rule(start_pos: int, end_pos: int, source: str,
+                    labels: List[CaseLabelTree], guard: ExpressionTree,
+                    statements: List[StatementTree], body: Optional[Tree]) -> "CaseTree":
+        return CaseTree(
+            kind=TreeKind.CASE,
+            labels=labels,
+            guard=guard,
+            statements=statements,
+            body=body,
+            case_kind=CaseKind.RULE,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_statement(start_pos: int, end_pos: int, source: str,
+                         labels: List[CaseLabelTree], guard: ExpressionTree,
+                         statements: List[StatementTree], body: Optional[Tree]) -> "CaseTree":
+        return CaseTree(
+            kind=TreeKind.CASE,
+            labels=labels,
+            guard=guard,
+            statements=statements,
+            body=body,
+            case_kind=CaseKind.STATEMENT,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1664,6 +1705,16 @@ class PatternCaseLabelTree(CaseLabelTree):
             source=source
         )
 
+    @staticmethod
+    def mock() -> "PatternCaseLabelTree":
+        return PatternCaseLabelTree(
+            kind=TreeKind.PATTERN_CASE_LABEL,
+            pattern=AnyPatternTree.mock(),
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -1797,6 +1848,19 @@ class SwitchExpressionTree(ExpressionTree):
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
     cases: List[CaseTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               expression: ExpressionTree,
+               cases: List[CaseTree]) -> "SwitchExpressionTree":
+        return SwitchExpressionTree(
+            kind=TreeKind.SWITCH_EXPRESSION,
+            expression=expression,
+            cases=cases,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return (f"switch ({self.expression.generate()}) {{ \n"
@@ -2083,6 +2147,16 @@ class YieldTree(StatementTree):
     """
 
     value: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(value: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "YieldTree":
+        return YieldTree(
+            kind=TreeKind.YIELD,
+            value=value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"yield {self.value.generate()};"
