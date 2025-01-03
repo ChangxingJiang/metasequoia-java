@@ -48,7 +48,7 @@ class Modifier(enum.Enum):
     def is_virtual(self) -> bool:
         """是否为虚拟修饰符"""
         return self in {Modifier.DEPRECATED, Modifier.ANNOTATION, Modifier.ENUM, Modifier.INTERFACE, Modifier.PARAMETER,
-                        Modifier.RECORD, Modifier.GENERATED_MEMBER, Modifier.VARARGS}
+                        Modifier.RECORD, Modifier.GENERATED_MEMBER, Modifier.VARARGS, Modifier.EMPTY}
 
 
 class TypeKind(enum.Enum):

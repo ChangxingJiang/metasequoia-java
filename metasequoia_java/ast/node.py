@@ -108,6 +108,15 @@ class DefaultCaseLabelTree(CaseLabelTree):
     A case label that marks `default` in `case null, default`.
     """
 
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "DefaultCaseLabelTree":
+        return DefaultCaseLabelTree(
+            kind=TreeKind.DEFAULT_CASE_LABEL,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -176,6 +185,15 @@ class AnyPatternTree(PatternTree):
     if (r instanceof R(_)) {}
     """
 
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "AnyPatternTree":
+        return AnyPatternTree(
+            kind=TreeKind.ANY_PATTERN,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -221,10 +239,10 @@ class ArrayTypeTree(ExpressionTree):
     - type[]
     """
 
-    expression: Tree = dataclasses.dataclass(slots=True)
+    expression: ExpressionTree = dataclasses.dataclass(slots=True)
 
     @staticmethod
-    def create(expression: Tree, start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
+    def create(expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
         return ArrayTypeTree(
             kind=TreeKind.ARRAY_TYPE,
             expression=expression,
@@ -418,6 +436,16 @@ class BindingPatternTree(PatternTree):
     """
 
     variable: VariableTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(variable: VariableTree, start_pos: int, end_pos: int, source: str) -> "BindingPatternTree":
+        return BindingPatternTree(
+            kind=TreeKind.VARIABLE,
+            variable=variable,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -781,7 +809,18 @@ class ConstantCaseLabelTree(CaseLabelTree):
     A case label element that refers to a constant expression
     """
 
-    constant_expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ConstantCaseLabelTree":
+        return ConstantCaseLabelTree(
+            kind=TreeKind.CONSTANT_CASE_LABEL,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -817,6 +856,18 @@ class DeconstructionPatternTree(PatternTree):
 
     deconstructor: ExpressionTree = dataclasses.field(kw_only=True)
     nested_patterns: List[PatternTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(deconstructor: ExpressionTree, nested_patterns: List[PatternTree],
+               start_pos: int, end_pos: int, source: str) -> "DeconstructionPatternTree":
+        return DeconstructionPatternTree(
+            kind=TreeKind.DECONSTRUCTION_PATTERN,
+            deconstructor=deconstructor,
+            nested_patterns=nested_patterns,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1013,7 +1064,7 @@ class IntersectionTypeTree(Tree):
     @staticmethod
     def create(bounds: List[Tree], start_pos: int, end_pos: int, source: str) -> "IntersectionTypeTree":
         return IntersectionTypeTree(
-            kind=TreeKind.INT_LITERAL,
+            kind=TreeKind.INTERSECTION_TYPE,
             bounds=bounds,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1603,6 +1654,16 @@ class PatternCaseLabelTree(CaseLabelTree):
 
     pattern: PatternTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(pattern: PatternTree, start_pos: int, end_pos: int, source: str) -> "PatternCaseLabelTree":
+        return PatternCaseLabelTree(
+            kind=TreeKind.PATTERN_CASE_LABEL,
+            pattern=pattern,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -1625,6 +1686,16 @@ class PrimitiveTypeTree(ExpressionTree):
         return PrimitiveTypeTree(
             kind=TreeKind.PRIMITIVE_TYPE,
             type_kind=type_kind,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_void(start_pos: int, end_pos: int, source: str) -> "PrimitiveTypeTree":
+        return PrimitiveTypeTree(
+            kind=TreeKind.PRIMITIVE_TYPE,
+            type_kind=TypeKind.VOID,
             start_pos=start_pos,
             end_pos=end_pos,
             source=source

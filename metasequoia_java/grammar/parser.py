@@ -49,6 +49,9 @@ class JavaParser:
         # 方法接收的第一个 this 参数类型
         self.receiver_param: Optional[ast.VariableTree] = None
 
+        # 当前源码层级中是否允许出现 yield 语句
+        self.allow_yield_statement: bool = False
+
     def next_token(self):
         self.lexer.next_token()
         self.last_token, self.token = self.token, self.lexer.token(0)
@@ -318,11 +321,95 @@ class JavaParser:
         raise JavaSyntaxError(f"{self.token.source} 不是字面值")
 
     def parse_expression(self) -> ast.ExpressionTree:
-        """表达式（可以是表达式或类型）
+        """解析表达式（可以是表达式或类型）
 
         [JDK Code] JavacParser.parseExpression
         """
         return self.term(Mode.EXPR)
+
+    def parse_pattern(self, pos: int, modifiers: Optional[ast.ModifiersTree],
+                      parsed_type: Optional[ast.ExpressionTree],
+                      allow_var: bool, check_guard: bool) -> ast.PatternTree:
+        """解析模式
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Pattern:
+          TypePattern
+          RecordPattern
+
+        TypePattern:
+          LocalVariableDeclaration
+
+        RecordPattern:
+          ReferenceType ( [ComponentPatternList] )
+
+        ComponentPatternList:
+          ComponentPattern {, ComponentPattern }
+
+        ComponentPattern:
+          Pattern
+          MatchAllPattern
+
+        MatchAllPattern:
+          _
+
+        [JDK Code] JavacParser.parsePattern
+
+        TODO 待补充单元测试（待 term 完成）
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("_")).parse_pattern(0, ast.ModifiersTree.create_empty(), None, False, True).kind.name
+        'ANY_PATTERN'
+        """
+        if modifiers is None:
+            modifiers = self.opt_final([])
+
+        if self.token.kind == TokenKind.UNDERSCORE and parsed_type is None:
+            self.next_token()
+            return ast.AnyPatternTree.create(**self._info_exclude(self.token.pos))
+
+        if parsed_type is None:
+            var = (self.token.kind == TokenKind.IDENTIFIER and self.token.name == "var")
+            expression = self.unannotated_type(allow_var=allow_var, new_mode=Mode.TYPE | Mode.NO_LAMBDA)
+            if var is True:
+                expression = None
+        else:
+            expression = parsed_type
+
+        # ReferenceType ( [ComponentPatternList] )
+        if self.token.kind == TokenKind.LPAREN:
+            nested: List[ast.PatternTree] = []
+            if self.peek_token(0, TokenKind.RPAREN):
+                self.next_token()
+            else:
+                while True:
+                    self.next_token()
+                    nested.append(self.parse_pattern(self.token.pos, None, None, True, False))
+                    if self.token.kind != TokenKind.COMMA:
+                        break
+            self.accept(TokenKind.RPAREN)
+            # TODO 待补充检查逻辑
+            return ast.DeconstructionPatternTree.create(
+                deconstructor=expression,
+                nested_patterns=nested,
+                **self._info_exclude(pos)
+            )
+
+        var_pos = self.token.pos
+        name: str = self.ident_or_underscore()
+        # TODO 待考虑补充特性逻辑
+        variable = ast.VariableTree.create_by_name(
+            modifiers=modifiers,
+            name=name,
+            variable_type=expression,
+            **self._info_exclude(var_pos)
+        )
+        # TODO 补充检查日志逻辑
+        return ast.BindingPatternTree.create(
+            variable=variable,
+            **self._info_exclude(pos)
+        )
 
     def parse_type(self,
                    allow_var: bool = False,
@@ -336,13 +423,13 @@ class JavaParser:
         pos : Optional[int], default = None
             默认开始位置
         allow_var : bool, default = False
-            TODO 待补充含义
+            是否允许 "var" 作为类型名称
         annotations : Optional[List[ast.AnnotationTree]], default = None
             已经解析的注解
 
         [JDK Code] JavacParser.parseType
 
-        TODO 待补充单元测试
+        TODO 待补充单元测试（等待 term 完成）
         """
         if pos is None:
             pos = self.token.pos
@@ -351,8 +438,8 @@ class JavaParser:
 
         result = self.unannotated_type(allow_var=allow_var)
 
-        # TODO 待确定是否需要实现类似 insertAnnotationsToMostInner 的逻辑
         if annotations:
+            # TODO 待确定是否需要实现类似 insertAnnotationsToMostInner 的逻辑
             return ast.AnnotatedTypeTree.create(
                 annotations=annotations,
                 underlying_type=result,
@@ -368,6 +455,11 @@ class JavaParser:
           & InterfaceType
 
         [JDK Code] JavacParser.parseIntersectionType
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM(" & type2")).parse_intersection_type(0, ast.ExpressionTree.mock()).kind.name
+        'INTERSECTION_TYPE'
         """
         bounds = [first_type]
         while self.token.kind == TokenKind.AMP:
@@ -380,18 +472,17 @@ class JavaParser:
             )
         return first_type
 
-    def unannotated_type(self, allow_var: bool = False, new_mode: int = Mode.TYPE) -> ast.ExpressionTree:
+    def unannotated_type(self, allow_var: bool = False, new_mode: Mode = Mode.TYPE) -> ast.ExpressionTree:
         """解析不包含注解的类型
 
         [JDK Code] JavacParser.unannotatedType
 
-        TODO 待增加 allowVar 相关逻辑
-        TODO 待增加单元测试
+        TODO 待补充单元测试（待 term 完成）
         """
         result = self.term(new_mode)
-        if result.kind == TokenKind.IDENTIFIER and result.source in {"var", "yield", "record", "sealed", "permits"}:
-            raise JavaSyntaxError(f"expect unannotated_type, but get {result.kind}")
-        # TODO 待增加 TYPEARRAY 相关逻辑
+        restricted_type_name = self.restricted_type_name(result)
+        if restricted_type_name is not None and (not allow_var or restricted_type_name != "var"):
+            self.raise_syntax_error(result.start_pos, f"RestrictedTypeNotAllowedHere, but get {result.kind.name}")
         return result
 
     def term(self, new_mode: Optional[int] = None) -> ast.ExpressionTree:
@@ -489,6 +580,21 @@ class JavaParser:
         'NEW_CLASS'
         >>> JavaParser(LexicalFSM("ExprName.new ClassName (name1, name2) {}"), mode=Mode.EXPR).term3().kind.name
         'NEW_CLASS'
+        >>> res = JavaParser(LexicalFSM("boolean[].class"), mode=Mode.EXPR).term3()
+        >>> res.kind.name
+        'MEMBER_SELECT'
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        'ARRAY_TYPE'
+        >>> res = JavaParser(LexicalFSM("boolean.class"), mode=Mode.EXPR).term3()
+        >>> res.kind.name
+        'MEMBER_SELECT'
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        'PRIMITIVE_TYPE'
+        >>> res = JavaParser(LexicalFSM("void.class"), mode=Mode.EXPR).term3()
+        >>> res.kind.name
+        'MEMBER_SELECT'
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        'PRIMITIVE_TYPE'
         """
         pos = self.token.pos
         type_args = self.type_argument_list_opt()
@@ -879,9 +985,56 @@ class JavaParser:
         # boolean {[ ]} . class
         if self.token.kind in {TokenKind.BYTE, TokenKind.SHORT, TokenKind.CHAR, TokenKind.INT, TokenKind.LONG,
                                TokenKind.FLOAT, TokenKind.DOUBLE, TokenKind.BOOLEAN}:
-            pass  # 【当前位置】
+            if type_args is not None:
+                self.illegal()
+            expression = self.brackets_suffix(self.brackets_opt(self.basic_type()))
+            return self.term3_rest(expression, None)
 
+        # void . class
+        if self.token.kind == TokenKind.VOID:
+            if type_args is not None:
+                self.illegal()
+            if self.is_mode(Mode.EXPR):
+                self.next_token()
+                if self.token.kind != TokenKind.DOT:
+                    self.illegal(pos)
+                expression = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+                expression = self.brackets_suffix(expression)
+                return self.term3_rest(expression, None)
+            else:
+                # 通过向下一个阶段传递一个 void 类型来支持 myMethodHandle.<void>invoke() 的特殊情况
+                expression = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+                self.next_token()
+                return expression
 
+        # SwitchExpression:
+        #   switch ( Expression ) SwitchBlock
+        if self.token.kind == TokenKind.SWITCH:
+            self.allow_yield_statement = True
+            switch_pos = self.token.pos
+            self.next_token()
+            selector = self.par_expression()
+            self.accept(TokenKind.LBRACE)
+            cases: List[ast.CaseTree] = []
+            while True:
+                pos = self.token.pos
+                if self.token.kind in {TokenKind.CASE, TokenKind.DEFAULT}:
+                    cases.append(self.switch_expression_statement_group())
+
+    def switch_expression_statement_group(self) -> List[ast.CaseTree]:
+        """TODO 名称待整理"""
+        case_pos = self.token.pos
+        case_expression_list: List[ast.CaseTree] = []
+        pats: List[ast.CaseLabelTree] = []
+
+        if self.token.kind == TokenKind.DEFAULT:
+            self.next_token()
+            pats.append(ast.DefaultCaseLabelTree.create(**self._info_exclude(case_pos)))
+        else:
+            self.accept(TokenKind.CASE)
+            allow_default = False
+            while True:
+                label: ast.CaseLabelTree = self.parse_case_label(allow_default)
 
     def term3_rest(self, expression: ast.ExpressionTree,
                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
@@ -1961,6 +2114,26 @@ class JavaParser:
             return self.array_initializer(self.token.pos, None)
         return self.parse_expression()
 
+    def par_expression(self) -> ast.ParenthesizedTree:
+        """括号框柱的表达式
+
+        [JDK Code] JavacParser.parExpression()
+        ParExpression = "(" Expression ")"
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("(expr)")).par_expression().kind.name
+        'PARENTHESIZED'
+        """
+        pos = self.token.pos
+        self.accept(TokenKind.LPAREN)
+        expression = self.parse_expression()
+        self.accept(TokenKind.RPAREN)
+        return ast.ParenthesizedTree.create(
+            expression=expression,
+            **self._info_exclude(pos)
+        )
+
     def block(self, pos: int, flags: int) -> ast.BlockTree:
         """解析代码块
 
@@ -1968,6 +2141,135 @@ class JavaParser:
         Block = "{" BlockStatements "}"
         """
         return ast.BlockTree.mock()  # TODO 待开发真实执行逻辑
+
+    def parse_case_label(self, allow_default: bool) -> ast.CaseLabelTree:
+        """switch 语句中的 case 子句
+
+        [JDK Code] JavacParser.parseCaseLabel(boolean allowDefault)
+        """
+        pattern_pos = self.token.pos
+        if self.token.kind == TokenKind.DEFAULT:
+            if not allow_default:
+                self.raise_syntax_error(pattern_pos, "DefaultLabelNotAllowed")
+            self.next_token()
+            return ast.DefaultCaseLabelTree.create(**self._info_exclude(pattern_pos))
+
+        modifiers = self.opt_final([])
+        if (modifiers.flags or modifiers.annotations
+                or self.analyze_pattern(lookahead=0) == grammar_enum.PatternResult.PATTERN):
+            pattern = self.parse_pattern(pattern_pos, modifiers, None, False, True)
+            return ast.PatternCaseLabelTree.create(
+                pattern=pattern,
+                **self._info_exclude(pattern_pos)
+            )
+        else:
+            expression = self.term(new_mode=Mode.EXPR | Mode.NO_LAMBDA)
+            return ast.ConstantCaseLabelTree.create(
+                expression=expression,
+                **self._info_exclude(pattern_pos)
+            )
+
+    def analyze_pattern(self, lookahead: int) -> grammar_enum.PatternResult:
+        """分析 pattern 的类型
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("int name")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("String name")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("int, xxx")).analyze_pattern(0).name
+        'EXPRESSION'
+        >>> JavaParser(LexicalFSM("int -> xxx")).analyze_pattern(0).name
+        'EXPRESSION'
+        >>> JavaParser(LexicalFSM("_, ")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("_)")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("_ xxx")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("<>(")).analyze_pattern(0).name
+        'PATTERN'
+        >>> JavaParser(LexicalFSM("<>")).analyze_pattern(0).name
+        'EXPRESSION'
+        >>> JavaParser(LexicalFSM("() -> xxx")).analyze_pattern(0).name
+        'PATTERN'
+        """
+        type_depth = 0
+        paren_depth = 0
+        pending_result = grammar_enum.PatternResult.EXPRESSION
+        while True:
+            token = self.lexer.token(lookahead)
+            if token.kind in {TokenKind.BYTE, TokenKind.SHORT, TokenKind.INT, TokenKind.LONG, TokenKind.FLOAT,
+                              TokenKind.DOUBLE, TokenKind.BOOLEAN, TokenKind.CHAR, TokenKind.VOID, TokenKind.ASSERT,
+                              TokenKind.ENUM, TokenKind.IDENTIFIER}:
+                if paren_depth == 0 and self.peek_token(lookahead, LAX_IDENTIFIER):
+                    if paren_depth == 0:
+                        return grammar_enum.PatternResult.PATTERN
+                    else:
+                        pending_result = grammar_enum.PatternResult.EXPRESSION
+                elif (type_depth == 0 and paren_depth == 0
+                      and self.peek_token(lookahead, TokenKind.ARROW | TokenKind.COMMA)):
+                    return grammar_enum.PatternResult.EXPRESSION
+            elif token.kind == TokenKind.UNDERSCORE:
+                if type_depth == 0 and self.peek_token(lookahead, TokenKind.RPAREN | TokenKind.COMMA):
+                    return grammar_enum.PatternResult.PATTERN
+                elif type_depth == 0 and self.peek_token(lookahead, LAX_IDENTIFIER):
+                    if paren_depth == 0:
+                        return grammar_enum.PatternResult.PATTERN
+                    else:
+                        pending_result = grammar_enum.PatternResult.PATTERN
+            elif token.kind in {TokenKind.DOT, TokenKind.QUES, TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.COMMA}:
+                continue
+            elif token.kind == TokenKind.LT:
+                type_depth += 1
+            elif token.kind in {TokenKind.GT_GT_GT, TokenKind.GT_GT, TokenKind.GT}:
+                if token.kind == TokenKind.GT_GT_GT:
+                    type_depth -= 3
+                elif token.kind == TokenKind.GT_GT:
+                    type_depth -= 2
+                else:
+                    type_depth -= 1
+                if type_depth == 0 and not self.peek_token(lookahead, TokenKind.DOT):
+                    if self.peek_token(lookahead, LAX_IDENTIFIER | TokenKind.LPAREN):
+                        return grammar_enum.PatternResult.PATTERN
+                    else:
+                        return grammar_enum.PatternResult.EXPRESSION
+                elif type_depth < 0:
+                    return grammar_enum.PatternResult.EXPRESSION
+            elif token.kind == TokenKind.MONKEYS_AT:
+                lookahead = self.skip_annotation(lookahead)
+            elif token.kind == TokenKind.LBRACKET:
+                if self.peek_token(lookahead, TokenKind.RBRACKET, LAX_IDENTIFIER):
+                    return grammar_enum.PatternResult.PATTERN
+                elif self.peek_token(lookahead, TokenKind.RBRACKET):
+                    lookahead += 1
+                else:
+                    return pending_result
+            elif token.kind == TokenKind.LPAREN:
+                if self.lexer.token(lookahead + 1).kind == TokenKind.RPAREN:
+                    if paren_depth != 0 and self.lexer.token(lookahead + 2).kind == TokenKind.ARROW:
+                        return grammar_enum.PatternResult.EXPRESSION
+                    else:
+                        return grammar_enum.PatternResult.PATTERN
+                paren_depth += 1
+            elif token.kind == TokenKind.RPAREN:
+                paren_depth -= 1
+                if (paren_depth == 0 and type_depth == 0
+                        and self.peek_token(lookahead, TokenKind.IDENTIFIER)
+                        and self.lexer.token(lookahead + 1).name == "when"):
+                    return grammar_enum.PatternResult.PATTERN
+            elif token.kind == TokenKind.ARROW:
+                if paren_depth > 0:
+                    return grammar_enum.PatternResult.EXPRESSION
+                else:
+                    return pending_result
+            elif token.kind == TokenKind.FINAL:
+                if paren_depth > 0:
+                    return grammar_enum.PatternResult.PATTERN
+            else:
+                return pending_result
+            lookahead += 1
 
     def type_annotations_opt(self) -> List[ast.AnnotationTree]:
         """TODO"""
@@ -2097,6 +2399,32 @@ class JavaParser:
 
     def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
         """TODO"""
+
+    def restricted_type_name(self, expression: ast.ExpressionTree) -> Optional[str]:
+        """限定类型名称
+
+        [JDK Code] JavacParser.restrictedTypeName(JCExpression, boolean)
+        """
+        if expression.kind == TreeKind.IDENTIFIER:
+            assert isinstance(expression, ast.IdentifierTree)
+            if expression.name is not None:
+                return self.restricted_type_name_starting_at_source(expression.name)
+            else:
+                return None
+        if expression.kind == TreeKind.ARRAY_TYPE:
+            assert isinstance(expression, ast.ArrayTypeTree)
+            return self.restricted_type_name(expression.expression)
+        return None
+
+    def restricted_type_name_starting_at_source(self, name: str) -> Optional[str]:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.restrictedTypeNameStartingAtSource
+        """
+        # TODO 待开发按 JDK 版本警告的逻辑
+        if name in {"var", "yield", "record", "sealed", "permits"}:
+            return name
+        return None
 
     def variable_declarator_id(self,
                                modifiers: ast.ModifiersTree,
@@ -2504,6 +2832,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("<name>::"), mode=Mode.EXPR).is_unbound_member_ref())
-    print(JavaParser(LexicalFSM("<name(xx,xx,xx)>::"), mode=Mode.EXPR).is_unbound_member_ref())
-    print(JavaParser(LexicalFSM("<name> value"), mode=Mode.EXPR).is_unbound_member_ref())
+    print(JavaParser(LexicalFSM(" & type2")).parse_intersection_type(0, ast.ExpressionTree.mock()))
