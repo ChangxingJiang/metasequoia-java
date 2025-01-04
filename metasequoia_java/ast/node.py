@@ -225,7 +225,7 @@ class ArrayAccessTree(ExpressionTree):
     def create(expression: ExpressionTree, index: ExpressionTree,
                start_pos: int, end_pos: int, source: str) -> "ArrayAccessTree":
         return ArrayAccessTree(
-            kind=TreeKind.ARRAY_TYPE,
+            kind=TreeKind.ARRAY_ACCESS,
             expression=expression,
             index=index,
             start_pos=start_pos,
@@ -2002,7 +2002,7 @@ class UnaryTree(ExpressionTree):
         TokenKind.BANG: TreeKind.LOGICAL_COMPLEMENT,  # ! a
         TokenKind.TILDE: TreeKind.BITWISE_COMPLEMENT,  # ~ a
         TokenKind.PLUS_PLUS: TreeKind.PREFIX_INCREMENT,  # ++ a
-        TokenKind.SUB_SUB: TreeKind.PREFIX_INCREMENT,  # -- a
+        TokenKind.SUB_SUB: TreeKind.PREFIX_DECREMENT,  # -- a
     }
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)

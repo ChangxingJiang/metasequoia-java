@@ -1,2 +1,3 @@
 from metasequoia_java.grammar.grammar_hash.modifier import TOKEN_TO_MODIFIER
 from metasequoia_java.grammar.grammar_hash.primitive_type import TOKEN_TO_TYPE_KIND
+from metasequoia_java.grammar.grammar_hash.token_precedence import TOKEN_TO_OPERATOR_PRECEDENCE

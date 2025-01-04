@@ -501,6 +501,18 @@ class JavaParser:
         """解析第 1 层级语法元素的剩余部分"""
         return expression  # TODO 待开发方法逻辑
 
+    def term_2(self):
+        """解析第 2 层级语法元素
+
+        [JDK Code] JavacParser.term2()
+        Expression2   = Expression3 [Expression2Rest]
+        Type2         = Type3
+        TypeNoParams2 = TypeNoParams3
+        """
+        expression = self.term3()
+        if self.is_mode(Mode.EXPR):
+            pass
+
     def term_2_rest(self, expression: ast.ExpressionTree, min_prec: int) -> ast.ExpressionTree:
         """解析第 2 层级语法元素的剩余部分"""
         return expression  # TODO 待开发方法逻辑
@@ -1169,8 +1181,158 @@ class JavaParser:
 
     def term3_rest(self, expression: ast.ExpressionTree,
                    type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
-        """解析第 3 层级语法元素的剩余部分"""
-        return expression  # TODO 待开发方法逻辑
+        """解析第 3 层级语法元素的剩余部分
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        PostfixExpression:
+          Primary
+          ExpressionName
+          PostIncrementExpression
+          PostDecrementExpression
+
+        PostIncrementExpression:
+          PostfixExpression ++
+
+        PostDecrementExpression:
+          PostfixExpression --
+
+        [JDK Code] JavacParser.term3Rest(JCExpression, List<JCExpression>)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("[]"), mode=Mode.TYPE).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        'ARRAY_TYPE'
+        >>> JavaParser(LexicalFSM("[1]"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        'ARRAY_ACCESS'
+        >>> JavaParser(LexicalFSM("++"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        'PREFIX_INCREMENT'
+        >>> JavaParser(LexicalFSM("--"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        'PREFIX_DECREMENT'
+        """
+        if type_args is not None:
+            self.illegal()
+        while True:
+            pos_1 = self.token.pos
+            annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+            if self.token.kind == TokenKind.LBRACKET:
+                self.next_token()  # 跳过 LBRACKET
+                if self.is_mode(Mode.TYPE):
+                    prev_mode = self.mode
+                    self.select_type_mode()
+                    if self.token.kind == TokenKind.RBRACKET:
+                        # term3 [ ]
+                        self.next_token()  # 跳过 RBRACKET
+                        expression = self.brackets_opt(expression)
+                        expression = ast.ArrayTypeTree.create(
+                            expression=expression,
+                            **self._info_exclude(pos_1)
+                        )
+
+                        # term3 [ ] ::
+                        if self.token.kind == TokenKind.COL_COL:
+                            self.select_expr_mode()
+                            continue
+                        if annotations:
+                            expression = ast.AnnotatedTypeTree.create(
+                                annotations=annotations,
+                                underlying_type=expression,
+                                **self._info_exclude(pos_1)
+                            )
+                        return expression
+                    self.set_mode(prev_mode)
+
+                # term3 [ index ]
+                if self.is_mode(Mode.EXPR):
+                    self.select_expr_mode()
+                    index = self.term()
+                    expression = ast.ArrayAccessTree.create(
+                        expression=expression,
+                        index=index,
+                        **self._info_exclude(pos_1)
+                    )
+                self.accept(TokenKind.RBRACKET)
+            elif self.token.kind == TokenKind.DOT:
+                self.next_token()  # 跳过 DOT
+                type_args = self.type_argument_list_opt(Mode.EXPR)
+
+                # term3 . super ( expression , ... )
+                if self.token.kind == TokenKind.SUPER and self.is_mode(Mode.EXPR):
+                    self.select_expr_mode()
+                    expression = ast.MemberSelectTree.create(
+                        expression=expression,
+                        identifier=ast.IdentifierTree.create(name="super", **self._info_include(self.token.pos)),
+                        **self._info_include(self.token.pos)
+                    )
+                    self.next_token()  # 跳过 SUPER
+                    expression = self.arguments(type_args, expression)
+                    type_args = None
+
+                # term3 . new < type_argument, ... >
+                elif self.token.kind == TokenKind.NEW and self.is_mode(Mode.EXPR):
+                    if type_args is not None:
+                        self.illegal()
+                    self.select_expr_mode()
+                    pos_2 = self.token.pos
+                    self.next_token()  # 跳过 NEW
+                    if self.token.kind == TokenKind.LT:
+                        type_args = self.type_argument_list(diamond_allowed=False)
+                    expression = self.inner_creator(pos_2, type_args, expression)
+                    type_args = None
+
+                # term . identifier {type_annotations} {(argument, ...)}
+                else:
+                    type_annotations: Optional[List[ast.AnnotationTree]] = None
+                    if self.is_mode(Mode.TYPE) and self.token.kind == TokenKind.MONKEYS_AT:
+                        type_annotations = self.type_annotations_opt()
+                    expression = ast.MemberSelectTree.create(
+                        expression=expression,
+                        identifier=ast.IdentifierTree.create(name=self.ident(), **self._info_exclude(self.token.pos)),
+                        **self._info_include(self.token.pos)
+                    )
+                    # TODO 待补充错误恢复逻辑
+                    if type_annotations:
+                        expression = ast.AnnotatedTypeTree.create(
+                            annotations=type_annotations,
+                            underlying_type=expression,
+                            **self._info_exclude(type_annotations[0].start_pos)
+                        )
+                    expression = self.arguments_opt(type_args, self.type_arguments_opt(expression))
+                    type_args = None
+
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+            # MethodReference:
+            #   ExpressionName :: [TypeArguments] Identifier
+            #   Primary :: [TypeArguments] Identifier
+            #   ReferenceType :: [TypeArguments] Identifier
+            #   super :: [TypeArguments] Identifier
+            #   TypeName . super :: [TypeArguments] Identifier
+            #   ClassType :: [TypeArguments] new
+            #   ArrayType :: new
+            elif self.token.kind == TokenKind.COL_COL and self.is_mode(Mode.EXPR):
+                self.select_expr_mode()
+                if type_args is not None:
+                    self.illegal()
+                self.accept(TokenKind.COL_COL)
+                expression = self.member_reference_suffix(expression, pos=pos_1)
+
+            else:
+                if annotations:
+                    if self.permit_type_annotations_push_back:
+                        self.type_annotations_pushed_back = annotations
+                    else:
+                        self.illegal()
+                break
+
+        while self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB} and self.is_mode(Mode.EXPR):
+            self.select_expr_mode()
+            expression = ast.UnaryTree.create(
+                operator=self.token.kind,
+                expression=expression,
+                **self._info_include(self.token.pos)
+            )
+            self.next_token()  # 跳过 ++ 或 --
+
+        return expression
 
     def is_unbound_member_ref(self) -> bool:
         """如果在标识符后跟着一个 <，则可能是一个未绑定的方法引用或一个二元表达式。为消除歧义，需要匹配的 > 并查看随后的终结符中是否为 . 或 ::
@@ -3033,4 +3195,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("(int)"), mode=Mode.EXPR).term3())
+    print(JavaParser(LexicalFSM("[]"), mode=Mode.TYPE).term3_rest(ast.ExpressionTree.mock(), None))
