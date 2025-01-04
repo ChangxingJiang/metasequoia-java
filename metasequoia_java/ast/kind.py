@@ -107,7 +107,7 @@ class TreeKind(enum.Enum):
     RIGHT_SHIFT_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree >>=
     UNSIGNED_RIGHT_SHIFT_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree >>>=
     AND_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree &=
-    XOR_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree &=
+    XOR_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree ^=
     OR_ASSIGNMENT = enum.auto()  # CompoundAssignmentTree |=
     INT_LITERAL = enum.auto()  # LiteralTree
     LONG_LITERAL = enum.auto()  # LiteralTree

@@ -311,6 +311,19 @@ class AssignmentTree(ExpressionTree):
     variable: ExpressionTree = dataclasses.field(kw_only=True)
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(variable: ExpressionTree,
+               expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "AssignmentTree":
+        return AssignmentTree(
+            kind=TreeKind.ASSIGNMENT,
+            variable=variable,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{self.variable.generate()} = {self.expression.generate()}"
 
@@ -846,6 +859,20 @@ class CompoundAssignmentTree(ExpressionTree):
     variable: ExpressionTree = dataclasses.field(kw_only=True)
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(kind: TreeKind,
+               variable: ExpressionTree,
+               expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "CompoundAssignmentTree":
+        return CompoundAssignmentTree(
+            kind=kind,
+            variable=variable,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -863,6 +890,21 @@ class ConditionalExpressionTree(ExpressionTree):
     condition: ExpressionTree = dataclasses.field(kw_only=True)
     true_expression: ExpressionTree = dataclasses.field(kw_only=True)
     false_expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(condition: ExpressionTree,
+               true_expression: ExpressionTree,
+               false_expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ConditionalExpressionTree":
+        return ConditionalExpressionTree(
+            kind=TreeKind.CONDITIONAL_EXPRESSION,
+            condition=condition,
+            true_expression=true_expression,
+            false_expression=false_expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"{self.condition.generate()} ? {self.true_expression.generate()} : {self.false_expression.generate()}"

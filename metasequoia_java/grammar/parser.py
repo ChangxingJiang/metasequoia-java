@@ -28,6 +28,8 @@ class JavaParser:
     """
     【对应 JDK 源码位置】
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/parser/JavacParser.java
+
+    TODO 待整理各个场景下使用的集合
     """
 
     # 中缀操作符的优先级级别的数量
@@ -495,31 +497,142 @@ class JavaParser:
             self.raise_syntax_error(result.start_pos, f"RestrictedTypeNotAllowedHere, but get {result.kind.name}")
         return result
 
-    def term(self, new_mode: Optional[int] = None) -> ast.ExpressionTree:
-        """TODO 名称待整理
+    def term(self, new_mode: Optional[Mode] = None) -> ast.ExpressionTree:
+        """解析第 0 层级语法元素
 
-        [JDK Code] JavacParser.term
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        AssignmentExpression:
+          ConditionalExpression
+          Assignment
+
+        Assignment:
+          LeftHandSide AssignmentOperator Expression
+
+        LeftHandSide:
+          ExpressionName
+          FieldAccess
+          ArrayAccess
+
+        AssignmentOperator:
+          (one of)
+          =  *=  /=  %=  +=  -=  <<=  >>=  >>>=  &=  ^=  |=
+
+        [JDK Code] JavacParser.term(int newmode)
+        [JDK Code] JavacParser.term()
+        Expression = Expression1 [ExpressionRest]
+        ExpressionRest = [AssignmentOperator Expression1]
+        AssignmentOperator = "=" | "+=" | "-=" | "*=" | "/=" |
+                             "&=" | "|=" | "^=" |
+                             "%=" | "<<=" | ">>=" | ">>>="
+        Type = Type1
+        TypeNoParams = TypeNoParams1
+        StatementExpression = Expression
+        ConstantExpression = Expression
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("name2 = name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term().kind.name
+        'ASSIGNMENT'
+        >>> JavaParser(LexicalFSM("name2 += name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term().kind.name
+        'PLUS_ASSIGNMENT'
         """
-        self.next_token()
-        return ast.ExpressionTree.mock()  # TODO 待开发实际逻辑
+        prev_mode = None
+        if new_mode is not None:
+            prev_mode = self.mode
+            self.set_mode(new_mode)
+
+        expression = self.term1()
+        if (self.is_mode(Mode.EXPR)
+                and self.token.kind in {TokenKind.EQ, TokenKind.PLUS_EQ, TokenKind.SUB_EQ, TokenKind.STAR_EQ,
+                                        TokenKind.SLASH_EQ, TokenKind.AMP_EQ, TokenKind.BAR_EQ, TokenKind.CARET_EQ,
+                                        TokenKind.PERCENT_EQ, TokenKind.LT_LT_EQ, TokenKind.GT_GT_EQ,
+                                        TokenKind.GT_GT_GT_EQ}):
+            expression = self.term_rest(expression)
+
+        if new_mode is not None:
+            self.set_last_mode(self.mode)
+            self.set_mode(prev_mode)
+
+        return expression
 
     def term_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
-        """解析第 0 层级语法元素的剩余部分"""
-        return expression  # TODO 待开发方法逻辑
+        """解析第 0 层级语法元素的剩余部分
+
+        [JDK Code] JavacParser.termRest(JCExpression)
+        """
+        if self.token.kind == TokenKind.EQ:
+            pos = self.token.pos
+            self.next_token()
+            self.select_expr_mode()
+            expression_1 = self.term()
+            return ast.AssignmentTree.create(
+                variable=expression,
+                expression=expression_1,
+                **self._info_exclude(pos)
+            )
+        elif self.token.kind in {TokenKind.PLUS_EQ, TokenKind.SUB_EQ, TokenKind.STAR_EQ, TokenKind.SLASH_EQ,
+                                 TokenKind.AMP_EQ, TokenKind.BAR_EQ, TokenKind.CARET_EQ, TokenKind.PERCENT_EQ,
+                                 TokenKind.LT_LT_EQ, TokenKind.GT_GT_EQ, TokenKind.GT_GT_GT_EQ}:
+            pos = self.token.pos
+            tk = self.token.kind
+            self.next_token()
+            self.select_expr_mode()
+            expression_1 = self.term()
+            return ast.CompoundAssignmentTree.create(
+                kind=grammar_hash.ASSIGN_OPERATOR_TO_TREE_KIND[tk],
+                variable=expression,
+                expression=expression_1,
+                **self._info_exclude(pos)
+            )
+        else:
+            return expression
 
     def term1(self) -> ast.ExpressionTree:
         """解析第 1 层级语法元素
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ConditionalExpression:
+          ConditionalOrExpression
+          ConditionalOrExpression ? Expression : ConditionalExpression
+          ConditionalOrExpression ? Expression : LambdaExpression
 
         [JDK Code] JavacParser.term1
         Expression1   = Expression2 [Expression1Rest]
         Type1         = Type2
         TypeNoParams1 = TypeNoParams2
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("name > 3 ? 2 : 1"), mode=Mode.EXPR).term1().kind.name
+        'CONDITIONAL_EXPRESSION'
         """
         expression = self.term2()
+        if self.is_mode(Mode.EXPR) and self.token.kind == TokenKind.QUES:
+            self.select_expr_mode()
+            return self.term1_rest(expression)
+        else:
+            return expression
 
     def term1_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
-        """解析第 1 层级语法元素的剩余部分"""
-        return expression  # TODO 待开发方法逻辑
+        """解析第 1 层级语法元素的剩余部分
+
+        [JDK Code] JavacParser.term1Rest
+        Expression1Rest = ["?" Expression ":" Expression1]
+        """
+        if self.token.kind == TokenKind.QUES:
+            pos = self.token.pos
+            self.next_token()
+            expression_1 = self.term()
+            self.accept(TokenKind.COLON)
+            expression_2 = self.term1()
+            return ast.ConditionalExpressionTree.create(
+                condition=expression,
+                true_expression=expression_1,
+                false_expression=expression_2,
+                **self._info_exclude(pos)
+            )
+        else:
+            return expression
 
     def term2(self):
         """解析第 2 层级语法元素
@@ -3415,7 +3528,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("1 + 2"), mode=Mode.EXPR).term2())
-    print(JavaParser(LexicalFSM("1 * 2"), mode=Mode.EXPR).term2())
-    print(JavaParser(LexicalFSM("1 + 2 * 3"), mode=Mode.EXPR).term2())
-    print(JavaParser(LexicalFSM("(1 + 2) * 3"), mode=Mode.EXPR).term2())
+    print(JavaParser(LexicalFSM("name2 = name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term())
+    print(JavaParser(LexicalFSM("name2 += name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term())
