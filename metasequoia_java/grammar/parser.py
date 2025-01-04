@@ -2878,6 +2878,80 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
+    def class_interface_or_record_body(self,
+                                       class_name: Optional[str],
+                                       is_interface: bool,
+                                       is_record: bool) -> List[ast.Tree]:
+        """解析类 class、interface 或 record 的代码块
+
+        [JDK Code] JavacParser.classInterfaceOrRecordBody
+        """
+        self.accept(TokenKind.LBRACE)
+        self.accept(TokenKind.RBRACE)
+        return []  # TODO 待开发实际执行逻辑
+
+    def is_non_sealed_class_start(self, local: bool):
+        """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
+
+        [JDK Code] JavacParser.isNonSealedClassStart
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("non-sealed class")).is_non_sealed_class_start(False)
+        True
+        >>> JavaParser(LexicalFSM("non-sealed function")).is_non_sealed_class_start(False)
+        False
+        """
+        return (self.is_non_sealed_identifier(self.token, 0)
+                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(3), local, True))
+
+    def is_non_sealed_identifier(self, some_token: Token, lookahead: int):
+        """判断当前位置的标识符是否为 non-sealed 关键字
+
+        [JDK Code] JavacParser.isNonSealedIdentifier
+        """
+        if some_token.name == "non" and self.peek_token(lookahead, TokenKind.SUB, TokenKind.IDENTIFIER):
+            token_sub: Token = self.lexer.token(lookahead + 1)
+            token_sealed: Token = self.lexer.token(lookahead + 2)
+            return (some_token.end_pos == token_sub.pos
+                    and token_sub.end_pos == token_sealed.pos
+                    and token_sealed.name == "sealed")
+        return False
+
+    def is_sealed_class_start(self, local: bool):
+        """如果当前 Token 为 sealed 关键字则返回 True，否则返回 False
+
+        [JDK Code] JavacParser.isSealedClassStart
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("sealed class")).is_sealed_class_start(False)
+        True
+        >>> JavaParser(LexicalFSM("sealed function")).is_sealed_class_start(False)
+        False
+        """
+        return (self.token.name == "sealed"
+                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(1), local, False))
+
+    def allowed_after_sealed_or_non_sealed(self, next_token: Token, local: bool, current_is_non_sealed: bool):
+        """检查 next_token 是否为 sealed 关键字或 non-sealed 关键字之后的 Token 是否合法
+
+        [JDK Code] JavacParser.allowedAfterSealedOrNonSealed
+        """
+        tk = next_token.kind
+        if tk == TokenKind.MONKEYS_AT:
+            return self.lexer.token(2).kind != TokenKind.INTERFACE or current_is_non_sealed
+        if local is True:
+            return tk in {TokenKind.ABSTRACT, TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE,
+                          TokenKind.ENUM}
+        elif tk in {TokenKind.PUBLIC, TokenKind.PROTECTED, TokenKind.PRIVATE, TokenKind.ABSTRACT, TokenKind.STATIC,
+                    TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE, TokenKind.ENUM}:
+            return True
+        elif tk == TokenKind.IDENTIFIER:
+            return (self.is_non_sealed_identifier(next_token, 3 if current_is_non_sealed else 1)
+                    or next_token.name == "sealed")
+        return False
+
     def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
         """可选的多个类型参数
 
@@ -3028,6 +3102,17 @@ class JavaParser:
             self.accept(TokenKind.RPAREN)
         return params
 
+    def opt_final(self, flags: List[Modifier]):
+        """可选的 final 关键字
+
+        [JDK Code] JavacParser.optFinal
+        """
+        modifiers = self.modifiers_opt()
+        if len({flag for flag in modifiers.flags if flag not in {Modifier.FINAL, Modifier.DEPRECATED}}) > 0:
+            self.raise_syntax_error(self.token.pos, f"存在不是 FINAL 的修饰符: {flags}")
+        modifiers.flags.extend(flags)
+        return modifiers
+
     def formal_parameter(self,
                          lambda_parameter: bool = False,
                          record_component: bool = False) -> ast.VariableTree:
@@ -3107,91 +3192,6 @@ class JavaParser:
             **self._info_include(self.token.pos)  # TODO 下标待修正
         )
         return self.variable_declarator_id(modifiers, None, False, True)
-
-    def class_interface_or_record_body(self,
-                                       class_name: Optional[str],
-                                       is_interface: bool,
-                                       is_record: bool) -> List[ast.Tree]:
-        """解析类 class、interface 或 record 的代码块
-
-        [JDK Code] JavacParser.classInterfaceOrRecordBody
-        """
-        self.accept(TokenKind.LBRACE)
-        self.accept(TokenKind.RBRACE)
-        return []  # TODO 待开发实际执行逻辑
-
-    def is_non_sealed_class_start(self, local: bool):
-        """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
-
-        [JDK Code] JavacParser.isNonSealedClassStart
-
-        Examples
-        --------
-        >>> JavaParser(LexicalFSM("non-sealed class")).is_non_sealed_class_start(False)
-        True
-        >>> JavaParser(LexicalFSM("non-sealed function")).is_non_sealed_class_start(False)
-        False
-        """
-        return (self.is_non_sealed_identifier(self.token, 0)
-                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(3), local, True))
-
-    def is_non_sealed_identifier(self, some_token: Token, lookahead: int):
-        """判断当前位置的标识符是否为 non-sealed 关键字
-
-        [JDK Code] JavacParser.isNonSealedIdentifier
-        """
-        if some_token.name == "non" and self.peek_token(lookahead, TokenKind.SUB, TokenKind.IDENTIFIER):
-            token_sub: Token = self.lexer.token(lookahead + 1)
-            token_sealed: Token = self.lexer.token(lookahead + 2)
-            return (some_token.end_pos == token_sub.pos
-                    and token_sub.end_pos == token_sealed.pos
-                    and token_sealed.name == "sealed")
-        return False
-
-    def is_sealed_class_start(self, local: bool):
-        """如果当前 Token 为 sealed 关键字则返回 True，否则返回 False
-
-        [JDK Code] JavacParser.isSealedClassStart
-
-        Examples
-        --------
-        >>> JavaParser(LexicalFSM("sealed class")).is_sealed_class_start(False)
-        True
-        >>> JavaParser(LexicalFSM("sealed function")).is_sealed_class_start(False)
-        False
-        """
-        return (self.token.name == "sealed"
-                and self.allowed_after_sealed_or_non_sealed(self.lexer.token(1), local, False))
-
-    def allowed_after_sealed_or_non_sealed(self, next_token: Token, local: bool, current_is_non_sealed: bool):
-        """检查 next_token 是否为 sealed 关键字或 non-sealed 关键字之后的 Token 是否合法
-
-        [JDK Code] JavacParser.allowedAfterSealedOrNonSealed
-        """
-        tk = next_token.kind
-        if tk == TokenKind.MONKEYS_AT:
-            return self.lexer.token(2).kind != TokenKind.INTERFACE or current_is_non_sealed
-        if local is True:
-            return tk in {TokenKind.ABSTRACT, TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE,
-                          TokenKind.ENUM}
-        elif tk in {TokenKind.PUBLIC, TokenKind.PROTECTED, TokenKind.PRIVATE, TokenKind.ABSTRACT, TokenKind.STATIC,
-                    TokenKind.FINAL, TokenKind.STRICTFP, TokenKind.CLASS, TokenKind.INTERFACE, TokenKind.ENUM}:
-            return True
-        elif tk == TokenKind.IDENTIFIER:
-            return (self.is_non_sealed_identifier(next_token, 3 if current_is_non_sealed else 1)
-                    or next_token.name == "sealed")
-        return False
-
-    def opt_final(self, flags: List[Modifier]):
-        """可选的 final 关键字
-
-        [JDK Code] JavacParser.optFinal
-        """
-        modifiers = self.modifiers_opt()
-        if len({flag for flag in modifiers.flags if flag not in {Modifier.FINAL, Modifier.DEPRECATED}}) > 0:
-            self.raise_syntax_error(self.token.pos, f"存在不是 FINAL 的修饰符: {flags}")
-        modifiers.flags.extend(flags)
-        return modifiers
 
 
 if __name__ == "__main__":
