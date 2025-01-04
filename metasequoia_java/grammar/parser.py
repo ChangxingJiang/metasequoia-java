@@ -335,6 +335,11 @@ class JavaParser:
     def parse_expression(self) -> ast.ExpressionTree:
         """解析表达式（可以是表达式或类型）
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Expression:
+          LambdaExpression
+          AssignmentExpression
+
         [JDK Code] JavacParser.parseExpression
         """
         return self.term(Mode.EXPR)
@@ -442,6 +447,7 @@ class JavaParser:
         [JDK Code] JavacParser.parseType
 
         TODO 待补充单元测试（等待 term 完成）
+        TODO 待补充单元测试（等待 type_annotations_opt 完成）
         """
         if pos is None:
             pos = self.token.pos
@@ -487,9 +493,46 @@ class JavaParser:
     def unannotated_type(self, allow_var: bool = False, new_mode: Mode = Mode.TYPE) -> ast.ExpressionTree:
         """解析不包含注解的类型
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        UnannType:
+          UnannPrimitiveType
+          UnannReferenceType
+
+        UnannReferenceType:
+          UnannClassOrInterfaceType
+          UnannTypeVariable
+          UnannArrayType
+
+        UnannClassOrInterfaceType:
+          UnannClassType
+          UnannInterfaceType
+
+        UnannClassType:
+          TypeIdentifier [TypeArguments]
+          PackageName . {Annotation} TypeIdentifier [TypeArguments]
+          UnannClassOrInterfaceType . {Annotation} TypeIdentifier [TypeArguments]
+
+        UnannInterfaceType:
+          UnannClassType
+
+        UnannTypeVariable:
+          TypeIdentifier
+
+        UnannArrayType:
+          UnannPrimitiveType Dims
+          UnannClassOrInterfaceType Dims
+          UnannTypeVariable Dims
+
         [JDK Code] JavacParser.unannotatedType
 
-        TODO 待补充单元测试（待 term 完成）
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("String"), mode=Mode.EXPR).unannotated_type().kind.name
+        'IDENTIFIER'
+        >>> JavaParser(LexicalFSM("java.util.String"), mode=Mode.EXPR).unannotated_type().kind.name
+        'MEMBER_SELECT'
+        >>> JavaParser(LexicalFSM("int"), mode=Mode.EXPR).unannotated_type().kind.name
+        'PRIMITIVE_TYPE'
         """
         result = self.term(new_mode)
         restricted_type_name = self.restricted_type_name(result)
@@ -3528,5 +3571,6 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("name2 = name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term())
-    print(JavaParser(LexicalFSM("name2 += name1 > 3 ? 2 : 1"), mode=Mode.EXPR).term())
+    print(JavaParser(LexicalFSM("String"), mode=Mode.EXPR).unannotated_type())
+    print(JavaParser(LexicalFSM("java.util.String"), mode=Mode.EXPR).unannotated_type())
+    print(JavaParser(LexicalFSM("int"), mode=Mode.EXPR).unannotated_type())
