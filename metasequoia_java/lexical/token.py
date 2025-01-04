@@ -146,6 +146,11 @@ class Token:
         return [affiliation for affiliation in self._affiliations
                 if affiliation.style in {AffiliationStyle.JAVADOC_LINE, AffiliationStyle.JAVADOC_BLOCK}]
 
+    @staticmethod
+    def dummy() -> "Token":
+        """返回标记无效的 Token"""
+        return Token(kind=TokenKind.ERROR, pos=0, end_pos=0, affiliations=[], source=None)
+
 
 class IntToken(Token):
     """整数类型的 Token"""

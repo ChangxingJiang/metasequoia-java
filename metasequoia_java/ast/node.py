@@ -18,7 +18,6 @@ from metasequoia_java.ast.element import Modifier
 from metasequoia_java.ast.element import TypeKind
 from metasequoia_java.ast.generate_utils import Separator, change_int_to_string, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
-from metasequoia_java.lexical import TokenKind
 
 __all__ = [
     "AnnotatedTypeTree",  # 包含注解的类型
@@ -135,6 +134,19 @@ class AnnotationTree(ExpressionTree):
 
     annotation_type: Tree = dataclasses.field(kw_only=True)
     arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               annotation_type: Tree,
+               arguments: List[ExpressionTree]) -> "AnnotationTree":
+        return AnnotationTree(
+            kind=TreeKind.ANNOTATION,
+            annotation_type=annotation_type,
+            arguments=arguments,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if len(self.arguments) > 0:
@@ -317,6 +329,20 @@ class BinaryTree(ExpressionTree):
 
     left_operand: ExpressionTree = dataclasses.field(kw_only=True)
     right_operand: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               kind: TreeKind,
+               left_operand: ExpressionTree,
+               right_operand: ExpressionTree) -> "BinaryTree":
+        return BinaryTree(
+            kind=kind,
+            left_operand=left_operand,
+            right_operand=right_operand,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -1080,16 +1106,43 @@ class InstanceOfTree(ExpressionTree):
     样例：
     expression instanceof type
     expression instanceof type variable-name
+
+    映射逻辑位置：CTree.JCInstanceOf
+    https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/tree/JCTree.java
     """
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
-    type: Tree = dataclasses.field(kw_only=True)
+    instance_type: Tree = dataclasses.field(kw_only=True)
     pattern: Optional[PatternTree] = dataclasses.field(kw_only=True)  # 【JDK 16+】
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str,
+               expression: ExpressionTree,
+               pattern: Tree
+               ) -> "InstanceOfTree":
+        if isinstance(pattern, PatternTree):
+            if isinstance(pattern, BindingPatternTree):
+                instance_type = pattern.variable.variable_type
+            else:
+                instance_type = None
+            actual_pattern = pattern
+        else:
+            instance_type = pattern
+            actual_pattern = False
+        return InstanceOfTree(
+            kind=TreeKind.INTERSECTION_TYPE,
+            expression=expression,
+            instance_type=instance_type,
+            pattern=actual_pattern,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if self.pattern is None:
-            return f"{self.expression.generate()} instanceof {self.type.generate()}"
-        return f"{self.expression.generate()} instanceof {self.type.generate()} {self.pattern.generate()}"
+            return f"{self.expression.generate()} instanceof {self.instance_type.generate()}"
+        return f"{self.expression.generate()} instanceof {self.instance_type.generate()} {self.pattern.generate()}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -1996,22 +2049,12 @@ class UnaryTree(ExpressionTree):
     expression operator
     """
 
-    OPERATOR_KIND_HASH = {
-        TokenKind.PLUS: TreeKind.UNARY_PLUS,  # + a
-        TokenKind.SUB: TreeKind.UNARY_MINUS,  # - a
-        TokenKind.BANG: TreeKind.LOGICAL_COMPLEMENT,  # ! a
-        TokenKind.TILDE: TreeKind.BITWISE_COMPLEMENT,  # ~ a
-        TokenKind.PLUS_PLUS: TreeKind.PREFIX_INCREMENT,  # ++ a
-        TokenKind.SUB_SUB: TreeKind.PREFIX_DECREMENT,  # -- a
-    }
-
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(operator: TokenKind, expression: ExpressionTree, start_pos: int, end_pos: int,
-               source: str) -> "UnaryTree":
+    def create(kind: TreeKind, expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "UnaryTree":
         return UnaryTree(
-            kind=UnaryTree.OPERATOR_KIND_HASH[operator],
+            kind=kind,
             expression=expression,
             start_pos=start_pos,
             end_pos=end_pos,

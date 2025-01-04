@@ -30,6 +30,9 @@ class JavaParser:
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/parser/JavacParser.java
     """
 
+    # 中缀操作符的优先级级别的数量
+    INFIX_PRECEDENCE_LEVELS = 10
+
     def __init__(self, lexer: LexicalFSM, mode: Mode = Mode.NULL):
         self.text = lexer.text
         self.lexer = lexer
@@ -51,6 +54,10 @@ class JavaParser:
 
         # 当前源码层级中是否允许出现 yield 语句
         self.allow_yield_statement: bool = False
+
+        # 为节省每次二元操作时分配新的操作数 / 操作符栈的开销，所以采用供应机制
+        self.od_stack_supply: List[List[Optional[ast.ExpressionTree]]] = []
+        self.op_stack_supply: List[List[Optional[Token]]] = []
 
     def next_token(self):
         self.lexer.next_token()
@@ -270,55 +277,58 @@ class JavaParser:
         """
         pos = self.token.pos
         if self.token.kind in {TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL}:
-            return ast.IntLiteralTree.create(
+            literal = ast.IntLiteralTree.create(
                 style=INT_LITERAL_STYLE_HASH[self.token.kind],
                 value=self.token.int_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind in {TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL}:
-            return ast.LongLiteralTree.create(
+        elif self.token.kind in {TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL}:
+            literal = ast.LongLiteralTree.create(
                 style=LONG_LITERAL_STYLE_HASH[self.token.kind],
                 value=self.token.int_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.FLOAT_LITERAL:
-            return ast.FloatLiteralTree.create(
+        elif self.token.kind == TokenKind.FLOAT_LITERAL:
+            literal = ast.FloatLiteralTree.create(
                 value=self.token.float_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.DOUBLE_LITERAL:
-            return ast.DoubleLiteralTree.create(
+        elif self.token.kind == TokenKind.DOUBLE_LITERAL:
+            literal = ast.DoubleLiteralTree.create(
                 value=self.token.float_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.TRUE:
-            return ast.TrueLiteralTree.create(
+        elif self.token.kind == TokenKind.TRUE:
+            literal = ast.TrueLiteralTree.create(
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.FALSE:
-            return ast.FalseLiteralTree.create(
+        elif self.token.kind == TokenKind.FALSE:
+            literal = ast.FalseLiteralTree.create(
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.CHAR_LITERAL:
-            return ast.CharacterLiteralTree.create(
+        elif self.token.kind == TokenKind.CHAR_LITERAL:
+            literal = ast.CharacterLiteralTree.create(
                 value=self.token.char_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.STRING_LITERAL:
-            return ast.StringLiteralTree.create_string(
+        elif self.token.kind == TokenKind.STRING_LITERAL:
+            literal = ast.StringLiteralTree.create_string(
                 value=self.token.string_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.TEXT_BLOCK:
-            return ast.StringLiteralTree.create_text_block(
+        elif self.token.kind == TokenKind.TEXT_BLOCK:
+            literal = ast.StringLiteralTree.create_text_block(
                 value=self.token.string_value(),
                 **self._info_include(pos)
             )
-        if self.token.kind == TokenKind.NULL:
-            return ast.NullLiteralTree.create(
+        elif self.token.kind == TokenKind.NULL:
+            literal = ast.NullLiteralTree.create(
                 **self._info_include(pos)
             )
-        raise JavaSyntaxError(f"{self.token.source} 不是字面值")
+        else:
+            raise JavaSyntaxError(f"{self.token.source} 不是字面值")
+        self.next_token()
+        return literal
 
     def parse_expression(self) -> ast.ExpressionTree:
         """解析表达式（可以是表达式或类型）
@@ -497,25 +507,227 @@ class JavaParser:
         """解析第 0 层级语法元素的剩余部分"""
         return expression  # TODO 待开发方法逻辑
 
-    def term_1_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def term1(self) -> ast.ExpressionTree:
+        """解析第 1 层级语法元素
+
+        [JDK Code] JavacParser.term1
+        Expression1   = Expression2 [Expression1Rest]
+        Type1         = Type2
+        TypeNoParams1 = TypeNoParams2
+        """
+        expression = self.term2()
+
+    def term1_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
         """解析第 1 层级语法元素的剩余部分"""
         return expression  # TODO 待开发方法逻辑
 
-    def term_2(self):
+    def term2(self):
         """解析第 2 层级语法元素
+
+        处理如下层级的表达式：
+        OR_PREC = 4  # "||"
+        AND_PREC = 5  # "&&"
+        BIT_OR_PREC = 6  # "|"
+        BIT_XOR_PREC = 7  # "^"
+        BIT_AND_PREC = 8  # "&"
+        EQ_PREC = 9  # "==" | "!="
+        ORD_PREC = 10  # "<" | ">" | "<=" | ">="
+        SHIFT_PREC = 11  # "<<" | ">>" | ">>>"
+        ADD_PREC = 12  # "+" | "-"
+        MUL_PREC = 13  # "*" | "/" | "%"
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ConditionalOrExpression:
+          ConditionalAndExpression
+          ConditionalOrExpression || ConditionalAndExpression
+
+        ConditionalAndExpression:
+          InclusiveOrExpression
+          ConditionalAndExpression && InclusiveOrExpression
+
+        InclusiveOrExpression:
+          ExclusiveOrExpression
+          InclusiveOrExpression | ExclusiveOrExpression
+
+        ExclusiveOrExpression:
+          AndExpression
+          ExclusiveOrExpression ^ AndExpression
+
+        AndExpression:
+          EqualityExpression
+          AndExpression & EqualityExpression
+
+        EqualityExpression:
+          RelationalExpression
+          EqualityExpression == RelationalExpression
+          EqualityExpression != RelationalExpression
+
+        RelationalExpression:
+          ShiftExpression
+          RelationalExpression < ShiftExpression
+          RelationalExpression > ShiftExpression
+          RelationalExpression <= ShiftExpression
+          RelationalExpression >= ShiftExpression
+          InstanceofExpression
+
+        InstanceofExpression:
+          RelationalExpression instanceof ReferenceType
+          RelationalExpression instanceof Pattern
+
+        ShiftExpression:
+          AdditiveExpression
+          ShiftExpression << AdditiveExpression
+          ShiftExpression >> AdditiveExpression
+          ShiftExpression >>> AdditiveExpression
+
+        AdditiveExpression:
+          MultiplicativeExpression
+          AdditiveExpression + MultiplicativeExpression
+          AdditiveExpression - MultiplicativeExpression
+
+        MultiplicativeExpression:
+          UnaryExpression
+          MultiplicativeExpression * UnaryExpression
+          MultiplicativeExpression / UnaryExpression
+          MultiplicativeExpression % UnaryExpression
 
         [JDK Code] JavacParser.term2()
         Expression2   = Expression3 [Expression2Rest]
         Type2         = Type3
         TypeNoParams2 = TypeNoParams3
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("1 + 2"), mode=Mode.EXPR).term2().kind.name
+        'PLUS'
+        >>> JavaParser(LexicalFSM("1 * 2"), mode=Mode.EXPR).term2().kind.name
+        'MULTIPLY'
+        >>> JavaParser(LexicalFSM("1 + 2 * 3"), mode=Mode.EXPR).term2().kind.name
+        'PLUS'
+        >>> JavaParser(LexicalFSM("(1 + 2) * 3"), mode=Mode.EXPR).term2().kind.name
+        'MULTIPLY'
         """
         expression = self.term3()
-        if self.is_mode(Mode.EXPR):
-            pass
+        if self.is_mode(Mode.EXPR) and self.prec(self.token.kind) >= grammar_enum.OperatorPrecedence.OR_PREC:
+            self.select_expr_mode()
+            return self.term2_rest(expression, grammar_enum.OperatorPrecedence.OR_PREC)
+        return expression
 
-    def term_2_rest(self, expression: ast.ExpressionTree, min_prec: int) -> ast.ExpressionTree:
-        """解析第 2 层级语法元素的剩余部分"""
-        return expression  # TODO 待开发方法逻辑
+    def term2_rest(self, expression: ast.ExpressionTree,
+                   min_prec: grammar_enum.OperatorPrecedence) -> ast.ExpressionTree:
+        """解析第 2 层级语法元素的剩余部分
+
+        [JDK Code] JavacParser.term2Rest(JCExpression, int)
+        Expression2Rest = {infixop Expression3}
+                        | Expression3 instanceof Type
+                        | Expression3 instanceof Pattern
+        infixop         = "||"
+                        | "&&"
+                        | "|"
+                        | "^"
+                        | "&"
+                        | "==" | "!="
+                        | "<" | ">" | "<=" | ">="
+                        | "<<" | ">>" | ">>>"
+                        | "+" | "-"
+                        | "*" | "/" | "%"
+        """
+        od_stack: List[ast.ExpressionTree] = self.new_od_stack()
+        op_stack: List[Token] = self.new_op_stack()
+
+        top = 0
+        od_stack[0] = expression
+        top_op = Token.dummy()
+        while self.prec(self.token.kind) >= min_prec:
+            op_stack[top] = top_op
+
+            # instanceof
+            if self.token.kind == TokenKind.INSTANCEOF:
+                pos = self.token.pos
+                self.next_token()
+
+                if self.token.kind == TokenKind.LPAREN:
+                    pattern = self.parse_pattern(self.token.pos, None, None, False, False)
+                else:
+                    pattern_pos = self.token.pos
+                    modifiers = self.opt_final([])
+                    instance_type = self.unannotated_type(allow_var=False)
+                    if self.token.kind == TokenKind.IDENTIFIER:
+                        # TODO 待增加验证逻辑
+                        pattern = self.parse_pattern(pattern_pos, modifiers, instance_type, False, False)
+                    elif self.token.kind == TokenKind.LPAREN:
+                        pattern = self.parse_pattern(pattern_pos, modifiers, instance_type, False, False)
+                        # TODO 待增加验证逻辑
+                    elif self.token.kind == TokenKind.UNDERSCORE:
+                        pattern = self.parse_pattern(pattern_pos, modifiers, instance_type, False, False)
+                    else:
+                        if modifiers.annotations:
+                            type_annotations: List[ast.AnnotationTree] = []
+                            for decl in modifiers.annotations:
+                                type_annotations.append(ast.AnnotationTree.create(
+                                    annotation_type=decl.annotation_type,
+                                    arguments=decl.arguments,
+                                    start_pos=decl.start_pos,
+                                    end_pos=decl.end_pos,
+                                    source=decl.source,
+                                ))
+                            # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
+                            instance_type = ast.AnnotatedTypeTree.create(
+                                annotations=type_annotations,
+                                underlying_type=instance_type,
+                                **self._info_include(None)
+                            )
+                        pattern = instance_type
+
+                od_stack[top] = ast.InstanceOfTree.create(
+                    expression=od_stack[top],
+                    pattern=pattern,
+                    **self._info_exclude(pos)
+                )
+
+            else:
+                top_op = self.token
+                self.next_token()  # 跳过运算符
+                top += 1
+                od_stack[top] = self.term3()
+
+            while top > 0 and self.prec(top_op.kind) >= self.prec(self.token.kind):  # 上一个运算符的优先级大于等于下一个运算符的优先级
+                od_stack[top - 1] = ast.BinaryTree.create(
+                    kind=grammar_hash.BINARY_OPERATOR_TO_TREE_KIND[top_op.kind],
+                    left_operand=od_stack[top - 1],
+                    right_operand=od_stack[top],
+                    **self._info_exclude(od_stack[top - 1].start_pos)
+                )
+                top -= 1
+                top_op = op_stack[top]
+
+        assert top == 0
+        expression = od_stack[0]
+
+        # TODO 待补充合并字符串的逻辑
+
+        self.od_stack_supply.append(od_stack)
+        self.op_stack_supply.append(op_stack)
+
+        return expression
+
+    def new_od_stack(self) -> List[Optional[ast.ExpressionTree]]:
+        """构造操作数的数组
+
+        TODO 待设计适用于 Python 的优化方法
+        """
+        if not self.od_stack_supply:
+            return [None] * (self.INFIX_PRECEDENCE_LEVELS + 1)
+        return self.od_stack_supply.pop()
+
+    def new_op_stack(self) -> List[Optional[Token]]:
+        """构造操作符的数组
+
+        TODO 待设计适用于 Python 的优化方法
+        """
+        if not self.op_stack_supply:
+            return [None] * (self.INFIX_PRECEDENCE_LEVELS + 1)
+        return self.op_stack_supply.pop()
 
     def term3(self) -> ast.ExpressionTree:
         """解析第 3 层级语法元素
@@ -708,7 +920,7 @@ class JavaParser:
 
             expression = self.term3()
             return ast.UnaryTree.create(
-                operator=tk,
+                kind=grammar_hash.UNARY_OPERATOR_TO_TREE_KIND[tk],
                 expression=expression,
                 **self._info_include(pos)
             )
@@ -746,8 +958,8 @@ class JavaParser:
             else:  # ParensResult.PARENS
                 self.accept(TokenKind.LPAREN)
                 self.select_expr_mode()
-                expression = self.term_rest(self.term_1_rest(self.term_2_rest(self.term3(),
-                                                                              grammar_enum.OperatorPrecedence.OR_PREC)))
+                expression = self.term_rest(self.term1_rest(self.term2_rest(self.term3(),
+                                                                            grammar_enum.OperatorPrecedence.OR_PREC)))
                 self.accept(TokenKind.RPAREN)
                 expression = ast.ParenthesizedTree.create(
                     expression=expression,
@@ -1326,7 +1538,7 @@ class JavaParser:
         while self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB} and self.is_mode(Mode.EXPR):
             self.select_expr_mode()
             expression = ast.UnaryTree.create(
-                operator=self.token.kind,
+                kind=grammar_hash.UNARY_OPERATOR_TO_TREE_KIND[self.token.kind],
                 expression=expression,
                 **self._info_include(self.token.pos)
             )
@@ -3193,6 +3405,17 @@ class JavaParser:
         )
         return self.variable_declarator_id(modifiers, None, False, True)
 
+    @staticmethod
+    def prec(token_kind: TokenKind) -> grammar_enum.OperatorPrecedence:
+        """计算 token_kind 的运算优先级
+
+        [JDK Code] JavacParser.prec(TokenKind)
+        """
+        return grammar_hash.TOKEN_TO_OPERATOR_PRECEDENCE.get(token_kind, grammar_enum.OperatorPrecedence.NO_PREC)
+
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("[]"), mode=Mode.TYPE).term3_rest(ast.ExpressionTree.mock(), None))
+    print(JavaParser(LexicalFSM("1 + 2"), mode=Mode.EXPR).term2())
+    print(JavaParser(LexicalFSM("1 * 2"), mode=Mode.EXPR).term2())
+    print(JavaParser(LexicalFSM("1 + 2 * 3"), mode=Mode.EXPR).term2())
+    print(JavaParser(LexicalFSM("(1 + 2) * 3"), mode=Mode.EXPR).term2())
