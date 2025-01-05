@@ -203,7 +203,7 @@ class JavaParser:
         """
         return self.ident()
 
-    def qualident(self, allow_annotations: bool):
+    def qualident(self, allow_annotations: bool) -> ast.Tree:
         """多个用 DOT 分隔的标识符
 
         [JDK Document]
@@ -2731,6 +2731,7 @@ class JavaParser:
             array_type=expression,
             dimensions=[],
             initializers=initializers,
+            dim_annotations=None,
             **self._info_exclude(new_pos)
         )
 
@@ -3002,9 +3003,43 @@ class JavaParser:
                 return pending_result
             lookahead += 1
 
+    def annotations_opt(self, kind: TreeKind) -> List[ast.AnnotationTree]:
+        """可选的多个注解
+
+        [JDK Code] JavacParser.annotationsOpt(Tag)
+        AnnotationsOpt = { '@' Annotation }
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("@Select \\n @Update")).annotations_opt(TreeKind.ANNOTATION))
+        2
+        >>> len(JavaParser(LexicalFSM("@Select()")).annotations_opt(TreeKind.ANNOTATION)[0].arguments)
+        0
+        >>> len(JavaParser(LexicalFSM("@Select(name)")).annotations_opt(TreeKind.ANNOTATION)[0].arguments)
+        1
+        >>> JavaParser(LexicalFSM("@Select(name=3)")).annotations_opt(TreeKind.ANNOTATION)[0].arguments[0].kind.name
+        'ASSIGNMENT'
+        >>> JavaParser(LexicalFSM("@Select({1, 2, 3})")).annotations_opt(TreeKind.ANNOTATION)[0].arguments[0].kind.name
+        'NEW_ARRAY'
+        """
+        if self.token.kind != TokenKind.MONKEYS_AT:
+            return []
+        annotations: List[ast.AnnotationTree] = []
+        prev_mode = self.mode
+        while self.token.kind == TokenKind.MONKEYS_AT:
+            pos = self.token.pos
+            self.next_token()  # 跳过 MONKEYS_AT
+            annotations.append(self.annotation(pos, kind))
+        self.set_last_mode(self.mode)
+        self.set_mode(prev_mode)
+        return annotations
+
     def type_annotations_opt(self) -> List[ast.AnnotationTree]:
-        """TODO"""
-        return []
+        """可选的多个类型注解
+
+        [JDK Code] JavacParser.typeAnnotationsOpt()
+        """
+        return self.annotations_opt(TreeKind.TYPE_ANNOTATION)
 
     def modifiers_opt(self, partial: Optional[ast.ModifiersTree] = None) -> ast.ModifiersTree:
         """修饰词
@@ -3091,7 +3126,7 @@ class JavaParser:
                 last_pos = self.token.pos
                 self.next_token()
                 if self.token.kind != TokenKind.INTERFACE:
-                    annotation = self.annotation(last_pos, None)  # TODO 待修改参数
+                    annotation = self.annotation(last_pos, TreeKind.ANNOTATION)
                     # if first modifier is an annotation, set pos to annotation's
                     if len(flags) == 0 and len(annotations) == 0:
                         pos = annotation.start_pos
@@ -3128,8 +3163,152 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def annotation(self, pos: int, kind: Any) -> ast.AnnotationTree:
-        """TODO"""
+    def annotation(self, pos: int, kind: TreeKind) -> ast.AnnotationTree:
+        """单个注解
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Annotation:
+          NormalAnnotation
+          MarkerAnnotation
+          SingleElementAnnotation
+
+        NormalAnnotation:
+          @ TypeName ( [ElementValuePairList] )
+
+        MarkerAnnotation:
+          @ TypeName
+
+        SingleElementAnnotation:
+          @ TypeName ( ElementValue )
+
+        [Java Code] JavacParser.annotation(int, Tag)
+        Annotation              = "@" Qualident [ "(" AnnotationFieldValues ")" ]
+        """
+        ident: ast.Tree = self.qualident(allow_annotations=False)
+        arguments: List[ast.ExpressionTree] = self.annotation_field_values_opt()
+        if kind == TreeKind.ANNOTATION:
+            return ast.AnnotationTree.create_annotation(
+                annotation_type=ident,
+                arguments=arguments,
+                **self._info_exclude(pos)
+            )
+        if kind == TreeKind.ANNOTATION_TYPE:
+            return ast.AnnotationTree.create_type_annotation(
+                annotation_type=ident,
+                arguments=arguments,
+                **self._info_exclude(pos)
+            )
+        self.raise_syntax_error(pos, f"Unhandled annotation kind: {kind.name}")
+
+    def annotation_field_values_opt(self) -> List[ast.ExpressionTree]:
+        """可选的注解参数
+
+        [Java Code] JavacParser.annotationFieldValuesOpt()
+        """
+        if self.token.kind == TokenKind.LPAREN:
+            return self.annotation_field_values()
+        else:
+            return []
+
+    def annotation_field_values(self) -> List[ast.ExpressionTree]:
+        """注解参数
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ElementValuePairList:
+          ElementValuePair {, ElementValuePair}
+
+        [Java Code] JavacParser.annotationFieldValues()
+        AnnotationFieldValues   = "(" [ AnnotationFieldValue { "," AnnotationFieldValue } ] ")"
+        """
+        self.accept(TokenKind.LPAREN)
+        buf = []
+        if self.token.kind != TokenKind.RPAREN:
+            buf.append(self.annotation_field_value())
+            while self.token.kind == TokenKind.COMMA:
+                self.next_token()
+                buf.append(self.annotation_field_value())
+        self.accept(TokenKind.RPAREN)
+        return buf
+
+    def annotation_field_value(self) -> ast.ExpressionTree:
+        """注解参数中的一个参数
+
+        [JavaCode] JavacParser.annotationFieldValue()
+        AnnotationFieldValue    = AnnotationValue
+                                | Identifier "=" AnnotationValue
+        """
+        if self.token.kind in LAX_IDENTIFIER:
+            self.select_expr_mode()
+            variable = self.term1()
+            if variable.kind == TreeKind.IDENTIFIER and self.token.kind == TokenKind.EQ:
+                pos = self.token.pos
+                self.accept(TokenKind.EQ)
+                expression = self.annotation_value()
+                return ast.AssignmentTree.create(
+                    variable=variable,
+                    expression=expression,
+                    **self._info_exclude(pos)
+                )
+            else:
+                return variable
+        else:
+            return self.annotation_value()
+
+    def annotation_value(self) -> ast.ExpressionTree:
+        """注解参数中一个参数的实参
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ElementValuePair:
+          Identifier = ElementValue
+
+        ElementValue:
+          ConditionalExpression
+          ElementValueArrayInitializer
+          Annotation
+
+        ElementValueArrayInitializer:
+          { [ElementValueList] [,] }
+
+        ElementValueList:
+          ElementValue {, ElementValue}
+
+        [Java Code] JavacParser.annotationValue()
+        AnnotationValue          = ConditionalExpression
+                                | Annotation
+                                | "{" [ AnnotationValue { "," AnnotationValue } ] [","] "}"
+        """
+        # Annotation
+        if self.token.kind == TokenKind.MONKEYS_AT:
+            pos = self.token.pos
+            self.next_token()
+            return self.annotation(pos, TreeKind.ANNOTATION)
+
+        # "{" [ AnnotationValue { "," AnnotationValue } ] [","] "}"
+        if self.token.kind == TokenKind.LBRACE:
+            pos = self.token.pos
+            self.accept(TokenKind.LBRACE)
+            initializers = []
+            if self.token.kind == TokenKind.COMMA:
+                self.next_token()
+            elif self.token.kind != TokenKind.RBRACE:
+                initializers.append(self.annotation_value())
+                while self.token.kind == TokenKind.COMMA:
+                    self.next_token()
+                    if self.token.kind == TokenKind.RBRACE:
+                        break
+                    initializers.append(self.annotation_value())
+            self.accept(TokenKind.RBRACE)
+            return ast.NewArrayTree.create(
+                array_type=None,
+                dimensions=[],
+                initializers=initializers,
+                dim_annotations=None,
+                **self._info_exclude(pos)
+            )
+
+        # ConditionalExpression
+        self.select_expr_mode()
+        return self.term1()
 
     def restricted_type_name(self, expression: ast.ExpressionTree) -> Optional[str]:
         """限定类型名称
@@ -3571,6 +3750,7 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("String"), mode=Mode.EXPR).unannotated_type())
-    print(JavaParser(LexicalFSM("java.util.String"), mode=Mode.EXPR).unannotated_type())
-    print(JavaParser(LexicalFSM("int"), mode=Mode.EXPR).unannotated_type())
+    print(JavaParser(LexicalFSM("@Select \n @Update"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
+    print(JavaParser(LexicalFSM("@Select(name)"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
+    print(JavaParser(LexicalFSM("@Select(name=3)"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
+    print(JavaParser(LexicalFSM("@Select({1, 2, 3})"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))

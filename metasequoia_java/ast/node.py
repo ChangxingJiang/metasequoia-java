@@ -136,11 +136,24 @@ class AnnotationTree(ExpressionTree):
     arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str,
-               annotation_type: Tree,
-               arguments: List[ExpressionTree]) -> "AnnotationTree":
+    def create_annotation(annotation_type: Tree,
+                          arguments: List[ExpressionTree],
+                          start_pos: int, end_pos: int, source: str) -> "AnnotationTree":
         return AnnotationTree(
             kind=TreeKind.ANNOTATION,
+            annotation_type=annotation_type,
+            arguments=arguments,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @staticmethod
+    def create_type_annotation(annotation_type: Tree,
+                               arguments: List[ExpressionTree],
+                               start_pos: int, end_pos: int, source: str) -> "AnnotationTree":
+        return AnnotationTree(
+            kind=TreeKind.TYPE_ANNOTATION,
             annotation_type=annotation_type,
             arguments=arguments,
             start_pos=start_pos,
@@ -1619,18 +1632,18 @@ class NewArrayTree(ExpressionTree):
     样例 2：new type dimensions [ ] initializers
     """
 
-    array_type: Tree = dataclasses.field(kw_only=True)
+    array_type: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
     dimensions: List[ExpressionTree] = dataclasses.field(kw_only=True)
     initializers: List[ExpressionTree] = dataclasses.field(kw_only=True)
     annotations: Optional[List[AnnotationTree]] = dataclasses.field(kw_only=True, default=None)
     dim_annotations: Optional[List[List[AnnotationTree]]] = dataclasses.field(kw_only=True, default=None)
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str,
-               array_type: ExpressionTree,
+    def create(array_type: Optional[ExpressionTree],
                dimensions: List[ExpressionTree],
                initializers: List[ExpressionTree],
-               dim_annotations: Optional[List[List[AnnotationTree]]] = None) -> "NewArrayTree":
+               dim_annotations: Optional[List[List[AnnotationTree]]],
+               start_pos: int, end_pos: int, source: str) -> "NewArrayTree":
         return NewArrayTree(
             kind=TreeKind.NEW_ARRAY,
             array_type=array_type,
