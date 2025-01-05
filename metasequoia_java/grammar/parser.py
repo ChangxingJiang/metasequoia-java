@@ -2190,7 +2190,7 @@ class JavaParser:
         >>> parser.type_arguments_opt(ast.ExpressionTree.mock()).kind.name
         'PARAMETERIZED_TYPE'
         """
-        if self.token.kind == TokenKind.LT and self.is_mode(Mode.EXPR) and not self.is_mode(Mode.NO_PARAMS):
+        if self.token.kind == TokenKind.LT and self.is_mode(Mode.TYPE) and not self.is_mode(Mode.NO_PARAMS):
             self.select_type_mode()
             return self.type_arguments(expression, False)
         return expression
@@ -2937,7 +2937,7 @@ class JavaParser:
     def parse_simple_statement(self) -> ast.StatementTree:
         """解析单个语句
 
-        [JDK Code] JavacParser.parseStatement()
+        [JDK Code] JavacParser.parseSimpleStatement()
         Statement =
              Block
            | IF ParExpression Statement [ELSE Statement]
@@ -2964,6 +2964,30 @@ class JavaParser:
         'BLOCK'
         >>> JavaParser(LexicalFSM("if (name > 3) {} else {} "), mode=Mode.EXPR).parse_simple_statement().kind.name
         'IF'
+        >>> JavaParser(LexicalFSM("for (String name : nameList) {}"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'ENHANCED_FOR_LOOP'
+        >>> JavaParser(LexicalFSM("for (;;) {}"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'FOR_LOOP'
+        >>> JavaParser(LexicalFSM("for (int i = 0; i < 5; i++) {}"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'FOR_LOOP'
+        >>> JavaParser(LexicalFSM("while (true) {}"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'WHILE_LOOP'
+        >>> JavaParser(LexicalFSM("do {} while (true);"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'DO_WHILE_LOOP'
+        >>> demo = "try (Rt rt = new Rt()) {} catch ( Exception1 | Exception2 e ) {} finally {}"
+        >>> res = JavaParser(LexicalFSM(demo)).parse_simple_statement()
+        >>> res.kind.name
+        'TRY'
+        >>> res.block.kind.name if isinstance(res, ast.TryTree) else None
+        'BLOCK'
+        >>> res.catches[0].kind.name if isinstance(res, ast.TryTree) else None
+        'CATCH'
+        >>> res.catches[0].parameter.variable_type.kind.name if isinstance(res, ast.TryTree) else None
+        'UNION_TYPE'
+        >>> res.finally_block.kind.name if isinstance(res, ast.TryTree) else None
+        'BLOCK'
+        >>> len(res.resources) if isinstance(res, ast.TryTree) else None
+        1
         """
         pos = self.token.pos
         if self.token.kind == TokenKind.LBRACE:
@@ -2999,9 +3023,272 @@ class JavaParser:
             self.next_token()
             self.accept(TokenKind.LPAREN)
             if self.token.kind == TokenKind.SEMI:
-                inits = []
+                initializer = []
             else:
-                inits = self.for_init()
+                initializer = self.for_init()
+
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+            # EnhancedForStatement:
+            #   for ( LocalVariableDeclaration : Expression ) Statement
+            #
+            # EnhancedForStatementNoShortIf:
+            #   for ( LocalVariableDeclaration : Expression ) StatementNoShortIf
+            variable = initializer[0] if len(initializer) >= 1 else None
+            if (len(initializer) == 1
+                    and self.token.kind == TokenKind.COLON
+                    and isinstance(variable, ast.VariableTree)
+                    and variable.initializer is None):
+                self.accept(TokenKind.COLON)
+                expression = self.parse_expression()
+                self.accept(TokenKind.RPAREN)
+                statement = self.parse_statement_as_block()
+                return ast.EnhancedForLoopTree.create(
+                    variable=variable,
+                    expression=expression,
+                    statement=statement,
+                    **self._info_exclude(pos)
+                )
+
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+            # ForStatement:
+            #   BasicForStatement
+            #   EnhancedForStatement
+            #
+            # ForStatementNoShortIf:
+            #   BasicForStatementNoShortIf
+            #   EnhancedForStatementNoShortIf
+            #
+            # BasicForStatement:
+            #   for ( [ForInit] ; [Expression] ; [ForUpdate] ) Statement
+            #
+            # BasicForStatementNoShortIf:
+            #   for ( [ForInit] ; [Expression] ; [ForUpdate] ) StatementNoShortIf
+            else:
+                self.accept(TokenKind.SEMI)
+                condition = None if self.token.kind == TokenKind.SEMI else self.parse_expression()
+                self.accept(TokenKind.SEMI)
+                update = [] if self.token.kind == TokenKind.RPAREN else self.for_update()
+                self.accept(TokenKind.RPAREN)
+                statement = self.parse_statement_as_block()
+                return ast.ForLoopTree.create(
+                    initializer=initializer,
+                    condition=condition,
+                    update=update,
+                    statement=statement,
+                    **self._info_exclude(pos)
+                )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # WhileStatement:
+        #   while ( Expression ) Statement
+        #
+        # WhileStatementNoShortIf:
+        #   while ( Expression ) StatementNoShortIf
+        if self.token.kind == TokenKind.WHILE:
+            self.next_token()
+            condition = self.par_expression()
+            statement = self.parse_statement_as_block()
+            return ast.WhileLoopTree.create(
+                condition=condition,
+                statement=statement,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # DoStatement:
+        #   do Statement while ( Expression ) ;
+        if self.token.kind == TokenKind.DO:
+            self.next_token()
+            statement = self.parse_statement_as_block()
+            self.accept(TokenKind.WHILE)
+            condition = self.par_expression()
+            self.accept(TokenKind.SEMI)
+            return ast.DoWhileLoopTree.create(
+                condition=condition,
+                statement=statement,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # TryStatement:
+        #   try Block Catches
+        #   try Block [Catches] Finally
+        #   TryWithResourcesStatement
+        #
+        # Catches:
+        #   CatchClause {CatchClause}
+        #
+        # Finally:
+        #   finally Block
+        #
+        # TryWithResourcesStatement:
+        #   try ResourceSpecification Block [Catches] [Finally]
+        #
+        # ResourceSpecification:
+        #   ( ResourceList [;] )
+        if self.token.kind == TokenKind.TRY:
+            self.next_token()
+
+            # 解析资源部分
+            if self.token.kind == TokenKind.LPAREN:
+                self.next_token()
+                resources = self.resources()
+                self.accept(TokenKind.RPAREN)
+            else:
+                resources = []
+
+            block = self.block()
+
+            if self.token.kind not in {TokenKind.CATCH, TokenKind.FINALLY}:
+                self.raise_syntax_error(self.token.pos, "TryWithoutCatchFinallyOrResourceDecls")
+
+            catches: List[ast.CatchTree] = []
+            finally_block: Optional[ast.BlockTree] = None
+            while self.token.kind == TokenKind.CATCH:
+                catches.append(self.catch_clause())
+                if self.token.kind == TokenKind.FINALLY:
+                    self.next_token()
+                    finally_block = self.block()
+
+            return ast.TryTree.create(
+                block=block,
+                catches=catches,
+                finally_block=finally_block,
+                resources=resources,
+                **self._info_exclude(pos)
+            )
+
+        if self.token.kind == TokenKind.SWITCH:
+            self.next_token()
+            selector = self.par_expression()
+            self.accept(TokenKind.LBRACE)
+            cases = self.switch_block_statement_groups()
+
+    def catch_clause(self) -> ast.CatchTree:
+        """解析 catch 子句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        CatchClause:
+          catch ( CatchFormalParameter ) Block
+
+        CatchFormalParameter:
+          {VariableModifier} CatchType VariableDeclaratorId
+
+        [JDK Code] JavacParser.catchClause()
+        CatchClause     = CATCH "(" FormalParameter ")" Block
+
+        Examples
+        --------
+        >>> res = JavaParser(LexicalFSM("catch ( Exception1 | Exception2 e ) {}")).catch_clause()
+        >>> res.kind.name
+        'CATCH'
+        >>> res.parameter.kind.name
+        'VARIABLE'
+        >>> res.parameter.variable_type.kind.name
+        'UNION_TYPE'
+        """
+        pos = self.token.pos
+        self.accept(TokenKind.CATCH)
+        self.accept(TokenKind.LPAREN)
+        modifiers = self.opt_final([Modifier.PARAMETER])
+        catch_types = self.catch_types()
+        if len(catch_types) > 1:
+            param_type = ast.UnionTypeTree.create(
+                type_alternatives=catch_types,
+                **self._info_exclude(catch_types[0].start_pos)
+            )
+        else:
+            param_type = catch_types[0]
+        parameter = self.variable_declarator_id(modifiers, param_type, True, False)
+        self.accept(TokenKind.RPAREN)
+        block = self.block()
+        return ast.CatchTree.create(
+            parameter=parameter,
+            block=block,
+            **self._info_exclude(pos)
+        )
+
+    def catch_types(self) -> List[ast.ExpressionTree]:
+        """解析 catch 子句中的异常类型
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        CatchType:
+          UnannClassType {| ClassType}
+
+        [JDK Code] JavacParser.catchTypes()
+        """
+        catch_types = [self.parse_type()]
+        while self.token.kind == TokenKind.BAR:
+            self.next_token()
+            catch_types.append(self.parse_type())
+            # TODO 考虑 JDK 源码注释中的问题
+        return catch_types
+
+    def switch_block_statement_groups(self) -> List[ast.CaseTree]:
+        """解析 switch 语句中的多个 case 语句子句
+
+        [JDK Code] JavacParser.switchBlockStatementGroups()
+        SwitchBlockStatementGroups = { SwitchBlockStatementGroup }
+        SwitchBlockStatementGroup = SwitchLabel BlockStatements
+        SwitchLabel = CASE ConstantExpression ":" | DEFAULT ":"
+        """
+        cases: List[ast.CaseTree] = []
+        while True:
+            pos = self.token.pos
+            if self.token.kind in {TokenKind.CASE, TokenKind.DEFAULT}:
+                cases.extend(self.switch_block_statement_group())
+            elif self.token.kind in {TokenKind.RBRACE, TokenKind.EOF}:
+                return cases
+            else:
+                self.raise_syntax_error(pos, f"Expect CASE, DEFAULT, RBRACE, but get {self.token.kind.name}")
+
+    def switch_block_statement_group(self) -> List[ast.CaseTree]:
+        """解析 switch 语句中的单个 case 语句子句
+
+        [JDK Code] JavacParser.switchBlockStatementGroup()
+        """
+        pos = self.token.pos
+        statements: List[ast.StatementTree]
+        if self.token.kind == TokenKind.CASE:
+            self.next_token()
+            labels: List[ast.CaseLabelTree] = []
+            allow_default = False
+            while True:
+                label = self.parse_case_label(allow_default)
+                labels.append(label)
+                if self.token.kind != TokenKind.COMMA:
+                    break
+                self.next_token()
+                # TODO 待确定 isNone 的逻辑是否正确
+                allow_default = (label.kind == TreeKind.CONSTANT_CASE_LABEL
+                                 and isinstance(label, ast.ConstantCaseLabelTree)
+                                 and label.expression.kind == TreeKind.NULL_LITERAL)
+
+            guard = self.parse_guard(labels[-1])
+            if self.token.kind == TokenKind.ARROW:
+                self.accept(TokenKind.ARROW)
+                statements = [self.parse_statement_as_block()]
+                # TODO 补充检查逻辑
+                case_expression = ast.CaseTree.create_rule(
+                    labels=labels,
+                    guard=guard,
+                    statements=statements,
+                    body=statements[0],
+                    **self._info_exclude(pos)
+                )
+            else:
+                self.accept(TokenKind.COLON)
+                statements = self.block_statements()
+                case_expression = ast.CaseTree.create_statement(
+                    labels=labels,
+                    guard=guard,
+                    statements=statements,
+                    body=None,
+                    **self._info_exclude(pos)
+                )
+                self.accept(TokenKind.SEMI)
+            # TODO 补充代码位置逻辑
+            return [case_expression]
 
     def parse_statement(self) -> ast.StatementTree:
         """解析语句
@@ -3189,24 +3476,99 @@ class JavaParser:
                 return pending_result
             lookahead += 1
 
+    def more_statement_expressions(self,
+                                   pos: int,
+                                   first: ast.ExpressionTree,
+                                   statements: List[ast.ExpressionStatementTree]
+                                   ) -> List[ast.ExpressionStatementTree]:
+        """解析更多的语句表达式
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        StatementExpressionList: 【后缀】
+          StatementExpression {, StatementExpression}
+
+        [JDK Code] JavacParser.moreStatementExpressions(int, JCExpression, T)
+        """
+        # TODO 待增加表达式类型检查逻辑
+        statements.append(ast.ExpressionStatementTree.create(
+            expression=first,
+            **self._info_exclude(pos)
+        ))
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
+            pos = self.token.pos
+            expression = self.parse_expression()
+            statements.append(ast.ExpressionStatementTree.create(
+                expression=expression,
+                **self._info_exclude(pos)
+            ))
+        return statements
+
     def for_init(self) -> List[ast.StatementTree]:
-        """解析 for 语句的 ( ) 中的语句列表
+        """解析 for 语句的 ( ) 中的第 1 个 ; 之前的语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ForInit:
+          StatementExpressionList
+          LocalVariableDeclaration
 
         [JDK Code] JavacParser.forInit
         ForInit = StatementExpression MoreStatementExpressions
                  |  { FINAL | '@' Annotation } Type VariableDeclarators
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("int i = 0"), mode=Mode.EXPR).for_init())
+        1
+        >>> len(JavaParser(LexicalFSM("int i = 0, j = 2"), mode=Mode.EXPR).for_init())
+        2
         """
-        statements = []
         pos = self.token.pos
         if self.token.kind in {TokenKind.FINAL, TokenKind.MONKEYS_AT}:
             modifiers = self.opt_final([])
             variable_type = self.parse_type()
             return self.variable_declarators(
                 modifiers=modifiers,
-                variable_type=self.parse_type(),
-                v_defs=statements,
+                variable_type=variable_type,
+                v_defs=[],
                 local_decl=True,
             )
+
+        expression = self.term(Mode.EXPR | Mode.TYPE)
+        if self.was_type_mode() and self.token.kind in LAX_IDENTIFIER:
+            modifiers = self.modifiers_opt()
+            return self.variable_declarators(
+                modifiers=modifiers,
+                variable_type=expression,
+                v_defs=[],
+                local_decl=True,
+            )
+
+        if self.was_type_mode() and self.token.kind == TokenKind.COLON:
+            self.raise_syntax_error(pos, "bad for-loop")
+
+        return self.more_statement_expressions(pos, expression, [])
+
+    def for_update(self) -> List[ast.ExpressionStatementTree]:
+        """解析 for 语句的 ( ) 中第 2 个 ; 之后的语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ForUpdate:
+          StatementExpressionList
+
+        [JDK Code] JavacParser.forUpdate()
+        ForUpdate = StatementExpression MoreStatementExpressions
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("i++"), mode=Mode.EXPR).for_update())
+        1
+        >>> len(JavaParser(LexicalFSM("i++, j++"), mode=Mode.EXPR).for_update())
+        2
+        """
+        pos = self.token.pos
+        first = self.parse_expression()
+        return self.more_statement_expressions(pos, first, [])
 
     def annotations_opt(self, kind: TreeKind) -> List[ast.AnnotationTree]:
         """可选的多个注解
@@ -3759,6 +4121,66 @@ class JavaParser:
                 **self._info_include(pos)
             )
 
+    def resources(self) -> List[ast.Tree]:
+        """多个资源
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ResourceList:
+          Resource {; Resource}
+
+        [JDK Code] JavacParser.resources()
+        Resources = Resource { ";" Resources }
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("Rt1 rt1 = new Rt1()"), mode=Mode.EXPR).resources())
+        1
+        >>> len(JavaParser(LexicalFSM("Rt1 rt1 = new Rt1() ; Rt2 rt2 = new Rt2()"), mode=Mode.EXPR).resources())
+        2
+        """
+        defs: List[ast.Tree] = [self.resource()]
+        while self.token.kind == TokenKind.SEMI:
+            # TODO 待增加代码位置逻辑
+            self.next_token()
+            if self.token.kind == TokenKind.RPAREN:
+                break
+            defs.append(self.resource())
+        return defs
+
+    def resource(self) -> ast.Tree:
+        """资源
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Resource:
+          LocalVariableDeclaration
+          VariableAccess
+
+        [JDK Code] JavacParser.resource()
+        Resource = VariableModifiersOpt Type VariableDeclaratorId "=" Expression
+                 | Expression
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("ResourceType resource = new ResourceType()"), mode=Mode.EXPR).resource().kind.name
+        'VARIABLE'
+        """
+        if self.token.kind in {TokenKind.FINAL, TokenKind.MONKEYS_AT}:
+            modifiers = self.opt_final([])
+            expression = self.parse_type(allow_var=True)
+            pos = self.token.pos
+            name = self.ident_or_underscore()
+            return self.variable_declarator_rest(pos, modifiers, expression, name, True, True, False)
+
+        expression = self.term(Mode.EXPR | Mode.TYPE)
+        if self.was_type_mode() and self.token.kind in LAX_IDENTIFIER:
+            modifiers = self.modifiers_opt()
+            pos = self.token.pos
+            name = self.ident_or_underscore()
+            return self.variable_declarator_rest(pos, modifiers, expression, name, True, True, False)
+
+        # TODO 待增加异常检查机制
+        return expression
+
     def type_name(self) -> ast.IdentifierTree:
         """解析 TypeIdentifier 元素
 
@@ -4106,6 +4528,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("i = 0, j = 2"), mode=Mode.EXPR).variable_declarators(None,
-                                                                                      ast.ExpressionTree.mock(),
-                                                                                      [], True))
+    print(JavaParser(LexicalFSM(
+        "try (Rt rt = new Rt()) {} catch ( Exception1 | Exception2 e ) {} finally {}")).parse_simple_statement())

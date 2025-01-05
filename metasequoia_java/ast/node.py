@@ -650,6 +650,19 @@ class CatchTree(Tree):
     parameter: VariableTree = dataclasses.field(kw_only=True)
     block: BlockTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(parameter: VariableTree,
+               block: BlockTree,
+               start_pos: int, end_pos: int, source: str) -> "CatchTree":
+        return CatchTree(
+            kind=TreeKind.CATCH,
+            parameter=parameter,
+            block=block,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"catch ({self.parameter.generate()}) {self.block.generate()}"
 
@@ -1023,7 +1036,20 @@ class DoWhileLoopTree(StatementTree):
     """
 
     condition: ExpressionTree = dataclasses.field(kw_only=True)
-    statement: ExpressionTree = dataclasses.field(kw_only=True)
+    statement: StatementTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(condition: ExpressionTree,
+               statement: StatementTree,
+               start_pos: int, end_pos: int, source: str) -> "DoWhileLoopTree":
+        return DoWhileLoopTree(
+            kind=TreeKind.DO_WHILE_LOOP,
+            condition=condition,
+            statement=statement,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"do {self.statement.generate()} while ({self.condition.generate()});"
@@ -1058,6 +1084,21 @@ class EnhancedForLoopTree(StatementTree):
     variable: VariableTree = dataclasses.field(kw_only=True)
     expression: ExpressionTree = dataclasses.field(kw_only=True)
     statement: StatementTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(variable: VariableTree,
+               expression: ExpressionTree,
+               statement: StatementTree,
+               start_pos: int, end_pos: int, source: str) -> "EnhancedForLoopTree":
+        return EnhancedForLoopTree(
+            kind=TreeKind.ENHANCED_FOR_LOOP,
+            variable=variable,
+            expression=expression,
+            statement=statement,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return (f"for ({self.variable.generate()} : {self.expression.generate()}) \n"
@@ -1109,6 +1150,17 @@ class ExpressionStatementTree(StatementTree):
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ExpressionStatementTree":
+        return ExpressionStatementTree(
+            kind=TreeKind.EXPRESSION_STATEMENT,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return f"{self.expression.generate()};"
 
@@ -1126,9 +1178,26 @@ class ForLoopTree(StatementTree):
     """
 
     initializer: List[StatementTree] = dataclasses.field(kw_only=True)
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
+    condition: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
     update: List[ExpressionStatementTree] = dataclasses.field(kw_only=True)
     statement: StatementTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(initializer: initializer,
+               condition: Optional[ExpressionTree],
+               update: List[ExpressionStatementTree],
+               statement: StatementTree,
+               start_pos: int, end_pos: int, source: str) -> "ForLoopTree":
+        return ForLoopTree(
+            kind=TreeKind.FOR_LOOP,
+            initializer=initializer,
+            condition=condition,
+            update=update,
+            statement=statement,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
@@ -2084,6 +2153,23 @@ class TryTree(StatementTree):
     finally_block: Optional[BlockTree] = dataclasses.field(kw_only=True)
     resources: List[Tree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(block: BlockTree,
+               catches: List[CatchTree],
+               finally_block: Optional[BlockTree],
+               resources: List[Tree],
+               start_pos: int, end_pos: int, source: str) -> "TryTree":
+        return TryTree(
+            kind=TreeKind.TRY,
+            block=block,
+            catches=catches,
+            finally_block=finally_block,
+            resources=resources,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -2159,6 +2245,17 @@ class UnionTypeTree(Tree):
 
     type_alternatives: List[Tree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(type_alternatives: List[Tree],
+               start_pos: int, end_pos: int, source: str) -> "UnionTypeTree":
+        return UnionTypeTree(
+            kind=TreeKind.UNION_TYPE,
+            type_alternatives=type_alternatives,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         """TODO"""
 
@@ -2194,6 +2291,19 @@ class WhileLoopTree(StatementTree):
 
     condition: ExpressionTree = dataclasses.field(kw_only=True)
     statement: StatementTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(condition: ExpressionTree,
+               statement: StatementTree,
+               start_pos: int, end_pos: int, source: str) -> "WhileLoopTree":
+        return WhileLoopTree(
+            kind=TreeKind.WHILE_LOOP,
+            condition=condition,
+            statement=statement,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return (f"while ({self.condition.generate()}) \n"
