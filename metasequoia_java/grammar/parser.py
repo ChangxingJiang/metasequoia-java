@@ -60,6 +60,9 @@ class JavaParser:
         # 当前源码层级中是否允许出现 record
         self.allow_records: bool = False
 
+        # 当前源码层级中是否允许出现 sealed 类型
+        self.allow_sealed_types: bool = True
+
         # 为节省每次二元操作时分配新的操作数 / 操作符栈的开销，所以采用供应机制
         self.od_stack_supply: List[List[Optional[ast.ExpressionTree]]] = []
         self.op_stack_supply: List[List[Optional[Token]]] = []
@@ -206,7 +209,7 @@ class JavaParser:
         """
         return self.ident()
 
-    def qualident(self, allow_annotations: bool) -> ast.Tree:
+    def qualident(self, allow_annotations: bool) -> ast.ExpressionTree:
         """多个用 DOT 分隔的标识符
 
         [JDK Document]
@@ -505,7 +508,7 @@ class JavaParser:
         'PRIMITIVE_TYPE'
         >>> JavaParser(LexicalFSM("String"), mode=Mode.TYPE).parse_type().kind.name
         'IDENTIFIER'
-        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).parse_type().kind.name
+        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).parse_type().kind.name
         'PARAMETERIZED_TYPE'
         >>> JavaParser(LexicalFSM("@Select MyType"), mode=Mode.TYPE).parse_type().kind.name
         'ANNOTATION_TYPE'
@@ -593,7 +596,7 @@ class JavaParser:
         'MEMBER_SELECT'
         >>> JavaParser(LexicalFSM("int"), mode=Mode.TYPE).unannotated_type().kind.name
         'PRIMITIVE_TYPE'
-        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).unannotated_type().kind.name
+        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).unannotated_type().kind.name
         'PARAMETERIZED_TYPE'
         """
         result = self.term(new_mode)
@@ -1006,6 +1009,12 @@ class JavaParser:
           ! UnaryExpression
           CastExpression
           SwitchExpression
+
+        ExplicitConstructorInvocation:
+          [TypeArguments] this ( [ArgumentList] ) ;
+          [TypeArguments] super ( [ArgumentList] ) ;
+          ExpressionName . [TypeArguments] super ( [ArgumentList] ) ;
+          Primary . [TypeArguments] super ( [ArgumentList] ) ;
 
         [JDK Code] JavacParser.term3
         Expression3    = PrefixOp Expression3
@@ -1534,7 +1543,7 @@ class JavaParser:
                     self.raise_syntax_error(self.token.pos, f"expect CASE, DEFAULT or RBRACE, "
                                                             f"but get {self.token.kind.name}")
 
-        self.illegal()
+        self.raise_syntax_error(self.token.pos, f"无法解析为 term3 的 Token 元素: {self.token.kind.name}")
 
     def switch_expression_statement_group(self) -> List[ast.CaseTree]:
         """解析 Switch 表达式中的一组 Case 语句
@@ -2387,8 +2396,8 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident"))
-        IdentifierTree(kind=<TreeKind.IDENTIFIER: 22>, source=None, start_pos=None, end_pos=None, name='ident')
+        >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).kind.name
+        'IDENTIFIER'
         >>> JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
         '[]'
         >>> JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
@@ -4375,24 +4384,95 @@ class JavaParser:
         """
         if self.token.kind == TokenKind.CLASS:
             return self.class_declaration(modifiers)
+        if self.is_record_start():
+            return self.record_declaration(modifiers)
 
     def class_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
         """解析 class 声明语句
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        NormalClassDeclaration:
+          {ClassModifier} class TypeIdentifier [TypeParameters] [ClassExtends] [ClassImplements] [ClassPermits] ClassBody
+
+        ClassExtends:
+          extends ClassType
+
+        ClassImplements:
+          implements InterfaceTypeList
+
+        ClassPermits:
+          permits TypeName {, TypeName}
+
         [JDK Code] JavacParser.classDeclaration(JCModifiers, Comment)
         ClassDeclaration = CLASS Ident TypeParametersOpt [EXTENDS Type]
                            [IMPLEMENTS TypeList] ClassBody
+
+        Examples
+        --------
+        >>> demo = "class MyClassName { public MyClassName () {} }"
+        >>> JavaParser(LexicalFSM(demo)).class_declaration(ast.ModifiersTree.mock()).kind.name
+        'CLASS'
         """
         pos = self.token.pos
         self.accept(TokenKind.CLASS)
         name = self.type_name()
 
-        type_params: List[ast.TypeParameterTree] = self.type_parameters_opt()
+        type_parameters: List[ast.TypeParameterTree] = self.type_parameters_opt()
 
-        extending: Optional[ast.ExpressionTree] = None
+        extends_clause: Optional[ast.ExpressionTree] = None
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
-            extending = self.parse_type()
+            extends_clause = self.parse_type()
+
+        implements_clause = []
+        if self.token.kind == TokenKind.IMPLEMENTS:
+            self.next_token()
+            implements_clause = self.type_list()
+
+        permits_clause = self.permits_clause(modifiers, "class")
+
+        # TODO 待增加日志处理逻辑
+
+        members = self.class_interface_or_record_body(name, is_interface=False, is_record=True)
+        result = ast.ClassTree.create(
+            modifiers=modifiers,
+            name=name,
+            type_parameters=type_parameters,
+            extends_clause=extends_clause,
+            implements_clause=implements_clause,
+            permits_clause=permits_clause,
+            members=members,
+            **self._info_exclude(pos)
+        )
+        # TODO 待处理注释逻辑
+        return result
+
+    def record_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+        """解析声明 record 语句
+
+        [JDK Code] JavacParser.recordDeclaration(JCModifiers, Comment)
+
+        TODO 待补充单元测试
+        """
+        pos = self.token.pos
+        self.next_token()
+        modifiers.flags.append(Modifier.RECORD)
+        name = self.type_name()
+
+        type_parameters = self.type_parameters_opt()
+        header_fields = self.formal_parameters(lambda_parameter=False, record_component=True)
+
+        implement_clause = []
+        if self.token.kind == TokenKind.IMPLEMENTS:
+            self.next_token()
+            implement_clause = self.type_list()
+
+        # TODO 待增加注释处理逻辑
+
+        defs = self.class_interface_or_record_body(name, is_interface=False, is_record=True)
+        fields = [field for field in header_fields]
+
+        # TODO 待补充字段处理逻辑
 
     def type_name(self) -> str:
         """解析 TypeIdentifier 元素
@@ -4414,17 +4494,287 @@ class JavaParser:
             self.raise_syntax_error(pos, f"RestrictedTypeNotAllowed: {name}")
         return name
 
+    def permits_clause(self, modifiers: ast.ModifiersTree, class_or_interface: str) -> List[ast.ExpressionTree]:
+        """解析 permits 子句
+
+        [JDK Code] JavacParser.permitsClause(JCModifiers mods, String classOrInterface)
+        """
+        if self.allow_sealed_types and self.token.kind == TokenKind.IDENTIFIER and self.token.name == "permits":
+            # TODO 待补充检查逻辑
+            self.next_token()
+            return self.qualident_list(allow_annotation=False)
+        return []
+
+    def type_list(self) -> List[ast.ExpressionTree]:
+        """解析逗号分隔的多个类型（extends 子句或 implements 子句）
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        InterfaceTypeList:
+          InterfaceType {, InterfaceType}
+
+        [JDK Code] JavacParser.typeList()
+        TypeList = Type {"," Type}
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("Class1, Class2")).type_list())
+        2
+        """
+        type_list = [self.parse_type()]
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
+            type_list.append(self.parse_type())
+        return type_list
+
     def class_interface_or_record_body(self,
                                        class_name: Optional[str],
                                        is_interface: bool,
                                        is_record: bool) -> List[ast.Tree]:
-        """解析类 class、interface 或 record 的代码块
+        """解析 class、interface 或 record 的代码块
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ClassBody:
+          { {ClassBodyDeclaration} }
 
         [JDK Code] JavacParser.classInterfaceOrRecordBody
+        ClassBody     = "{" {ClassBodyDeclaration} "}"
+        InterfaceBody = "{" {InterfaceBodyDeclaration} "}"
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("{ static {} \\n {} }")).class_interface_or_record_body(None, False, False))
+        2
         """
         self.accept(TokenKind.LBRACE)
+        # TODO 补充错误恢复逻辑
+        defs: List[ast.Tree] = []
+        while self.token.kind not in {TokenKind.RBRACE, TokenKind.EOF}:
+            defs.extend(self.class_or_interface_or_record_body_declaration(None, class_name, is_interface, is_record))
+            # TODO 补充错误恢复逻辑
         self.accept(TokenKind.RBRACE)
-        return []  # TODO 待开发实际执行逻辑
+        return defs
+
+    def class_or_interface_or_record_body_declaration(self,
+                                                      modifiers: Optional[ast.ModifiersTree],
+                                                      class_name: Optional[str],
+                                                      is_interface: bool,
+                                                      is_record: bool) -> List[ast.Tree]:
+        """解析 class、interface、record 的代码块中的声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ClassBodyDeclaration:
+          ClassMemberDeclaration
+          InstanceInitializer
+          StaticInitializer
+          ConstructorDeclaration
+
+        ClassMemberDeclaration:
+          FieldDeclaration
+          MethodDeclaration
+          ClassDeclaration
+          InterfaceDeclaration
+          ;
+
+        [JDK Code] JavacParser.classOrInterfaceOrRecordBodyDeclaration(JCModifiers, Name, boolean, boolean)
+        ClassBodyDeclaration =
+            ";"
+          | [STATIC] Block
+          | ModifiersOpt
+            ( Type Ident
+              ( VariableDeclaratorsRest ";" | MethodDeclaratorRest )
+            | VOID Ident VoidMethodDeclaratorRest
+            | TypeParameters [Annotations]
+              ( Type Ident MethodDeclaratorRest
+              | VOID Ident VoidMethodDeclaratorRest
+              )
+            | Ident ConstructorDeclaratorRest
+            | TypeParameters Ident ConstructorDeclaratorRest
+            | ClassOrInterfaceOrEnumDeclaration
+            )
+        InterfaceBodyDeclaration =
+            ";"
+          | ModifiersOpt
+            ( Type Ident
+              ( ConstantDeclaratorsRest ";" | MethodDeclaratorRest )
+            | VOID Ident MethodDeclaratorRest
+            | TypeParameters [Annotations]
+              ( Type Ident MethodDeclaratorRest
+              | VOID Ident VoidMethodDeclaratorRest
+              )
+            | ClassOrInterfaceOrEnumDeclaration
+            )
+
+        TODO 待补充注释处理逻辑
+        TODO 待补充子类的单元测试
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM(";")).class_or_interface_or_record_body_declaration(None, None, False, False))
+        0
+        >>> len(JavaParser(LexicalFSM("{}")).class_or_interface_or_record_body_declaration(None, None, False, False))
+        1
+        >>> len(JavaParser(LexicalFSM("static {}")).class_or_interface_or_record_body_declaration(None, None, False,
+        ...                                                                                       False))
+        1
+        >>> JavaParser(LexicalFSM("MyType(int value) {}")).class_or_interface_or_record_body_declaration(
+        ...     None, "MyType", False,False)[0].kind.name
+        'METHOD'
+        >>> JavaParser(LexicalFSM("void methodName(int value) {}")).class_or_interface_or_record_body_declaration(
+        ...     None, None, False,False)[0].kind.name
+        'METHOD'
+        >>> JavaParser(LexicalFSM("MyType value = new MyType();")).class_or_interface_or_record_body_declaration(
+        ...     None, None, False,False)[0].kind.name
+        'VARIABLE'
+        """
+        if self.token.kind == TokenKind.SEMI:
+            self.next_token()
+            return []
+
+        pos = self.token.pos
+
+        # 解析修饰词
+        modifiers = self.modifiers_opt(modifiers)
+
+        # 子类
+        if self.is_declaration():
+            return [self.class_or_record_or_interface_or_enum_declaration(modifiers)]
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # InstanceInitializer:
+        #   Block
+        #
+        # StaticInitializer:
+        #   static Block
+        non_static_modifier = [modifier for modifier in modifiers.actual_flags if modifier != Modifier.STATIC]
+        if self.token.kind == TokenKind.LBRACE and len(non_static_modifier) == 0 and not modifiers.annotations:
+            if is_interface:
+                self.raise_syntax_error(self.token.pos, "InitializerNotAllowed")
+            if is_record and Modifier.STATIC not in modifiers.flags:
+                self.raise_syntax_error(self.token.pos, "InstanceInitializerNotAllowedInRecords")
+            return [self.block(pos, is_static=Modifier.STATIC in modifiers.flags)]
+
+        if self.is_definite_statement_start_token():
+            self.raise_syntax_error(self.token.pos, "StatementNotExpected")
+
+        return self.constructor_or_method_or_field_declaration(
+            modifiers=modifiers,
+            class_name=class_name,
+            is_interface=is_interface,
+            is_record=is_record
+        )
+
+    def constructor_or_method_or_field_declaration(self,
+                                                   modifiers: Optional[ast.ModifiersTree],
+                                                   class_name: Optional[str],
+                                                   is_interface: bool,
+                                                   is_record: bool) -> List[ast.Tree]:
+        """解析 constructor、method、field 的声明语句
+
+        [JDK Code] JavacParser.constructorOrMethodOrFieldDeclaration(JCModifiers, Name, boolean, boolean)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("MyType(int value) {}")).constructor_or_method_or_field_declaration(
+        ...     ast.ModifiersTree.mock(), "MyType", False, False)[0].kind.name
+        'METHOD'
+        >>> JavaParser(LexicalFSM("void methodName(int value) {}")).constructor_or_method_or_field_declaration(
+        ...     ast.ModifiersTree.mock(), "MyClassName", False, False)[0].kind.name
+        'METHOD'
+        >>> JavaParser(LexicalFSM("MyType value = new MyType();")).constructor_or_method_or_field_declaration(
+        ...     ast.ModifiersTree.mock(), "MyClassName", False, False)[0].kind.name
+        'VARIABLE'
+        """
+        type_parameters = self.type_parameters_opt()
+
+        # TODO 待补充代码位置逻辑
+
+        # 解析泛型之后的注解，并将其赋值给修饰词
+        annotations_after_params = self.annotations_opt(TreeKind.ANNOTATION)
+        if annotations_after_params:
+            modifiers.annotations.extend(annotations_after_params)
+            # TODO 待补充代码位置逻辑
+
+        pos = self.token.pos
+        token = self.token
+        is_void = self.token.kind == TokenKind.VOID
+        if is_void:
+            return_type = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+            self.next_token()
+        else:
+            return_type = self.unannotated_type(allow_var=False)
+
+        # 构造器（Constructor）
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # ConstructorDeclaration:
+        #   {ConstructorModifier} ConstructorDeclarator [Throws] ConstructorBody
+        #
+        # ConstructorDeclarator:
+        #   [TypeParameters] SimpleTypeName ( [ReceiverParameter ,] [FormalParameterList] )
+        #
+        # SimpleTypeName:
+        #   TypeIdentifier
+        if (((self.token.kind == TokenKind.LPAREN and not is_interface) or
+             (self.token.kind == TokenKind.LBRACE and is_record)) and return_type.kind == TreeKind.IDENTIFIER):
+            if is_interface or token.name != class_name:
+                self.raise_syntax_error(pos, "InvalidMethDeclRetTypeReq")
+            if annotations_after_params:
+                self.illegal()
+
+            if is_record and self.token.kind == TokenKind.LBRACE:
+                modifiers.flags.append(Modifier.COMPACT_RECORD_CONSTRUCTOR)
+
+            return [self.method_declarator_rest(pos, modifiers, None, "init", type_parameters, is_interface, True,
+                                                is_record)]
+
+        # Record constructor
+        if is_record and return_type.kind == TreeKind.IDENTIFIER and self.token.kind == TokenKind.THROWS:
+            self.raise_syntax_error(pos, "InvalidCanonicalConstructorInRecord")
+
+        pos = self.token.pos
+        name = self.ident()
+
+        # Method
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # MethodDeclaration:
+        #   {MethodModifier} MethodHeader MethodBody
+        #
+        # MethodHeader:
+        #   Result MethodDeclarator [Throws]
+        #   TypeParameters {Annotation} Result MethodDeclarator [Throws]
+        #
+        # Result:
+        #   UnannType
+        #   void
+        #
+        # MethodDeclarator:
+        #   Identifier ( [ReceiverParameter ,] [FormalParameterList] ) [Dims]
+        if self.token.kind == TokenKind.LPAREN:
+            return [self.method_declarator_rest(pos, modifiers, return_type, name, type_parameters, is_interface,
+                                                is_void, False)]
+
+        # Field
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # FieldDeclaration:
+        #   {FieldModifier} UnannType VariableDeclaratorList ;
+        if not is_void and not type_parameters:
+            if not is_record or (is_record and Modifier.STATIC in modifiers.flags):
+                defs = self.variable_declarators_rest(
+                    pos=pos,
+                    modifiers=modifiers,
+                    variable_type=return_type,
+                    name=name,
+                    req_init=is_interface,
+                    v_defs=[],
+                    local_decl=False
+                )
+                self.accept(TokenKind.SEMI)
+                return defs
+
+            # TODO 待补充异常恢复逻辑
+            self.raise_syntax_error(self.token.pos, "RecordCannotDeclareInstanceFields")
+
+        # TODO 待补充异常恢复逻辑
+        self.raise_syntax_error(self.token.pos, f"expect LPAREN, but get {self.token.kind.name}")
 
     def is_declaration(self) -> bool:
         """TODO 名称待整理
@@ -4433,6 +4783,15 @@ class JavaParser:
         """
         return (self.token.kind in {TokenKind.CLASS, TokenKind.INTERFACE, TokenKind.ENUM}
                 or (self.is_record_start() and self.allow_records is True))
+
+    def is_definite_statement_start_token(self) -> bool:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.isDefiniteStatementStartToken
+        """
+        return self.token.kind in {TokenKind.IF, TokenKind.WHILE, TokenKind.DO, TokenKind.RETURN, TokenKind.TRY,
+                                   TokenKind.FOR, TokenKind.ASSERT, TokenKind.BREAK, TokenKind.CONTINUE,
+                                   TokenKind.THROW}
 
     def is_record_start(self) -> bool:
         """TODO 名称待整理
@@ -4504,6 +4863,138 @@ class JavaParser:
             return (self.is_non_sealed_identifier(next_token, 3 if current_is_non_sealed else 1)
                     or next_token.name == "sealed")
         return False
+
+    def method_declarator_rest(self,
+                               pos: int,
+                               modifiers: ast.ModifiersTree,
+                               return_type: Optional[ast.ExpressionTree],
+                               name: str,
+                               type_parameters: List[ast.TypeParameterTree],
+                               is_interface: bool,
+                               is_void: bool,
+                               is_record: bool
+                               ) -> ast.Tree:
+        """方法声明语句的剩余部分
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Throws:
+          throws ExceptionTypeList
+
+        ExceptionTypeList:
+          ExceptionType {, ExceptionType}
+
+        ExceptionType:
+          ClassType
+          TypeVariable
+
+        MethodBody:
+          Block
+          ;
+
+        [JDK Code] JavacParser.methodDeclaratorRest(int, JCModifiers, JCExpression, Name, List<JCTypeParameter>,
+                                                    boolean, boolean, boolean, Comment)
+
+        MethodDeclaratorRest =
+            FormalParameters BracketsOpt [THROWS TypeList] ( MethodBody | [DEFAULT AnnotationValue] ";")
+        VoidMethodDeclaratorRest =
+            FormalParameters [THROWS TypeList] ( MethodBody | ";")
+        ConstructorDeclaratorRest =
+            "(" FormalParameterListOpt ")" [THROWS TypeList] MethodBody
+
+        TODO 待补充注处理逻辑
+        TODO 待补充检查逻辑
+        TODO 补充错误恢复逻辑
+        """
+        prev_receiver_param = self.receiver_param
+        # TODO 待考虑是否有必要增加 try ... finally 逻辑
+        try:
+            self.receiver_param = None
+            parameters: List[ast.VariableTree] = []
+            throws: List[ast.ExpressionTree] = []
+            if not is_record or name != "init" or self.token.kind == TokenKind.LPAREN:
+                parameters = self.formal_parameters()
+                if not is_void:
+                    return_type = self.brackets_opt(return_type)
+                if self.token.kind == TokenKind.THROWS:
+                    self.next_token()
+                    throws = self.qualident_list(True)
+
+            block: Optional[ast.BlockTree] = None
+            default_value: Optional[ast.ExpressionTree]
+            if self.token.kind == TokenKind.LBRACE:
+                block = self.block()
+                default_value = None
+            elif self.token.kind == TokenKind.DEFAULT:
+                self.accept(TokenKind.DEFAULT)
+                default_value = self.annotation_value()
+                self.accept(TokenKind.SEMI)
+            else:
+                default_value = None
+                self.accept(TokenKind.SEMI)
+            return ast.MethodTree.create(
+                modifiers=modifiers,
+                name=name,
+                return_type=return_type,
+                type_parameters=type_parameters,
+                receiver_parameter=None,
+                parameters=parameters,
+                throws=throws,
+                block=block,
+                default_value=default_value,
+                **self._info_exclude(pos)
+            )
+
+        finally:
+            self.receiver_param = prev_receiver_param
+
+    def qualident_list(self, allow_annotation: bool) -> List[ast.ExpressionTree]:
+        """解析多个逗号分隔的 Qualident
+
+        [JDK Code] JavacParser.qualidentList(boolean)
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("a.b, c.d")).qualident_list(False))
+        2
+        """
+        result: List[ast.ExpressionTree] = []
+
+        if allow_annotation:
+            type_annotations = self.type_annotations_opt()
+        else:
+            type_annotations = []
+
+        qualident = self.qualident(allow_annotation)
+
+        if type_annotations:
+            result.append(ast.AnnotatedTypeTree.create(
+                annotations=type_annotations,
+                underlying_type=qualident,
+                **self._info_include(None)
+            ))
+        else:
+            result.append(qualident)
+
+        while self.token.kind == TokenKind.COMMA:
+            self.next_token()
+
+            if allow_annotation:
+                type_annotations = self.type_annotations_opt()
+            else:
+                type_annotations = []
+
+            qualident = self.qualident(allow_annotation)
+
+            if type_annotations:
+                result.append(ast.AnnotatedTypeTree.create(
+                    annotations=type_annotations,
+                    underlying_type=qualident,
+                    **self._info_include(None)
+                ))
+            else:
+                result.append(qualident)
+
+        return result
 
     def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
         """可选的多个类型参数
@@ -4628,11 +5119,14 @@ class JavaParser:
         'name1'
         >>> result[1].name
         'name2'
+        >>> len(JavaParser(LexicalFSM("(int value)")).formal_parameters())
+        1
         """
         self.accept(TokenKind.LPAREN)
         params: List[ast.VariableTree] = []
         if self.token.kind != TokenKind.RPAREN:
             self.allow_this_ident = not lambda_parameter and not record_component
+            self.select_type_mode()
             last_param = self.formal_parameter(lambda_parameter, record_component)
             if last_param.name_expression is not None:
                 self.receiver_param = last_param
@@ -4641,6 +5135,7 @@ class JavaParser:
             self.allow_this_ident = False
             while self.token.kind == TokenKind.COMMA:
                 self.next_token()
+                self.select_type_mode()
                 params.append(self.formal_parameter(lambda_parameter, record_component))
         if self.token.kind != TokenKind.RPAREN:
             self.raise_syntax_error(self.token.pos, f"expect COMMA, RPAREN or LBRACKET, but get {self.token.kind}")
@@ -4791,5 +5286,8 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
-    print(JavaParser(LexicalFSM("<MyType1, int>")).type_parameters_opt())
+    # demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
+    # print(JavaParser(LexicalFSM("int value"), mode=Mode.TYPE).parse_type())
+    # print(JavaParser(LexicalFSM("(int value)"), mode=Mode.TYPE).formal_parameters())
+    print(JavaParser(LexicalFSM("class MyClassName { public MyClassName () {} }")).class_declaration(
+        ast.ModifiersTree.mock()))

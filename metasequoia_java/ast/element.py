@@ -44,6 +44,7 @@ class Modifier(enum.Enum):
     RECORD = "record"
     GENERATED_MEMBER = "generated_member"
     VARARGS = "varargs"
+    COMPACT_RECORD_CONSTRUCTOR = "compact_record_constructor"
 
     def is_virtual(self) -> bool:
         """是否为虚拟修饰符"""

@@ -779,7 +779,7 @@ class ClassTree(StatementTree):
     """
 
     modifiers: ModifiersTree = dataclasses.field(kw_only=True)
-    simple_name: Optional[str] = dataclasses.field(kw_only=True)  # 如果为匿名类则为 None
+    name: Optional[str] = dataclasses.field(kw_only=True)  # 如果为匿名类则为 None
     type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
     extends_clause: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果没有继承关系则为 None
     implements_clause: List[Tree] = dataclasses.field(kw_only=True)
@@ -788,7 +788,7 @@ class ClassTree(StatementTree):
 
     @staticmethod
     def create(modifiers: ModifiersTree,
-               simple_name: str,
+               name: str,
                type_parameters: List[TypeParameterTree],
                extends_clause: Tree,
                implements_clause: List[Tree],
@@ -798,7 +798,7 @@ class ClassTree(StatementTree):
         return ClassTree(
             kind=TreeKind.CLASS,
             modifiers=modifiers,
-            simple_name=simple_name,
+            name=name,
             type_parameters=type_parameters,
             extends_clause=extends_clause,
             implements_clause=implements_clause,
@@ -815,7 +815,7 @@ class ClassTree(StatementTree):
         return ClassTree(
             kind=TreeKind.CLASS,
             modifiers=modifiers,
-            simple_name=None,
+            name=None,
             type_parameters=[],
             extends_clause=None,
             implements_clause=[],
@@ -1719,10 +1719,10 @@ class MethodInvocationTree(ExpressionTree):
     arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str,
-               type_arguments: List[Tree],
+    def create(type_arguments: List[Tree],
                method_select: ExpressionTree,
-               arguments: List[ExpressionTree]) -> "MethodInvocationTree":
+               arguments: List[ExpressionTree],
+               start_pos: int, end_pos: int, source: str) -> "MethodInvocationTree":
         return MethodInvocationTree(
             kind=TreeKind.METHOD_INVOCATION,
             type_arguments=type_arguments,
@@ -1737,6 +1737,7 @@ class MethodInvocationTree(ExpressionTree):
         """TODO"""
 
 
+@dataclasses.dataclass(slots=True)
 class MethodTree(Tree):
     """声明方法或注解类型元素
 
@@ -1757,8 +1758,37 @@ class MethodTree(Tree):
     return_type: Tree = dataclasses.field(kw_only=True)
     type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
     receiver_parameter: VariableTree = dataclasses.field(kw_only=True)
+    parameters: List[VariableTree] = dataclasses.field(kw_only=True)
     throws: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    block: BlockTree = dataclasses.field(kw_only=True)
     default_value: Tree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(modifiers: ModifiersTree,
+               name: str,
+               return_type: Tree,
+               type_parameters: List[TypeParameterTree],
+               receiver_parameter: Optional[VariableTree],
+               parameters: List[VariableTree],
+               throws: List[ExpressionTree],
+               block: BlockTree,
+               default_value: Tree,
+               start_pos: int, end_pos: int, source: str) -> "MethodTree":
+        return MethodTree(
+            kind=TreeKind.METHOD,
+            modifiers=modifiers,
+            name=name,
+            return_type=return_type,
+            type_parameters=type_parameters,
+            receiver_parameter=receiver_parameter,
+            parameters=parameters,
+            throws=throws,
+            block=block,
+            default_value=default_value,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         """TODO"""
