@@ -783,16 +783,16 @@ class ClassTree(StatementTree):
     type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
     extends_clause: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果没有继承关系则为 None
     implements_clause: List[Tree] = dataclasses.field(kw_only=True)
-    permits_clause: List[Tree] = dataclasses.field(kw_only=True)  # 【JDK 17+】
+    permits_clause: Optional[List[Tree]] = dataclasses.field(kw_only=True)  # 【JDK 17+】
     members: List[Tree] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(modifiers: ModifiersTree,
                name: str,
                type_parameters: List[TypeParameterTree],
-               extends_clause: Tree,
+               extends_clause: Optional[Tree],
                implements_clause: List[Tree],
-               permits_clause: List[Tree],
+               permits_clause: Optional[List[Tree]],
                members: List[Tree],
                start_pos: int, end_pos: int, source: str) -> "ClassTree":
         return ClassTree(

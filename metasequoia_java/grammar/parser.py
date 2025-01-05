@@ -4386,6 +4386,10 @@ class JavaParser:
             return self.class_declaration(modifiers)
         if self.is_record_start():
             return self.record_declaration(modifiers)
+        if self.token.kind == TokenKind.INTERFACE:
+            return self.interface_declaration(modifiers)
+        if self.token.kind == TokenKind.ENUM:
+            return self.enum_declaration(modifiers)
 
     def class_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
         """解析 class 声明语句
@@ -4450,6 +4454,36 @@ class JavaParser:
     def record_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
         """解析声明 record 语句
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        RecordDeclaration:
+          {ClassModifier} record TypeIdentifier [TypeParameters] RecordHeader [ClassImplements] RecordBody
+
+        RecordHeader:
+          ( [RecordComponentList] )
+
+        RecordComponentList:
+          RecordComponent {, RecordComponent}
+
+        RecordComponent:
+          {RecordComponentModifier} UnannType Identifier
+          VariableArityRecordComponent
+
+        VariableArityRecordComponent:
+          {RecordComponentModifier} UnannType {Annotation} ... Identifier
+
+        RecordComponentModifier:
+          Annotation
+
+        RecordBody:
+          { {RecordBodyDeclaration} }
+
+        RecordBodyDeclaration:
+          ClassBodyDeclaration
+          CompactConstructorDeclaration
+
+        CompactConstructorDeclaration:
+          {ConstructorModifier} SimpleTypeName ConstructorBody
+
         [JDK Code] JavacParser.recordDeclaration(JCModifiers, Comment)
 
         TODO 待补充单元测试
@@ -4462,17 +4496,32 @@ class JavaParser:
         type_parameters = self.type_parameters_opt()
         header_fields = self.formal_parameters(lambda_parameter=False, record_component=True)
 
-        implement_clause = []
+        implements_clause = []
         if self.token.kind == TokenKind.IMPLEMENTS:
             self.next_token()
-            implement_clause = self.type_list()
+            implements_clause = self.type_list()
 
         # TODO 待增加注释处理逻辑
 
-        defs = self.class_interface_or_record_body(name, is_interface=False, is_record=True)
+        members = self.class_interface_or_record_body(name, is_interface=False, is_record=True)
         fields = [field for field in header_fields]
 
         # TODO 待补充字段处理逻辑
+        for field in fields:
+            members.insert(0, field)
+
+        result = ast.ClassTree.create(
+            modifiers=modifiers,
+            name=name,
+            type_parameters=type_parameters,
+            extends_clause=None,
+            implements_clause=implements_clause,
+            permits_clause=None,
+            members=members,
+            **self._info_exclude(pos)
+        )
+        # TODO 待处理注释逻辑
+        return result
 
     def type_name(self) -> str:
         """解析 TypeIdentifier 元素
@@ -4494,6 +4543,97 @@ class JavaParser:
             self.raise_syntax_error(pos, f"RestrictedTypeNotAllowed: {name}")
         return name
 
+    def interface_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+        """解析 interface 的声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        InterfaceDeclaration:
+          NormalInterfaceDeclaration
+          AnnotationInterfaceDeclaration
+
+        NormalInterfaceDeclaration:
+          {InterfaceModifier} interface TypeIdentifier [TypeParameters] [InterfaceExtends] [InterfacePermits] InterfaceBody
+
+        InterfaceExtends:
+          extends InterfaceTypeList
+
+        InterfacePermits:
+          permits TypeName {, TypeName}
+
+        InterfaceBody:
+          { {InterfaceMemberDeclaration} }
+
+        InterfaceMemberDeclaration:
+          ConstantDeclaration
+
+        InterfaceMethodDeclaration
+          ClassDeclaration
+          InterfaceDeclaration
+          ;
+
+        ConstantDeclaration:
+          {ConstantModifier} UnannType VariableDeclaratorList ;
+
+        InterfaceMethodDeclaration:
+          {InterfaceMethodModifier} MethodHeader MethodBody
+
+        AnnotationInterfaceDeclaration:
+          {InterfaceModifier} @ interface TypeIdentifier AnnotationInterfaceBody
+
+        AnnotationInterfaceBody:
+          { {AnnotationInterfaceMemberDeclaration} }
+
+        AnnotationInterfaceMemberDeclaration:
+          AnnotationInterfaceElementDeclaration
+          ConstantDeclaration
+          ClassDeclaration
+          InterfaceDeclaration
+          ;
+
+        AnnotationInterfaceElementDeclaration:
+          {AnnotationInterfaceElementModifier} UnannType Identifier ( ) [Dims] [DefaultValue] ;
+
+        DefaultValue:
+          default ElementValue
+
+        [JDK Code] JavacParser.interfaceDeclaration(JCModifiers, Comment)
+        InterfaceDeclaration = INTERFACE Ident TypeParametersOpt
+                               [EXTENDS TypeList] InterfaceBody
+
+        Examples
+        --------
+        >>> demo = "interface MyClassName { MyType value = new MyType(); }"
+        >>> JavaParser(LexicalFSM(demo)).interface_declaration(ast.ModifiersTree.mock()).kind.name
+        'CLASS'
+        """
+        pos = self.token.pos
+        self.accept(TokenKind.INTERFACE)
+
+        name = self.type_name()
+
+        type_parameters = self.type_parameters_opt()
+        extends_clause = []
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
+            extends_clause = self.type_list()
+
+        permits_clause = self.permits_clause(modifiers, "interface")
+
+        # TODO 待补充注释处理逻辑
+        members = self.class_interface_or_record_body(name, True, False)
+        result = ast.ClassTree.create(
+            modifiers=modifiers,
+            name=name,
+            type_parameters=type_parameters,
+            extends_clause=None,
+            implements_clause=extends_clause,
+            permits_clause=permits_clause,
+            members=members,
+            **self._info_exclude(pos)
+        )
+        # TODO 待处理注释逻辑
+        return result
+
     def permits_clause(self, modifiers: ast.ModifiersTree, class_or_interface: str) -> List[ast.ExpressionTree]:
         """解析 permits 子句
 
@@ -4504,6 +4644,29 @@ class JavaParser:
             self.next_token()
             return self.qualident_list(allow_annotation=False)
         return []
+
+    def enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+        """解析 enum 声明语句
+
+        [Java Code] JavacParser.enumDeclaration(JCModifiers, Comment)
+        """
+        pos = self.token.pos
+        self.accept(TokenKind.ENUM)
+
+        name = self.type_name()
+        type_name_pos = self.token.pos
+        type_parameters = self.type_parameters_opt(parse_empty=True)
+        if len(type_parameters) > 0:
+            raise self.raise_syntax_error(type_name_pos, "EnumCantBeGeneric")
+
+        implementing = []
+        if self.token.kind == TokenKind.IMPLEMENTS:
+            self.next_token()
+            implementing = self.type_list()
+
+        # TODO 补充注释信息
+
+        members = self.enum_body()
 
     def type_list(self) -> List[ast.ExpressionTree]:
         """解析逗号分隔的多个类型（extends 子句或 implements 子句）
@@ -4682,6 +4845,9 @@ class JavaParser:
         'METHOD'
         >>> JavaParser(LexicalFSM("MyType value = new MyType();")).constructor_or_method_or_field_declaration(
         ...     ast.ModifiersTree.mock(), "MyClassName", False, False)[0].kind.name
+        'VARIABLE'
+        >>> JavaParser(LexicalFSM("MyType value = new MyType();")).constructor_or_method_or_field_declaration(
+        ...     ast.ModifiersTree.mock(), "MyClassName", True, False)[0].kind.name
         'VARIABLE'
         """
         type_parameters = self.type_parameters_opt()
@@ -5287,7 +5453,5 @@ class JavaParser:
 
 if __name__ == "__main__":
     # demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
-    # print(JavaParser(LexicalFSM("int value"), mode=Mode.TYPE).parse_type())
-    # print(JavaParser(LexicalFSM("(int value)"), mode=Mode.TYPE).formal_parameters())
-    print(JavaParser(LexicalFSM("class MyClassName { public MyClassName () {} }")).class_declaration(
+    print(JavaParser(LexicalFSM("interface MyClassName { MyType value = new MyType(); }")).interface_declaration(
         ast.ModifiersTree.mock()))
