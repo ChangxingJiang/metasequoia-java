@@ -276,7 +276,8 @@ class ArrayTypeTree(ExpressionTree):
     expression: ExpressionTree = dataclasses.dataclass(slots=True)
 
     @staticmethod
-    def create(expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
+    def create(expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
         return ArrayTypeTree(
             kind=TreeKind.ARRAY_TYPE,
             expression=expression,
@@ -301,8 +302,21 @@ class AssertTree(StatementTree):
     - assert condition : detail ;
     """
 
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
-    detail: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    assertion: ExpressionTree = dataclasses.field(kw_only=True)
+    message: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(assertion: ExpressionTree,
+               message: Optional[ExpressionTree],
+               start_pos: int, end_pos: int, source: str) -> "AssertTree":
+        return AssertTree(
+            kind=TreeKind.ASSERT,
+            assertion=assertion,
+            message=message,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if self.detail is not None:
@@ -571,6 +585,17 @@ class BreakTree(StatementTree):
     """
 
     label: Optional[str] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(label: Optional[str],
+               start_pos: int, end_pos: int, source: str) -> "BreakTree":
+        return BreakTree(
+            kind=TreeKind.BREAK,
+            label=label,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if self.label is None:
@@ -989,6 +1014,17 @@ class ContinueTree(StatementTree):
 
     label: Optional[str] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(label: Optional[str],
+               start_pos: int, end_pos: int, source: str) -> "ContinueTree":
+        return ContinueTree(
+            kind=TreeKind.CONTINUE,
+            label=label,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         if self.label is None:
             return "continue;"
@@ -1064,6 +1100,15 @@ class EmptyStatementTree(StatementTree):
 
     样例：;
     """
+
+    @staticmethod
+    def create(start_pos: int, end_pos: int, source: str) -> "EmptyStatementTree":
+        return EmptyStatementTree(
+            kind=TreeKind.EMPTY_STATEMENT,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return ";"
@@ -2033,6 +2078,17 @@ class ReturnTree(StatementTree):
 
     expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ReturnTree":
+        return ReturnTree(
+            kind=TreeKind.RETURN,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         if self.expression is None:
             return "return;"
@@ -2056,9 +2112,9 @@ class SwitchExpressionTree(ExpressionTree):
     cases: List[CaseTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str,
-               expression: ExpressionTree,
-               cases: List[CaseTree]) -> "SwitchExpressionTree":
+    def create(expression: ExpressionTree,
+               cases: List[CaseTree],
+               start_pos: int, end_pos: int, source: str) -> "SwitchExpressionTree":
         return SwitchExpressionTree(
             kind=TreeKind.SWITCH_EXPRESSION,
             expression=expression,
@@ -2090,6 +2146,19 @@ class SwitchTree(StatementTree):
     expression: ExpressionTree = dataclasses.field(kw_only=True)
     cases: List[CaseTree] = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree,
+               cases: List[CaseTree],
+               start_pos: int, end_pos: int, source: str) -> "SwitchTree":
+        return SwitchTree(
+            kind=TreeKind.SWITCH,
+            expression=expression,
+            cases=cases,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return (f"switch ({self.expression.generate()}) {{ \n"
                 f"    {generate_tree_list(self.cases, Separator.SEMI)} \n"
@@ -2111,6 +2180,19 @@ class SynchronizedTree(StatementTree):
     expression: ExpressionTree = dataclasses.field(kw_only=True)
     block: BlockTree = dataclasses.field(kw_only=True)
 
+    @staticmethod
+    def create(expression: ExpressionTree,
+               block: BlockTree,
+               start_pos: int, end_pos: int, source: str) -> "SynchronizedTree":
+        return SynchronizedTree(
+            kind=TreeKind.SYNCHRONIZED,
+            expression=expression,
+            block=block,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
     def generate(self) -> str:
         return (f"synchronized ({self.expression.generate()}) \n"
                 f"    {self.block.generate()}")
@@ -2128,6 +2210,17 @@ class ThrowTree(StatementTree):
     """
 
     expression: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(expression: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "ThrowTree":
+        return ThrowTree(
+            kind=TreeKind.THROW,
+            expression=expression,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"throw {self.expression.generate()};"

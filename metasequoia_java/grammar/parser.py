@@ -340,6 +340,15 @@ class JavaParser:
         """解析表达式（可以是表达式或类型）
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        StatementExpression:
+          Assignment
+          PreIncrementExpression
+          PreDecrementExpression
+          PostIncrementExpression
+          PostDecrementExpression
+          MethodInvocation
+          ClassInstanceCreationExpression
+
         Expression:
           LambdaExpression
           AssignmentExpression
@@ -2925,7 +2934,6 @@ class JavaParser:
 
         [JDK Code] JavacParser.blockStatement()
         """
-        pos = self.token.pos
         if self.token.kind in {TokenKind.RBRACE, TokenKind.CASE, TokenKind.DEFAULT, TokenKind.EOF}:
             return []
         if self.token.kind in {TokenKind.LBRACE, TokenKind.IF, TokenKind.FOR, TokenKind.WHILE, TokenKind.DO,
@@ -2957,6 +2965,7 @@ class JavaParser:
            | ";"
 
         TODO 待补充注释处理逻辑
+        TODO 补充 switch 语句单元测试
 
         Examples
         --------
@@ -2988,6 +2997,20 @@ class JavaParser:
         'BLOCK'
         >>> len(res.resources) if isinstance(res, ast.TryTree) else None
         1
+        >>> JavaParser(LexicalFSM("synchronized ( 1 + 1 ) {}")).parse_simple_statement().kind.name
+        'SYNCHRONIZED'
+        >>> JavaParser(LexicalFSM("return true;")).parse_simple_statement().kind.name
+        'RETURN'
+        >>> JavaParser(LexicalFSM("throw MyException;")).parse_simple_statement().kind.name
+        'THROW'
+        >>> JavaParser(LexicalFSM("break loop;")).parse_simple_statement().kind.name
+        'BREAK'
+        >>> JavaParser(LexicalFSM("continue loop;")).parse_simple_statement().kind.name
+        'CONTINUE'
+        >>> JavaParser(LexicalFSM(";")).parse_simple_statement().kind.name
+        'EMPTY_STATEMENT'
+        >>> JavaParser(LexicalFSM("assert name = 1 : \\"wrong\\"; ")).parse_simple_statement().kind.name
+        'ASSERT'
         """
         pos = self.token.pos
         if self.token.kind == TokenKind.LBRACE:
@@ -3158,11 +3181,130 @@ class JavaParser:
                 **self._info_exclude(pos)
             )
 
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # SwitchStatement:
+        #    ( Expression ) SwitchBlock
         if self.token.kind == TokenKind.SWITCH:
             self.next_token()
             selector = self.par_expression()
             self.accept(TokenKind.LBRACE)
             cases = self.switch_block_statement_groups()
+            expression = ast.SwitchTree.create(
+                expression=selector,
+                cases=cases,
+                **self._info_exclude(pos)
+            )
+            expression.end_pos = self.token.end_pos
+            expression.source += "}"
+            self.accept(TokenKind.RBRACE)
+            return expression
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # SynchronizedStatement:
+        #   synchronized ( Expression ) Block
+        if self.token.kind == TokenKind.SYNCHRONIZED:
+            self.next_token()
+            expression = self.par_expression()
+            block = self.block()
+            return ast.SynchronizedTree.create(
+                expression=expression,
+                block=block,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # ReturnStatement:
+        #   return [Expression] ;
+        if self.token.kind == TokenKind.RETURN:
+            self.next_token()
+            if self.token.kind != TokenKind.SEMI:
+                expression = self.parse_expression()
+            else:
+                expression = None
+            self.accept(TokenKind.SEMI)
+            return ast.ReturnTree.create(
+                expression=expression,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # ThrowStatement:
+        #   throw Expression ;
+        if self.token.kind == TokenKind.THROW:
+            self.next_token()
+            expression = self.parse_expression()
+            self.accept(TokenKind.SEMI)
+            return ast.ThrowTree.create(
+                expression=expression,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # BreakStatement:
+        #   break [Identifier] ;
+        if self.token.kind == TokenKind.BREAK:
+            self.next_token()
+            if self.token.kind in LAX_IDENTIFIER:
+                label = self.ident()
+            else:
+                label = None
+            self.accept(TokenKind.SEMI)
+            return ast.BreakTree.create(
+                label=label,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # ContinueStatement:
+        #   continue [Identifier] ;
+        if self.token.kind == TokenKind.CONTINUE:
+            self.next_token()
+            if self.token.kind in LAX_IDENTIFIER:
+                label = self.ident()
+            else:
+                label = None
+            self.accept(TokenKind.SEMI)
+            return ast.ContinueTree.create(
+                label=label,
+                **self._info_exclude(pos)
+            )
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # EmptyStatement:
+        #   ;
+        if self.token.kind == TokenKind.SEMI:
+            self.next_token()
+            return ast.EmptyStatementTree.create(**self._info_exclude(pos))
+
+        if self.token.kind == TokenKind.ELSE:
+            self.raise_syntax_error(self.token.pos, "ElseWithoutIf")
+
+        if self.token.kind == TokenKind.FINALLY:
+            self.raise_syntax_error(self.token.pos, "FinallyWithoutTry")
+
+        if self.token.kind == TokenKind.CATCH:
+            self.raise_syntax_error(self.token.pos, "CatchWithoutTry")
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # AssertStatement:
+        #   assert Expression ;
+        #   assert Expression : Expression ;
+        if self.token.kind == TokenKind.ASSERT:
+            self.next_token()
+            assertion = self.parse_expression()
+            if self.token.kind == TokenKind.COLON:
+                self.next_token()
+                message = self.parse_expression()
+            else:
+                message = None
+            self.accept(TokenKind.SEMI)
+            return ast.AssertTree.create(
+                assertion=assertion,
+                message=message,
+                **self._info_exclude(pos)
+            )
+
+        raise AssertionError("should not reach here")
 
     def catch_clause(self) -> ast.CatchTree:
         """解析 catch 子句
@@ -3231,6 +3373,8 @@ class JavaParser:
         SwitchBlockStatementGroups = { SwitchBlockStatementGroup }
         SwitchBlockStatementGroup = SwitchLabel BlockStatements
         SwitchLabel = CASE ConstantExpression ":" | DEFAULT ":"
+
+        TODO 待补充单元测试（block_statement 完成后）
         """
         cases: List[ast.CaseTree] = []
         while True:
@@ -3246,6 +3390,8 @@ class JavaParser:
         """解析 switch 语句中的单个 case 语句子句
 
         [JDK Code] JavacParser.switchBlockStatementGroup()
+
+        TODO 待补充单元测试（block_statement 完成后）
         """
         pos = self.token.pos
         statements: List[ast.StatementTree]
@@ -3289,6 +3435,37 @@ class JavaParser:
                 self.accept(TokenKind.SEMI)
             # TODO 补充代码位置逻辑
             return [case_expression]
+
+        if self.token.kind == TokenKind.DEFAULT:
+            self.next_token()
+            default_pattern = ast.DefaultCaseLabelTree.create(**self._info_exclude(pos))
+            guard = self.parse_guard(default_pattern)
+            if self.token.kind == TokenKind.ARROW:
+                self.accept(TokenKind.ARROW)
+                statements = [self.parse_statement_as_block()]
+                # TODO 补充检查逻辑
+                case_expression = ast.CaseTree.create_rule(
+                    labels=[default_pattern],
+                    guard=guard,
+                    statements=statements,
+                    body=statements[0],
+                    **self._info_exclude(pos)
+                )
+            else:
+                self.accept(TokenKind.COLON)
+                statements = self.block_statements()
+                case_expression = ast.CaseTree.create_statement(
+                    labels=[default_pattern],
+                    guard=guard,
+                    statements=statements,
+                    body=None,
+                    **self._info_exclude(pos)
+                )
+                self.accept(TokenKind.SEMI)
+            # TODO 补充代码位置逻辑
+            return [case_expression]
+
+        raise AssertionError("should not reach here")
 
     def parse_statement(self) -> ast.StatementTree:
         """解析语句
@@ -4528,5 +4705,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM(
-        "try (Rt rt = new Rt()) {} catch ( Exception1 | Exception2 e ) {} finally {}")).parse_simple_statement())
+    demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
+    print(JavaParser(LexicalFSM("assert name = 1 : \"wrong\"; ")).parse_simple_statement())
