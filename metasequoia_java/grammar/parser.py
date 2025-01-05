@@ -57,6 +57,9 @@ class JavaParser:
         # 当前源码层级中是否允许出现 yield 语句
         self.allow_yield_statement: bool = False
 
+        # 当前源码层级中是否允许出现 record
+        self.allow_records: bool = False
+
         # 为节省每次二元操作时分配新的操作数 / 操作符栈的开销，所以采用供应机制
         self.od_stack_supply: List[List[Optional[ast.ExpressionTree]]] = []
         self.op_stack_supply: List[List[Optional[Token]]] = []
@@ -2941,6 +2944,11 @@ class JavaParser:
                                TokenKind.THROW, TokenKind.BREAK, TokenKind.CONTINUE, TokenKind.SEMI, TokenKind.ELSE,
                                TokenKind.FINALLY, TokenKind.CATCH, TokenKind.ASSERT}:
             return [self.parse_simple_statement()]
+        if self.token.kind in {TokenKind.MONKEYS_AT, TokenKind.FINAL}:
+            # TODO 待补充注释处理逻辑
+            modifiers = self.modifiers_opt()
+            if self.is_declaration():
+                return self.class_or_record_or_interface_or_enum_declaration(modifiers)
 
     def parse_simple_statement(self) -> ast.StatementTree:
         """解析单个语句
@@ -4358,7 +4366,35 @@ class JavaParser:
         # TODO 待增加异常检查机制
         return expression
 
-    def type_name(self) -> ast.IdentifierTree:
+    def class_or_record_or_interface_or_enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.StatementTree:
+        """解析 class、record、interface 或 enum 的声明语句
+
+        [JDK Code] JavacParser.classOrRecordOrInterfaceOrEnumDeclaration(JCModifiers, Comment)
+        ClassOrInterfaceOrEnumDeclaration = ModifiersOpt
+                 (ClassDeclaration | InterfaceDeclaration | EnumDeclaration)
+        """
+        if self.token.kind == TokenKind.CLASS:
+            return self.class_declaration(modifiers)
+
+    def class_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+        """解析 class 声明语句
+
+        [JDK Code] JavacParser.classDeclaration(JCModifiers, Comment)
+        ClassDeclaration = CLASS Ident TypeParametersOpt [EXTENDS Type]
+                           [IMPLEMENTS TypeList] ClassBody
+        """
+        pos = self.token.pos
+        self.accept(TokenKind.CLASS)
+        name = self.type_name()
+
+        type_params: List[ast.TypeParameterTree] = self.type_parameters_opt()
+
+        extending: Optional[ast.ExpressionTree] = None
+        if self.token.kind == TokenKind.EXTENDS:
+            self.next_token()
+            extending = self.parse_type()
+
+    def type_name(self) -> str:
         """解析 TypeIdentifier 元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4366,19 +4402,17 @@ class JavaParser:
           Identifier but not permits, record, sealed, var, or yield
 
         [JDK Code] JavacParser.typeName
-        """
-        if self.token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.source}")
-        if self.token.name in {"permits", "record", "sealed", "var", "yield"}:
-            raise JavaSyntaxError(f"expect type_identifier, but get {self.token.name}")
 
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("String")).type_name()
+        'String'
+        """
         pos = self.token.pos
-        name = self.token.name
-        self.next_token()
-        return ast.IdentifierTree.create(
-            name=name,
-            **self._info_exclude(pos)
-        )
+        name = self.ident()
+        if self.restricted_type_name_starting_at_source(name) is not None:
+            self.raise_syntax_error(pos, f"RestrictedTypeNotAllowed: {name}")
+        return name
 
     def class_interface_or_record_body(self,
                                        class_name: Optional[str],
@@ -4391,6 +4425,23 @@ class JavaParser:
         self.accept(TokenKind.LBRACE)
         self.accept(TokenKind.RBRACE)
         return []  # TODO 待开发实际执行逻辑
+
+    def is_declaration(self) -> bool:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.isDeclaration()
+        """
+        return (self.token.kind in {TokenKind.CLASS, TokenKind.INTERFACE, TokenKind.ENUM}
+                or (self.is_record_start() and self.allow_records is True))
+
+    def is_record_start(self) -> bool:
+        """TODO 名称待整理
+
+        [JDK Code] JavacParser.isRecordStart()
+        """
+        return (self.token.kind == TokenKind.IDENTIFIER
+                and self.token.name == "record"
+                and self.peek_token(0, TokenKind.IDENTIFIER))
 
     def is_non_sealed_class_start(self, local: bool):
         """如果从当前 Token 开始为 non-sealed 关键字则返回 True，否则返回 False
@@ -4457,15 +4508,29 @@ class JavaParser:
     def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
         """可选的多个类型参数
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeParameters:
+          < TypeParameterList >
+
+        TypeParameterList:
+          TypeParameter {, TypeParameter}
+
+        [JDK Code] JavacParser.typeParametersOpt
+        TypeParametersOpt = ["<" TypeParameter {"," TypeParameter} ">"]
+
         Parameters
         ----------
         parse_empty : bool, default = False
             是否解析空参数
 
-        [JDK Code] JavacParser.typeParametersOpt
-        TypeParametersOpt = ["<" TypeParameter {"," TypeParameter} ">"]
-
-        TODO 待补充单元测试
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("other")).type_parameters_opt())
+        0
+        >>> len(JavaParser(LexicalFSM("<>")).type_parameters_opt(parse_empty=True))
+        0
+        >>> len(JavaParser(LexicalFSM("<MyType1, MyType2>")).type_parameters_opt())
+        2
         """
         if self.token.kind != TokenKind.LT:
             return []
@@ -4485,16 +4550,37 @@ class JavaParser:
     def type_parameter(self) -> ast.TypeParameterTree:
         """类型参数
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeParameter:
+          {TypeParameterModifier} TypeIdentifier [TypeBound]
+
+        TypeParameterModifier:
+          Annotation
+
+        TypeBound:
+          extends TypeVariable
+          extends ClassOrInterfaceType {AdditionalBound}
+
         [JDK Code] JavacParser.typeParameter
         TypeParameter = [Annotations] TypeVariable [TypeParameterBound]
         TypeParameterBound = EXTENDS Type {"&" Type}
         TypeVariable = Ident
 
-        TODO 待补充单元测试
+        Examples
+        --------
+        >>> res = JavaParser(LexicalFSM("@annotation MyType extends Type1 & Type2")).type_parameter()
+        >>> res.kind.name
+        'TYPE_PARAMETER'
+        >>> res.name
+        'MyType'
+        >>> len(res.bounds)
+        2
+        >>> len(res.annotations)
+        1
         """
         pos = self.token.pos
         annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
-        name: ast.IdentifierTree = self.type_name()
+        name: str = self.type_name()
         bounds: List[ast.ExpressionTree] = []
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
@@ -4706,4 +4792,4 @@ class JavaParser:
 
 if __name__ == "__main__":
     demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
-    print(JavaParser(LexicalFSM("assert name = 1 : \"wrong\"; ")).parse_simple_statement())
+    print(JavaParser(LexicalFSM("<MyType1, int>")).type_parameters_opt())

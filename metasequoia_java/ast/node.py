@@ -741,12 +741,12 @@ class TypeParameterTree(Tree):
     - annotations name
     """
 
-    name: IdentifierTree = dataclasses.field(kw_only=True)
+    name: str = dataclasses.field(kw_only=True)
     bounds: List[Tree] = dataclasses.field(kw_only=True)
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(name: IdentifierTree, bounds: List[Tree], annotations: List[AnnotationTree],
+    def create(name: str, bounds: List[Tree], annotations: List[AnnotationTree],
                start_pos: int, end_pos: int, source: str) -> "TypeParameterTree":
         return TypeParameterTree(
             kind=TreeKind.TYPE_PARAMETER,
