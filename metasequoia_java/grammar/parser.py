@@ -424,6 +424,7 @@ class JavaParser:
             modifiers=modifiers,
             name=name,
             variable_type=expression,
+            initializer=None,
             **self._info_exclude(var_pos)
         )
         # TODO 补充检查日志逻辑
@@ -1999,7 +2000,7 @@ class JavaParser:
 
         [JDK Code] JavacParser.lambdaStatement
         """
-        block: ast.BlockTree = self.block(pos2, 0)
+        block: ast.BlockTree = self.block(pos2, [])
         return ast.LambdaExpressionTree.create_statement(
             parameters=parameters,
             body=block,
@@ -2822,6 +2823,11 @@ class JavaParser:
 
         [JDK Code] javacParser.variableInitializer
         VariableInitializer = ArrayInitializer | Expression
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("1")).variable_initializer().kind.name
+        'INT_LITERAL'
         """
         if self.token.kind == TokenKind.LBRACE:
             return self.array_initializer(self.token.pos, None)
@@ -2847,16 +2853,37 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def block(self, pos: int, flags: int) -> ast.BlockTree:
+    def block(self, pos: Optional[int] = None, is_static: bool = False) -> ast.BlockTree:
         """解析代码块
 
-        [JDK Code] JavacParser.block
+        [JDK Code] JavacParser.block(int, long)
+        [JDK Code] JavacParser.block()
         Block = "{" BlockStatements "}"
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("{}"), mode=Mode.EXPR).block().statements
+        []
         """
-        return ast.BlockTree.mock()  # TODO 待开发真实执行逻辑
+        if pos is None:
+            pos = self.token.pos
+
+        self.accept(TokenKind.LBRACE)
+        # TODO 待补充注释处理逻辑
+        statements = self.block_statements()
+        expression = ast.BlockTree.create(
+            is_static=is_static,
+            statements=statements,
+            **self._info_exclude(pos)
+        )
+        # TODO 待增加异常恢复机制
+        expression.end_pos = self.token.pos
+        expression.source += "}"
+        self.accept(TokenKind.RBRACE)
+        return expression
 
     def block_statements(self) -> List[ast.StatementTree]:
-        """TODO 名称待整理
+        """代码块中的多个表达式
 
         [JDK Code] JavacParser.blockStatements
         BlockStatements = { BlockStatement }
@@ -2866,14 +2893,122 @@ class JavaParser:
         LocalVariableDeclarationStatement
                         = { FINAL | '@' Annotation } Type VariableDeclarators ";"
         """
-        return []  # TODO 待开发真实执行逻辑
+        statements: List[ast.StatementTree] = []
+        while True:
+            statement = self.block_statement()
+            # TODO 待增加注释处理逻辑
+            if not statement:
+                return statements
+            else:
+                # TODO 待增加异常恢复机制
+                statements.extend(statement)
+
+    def parse_statement_as_block(self) -> ast.StatementTree:
+        """解析语句
+
+        [JDK Code] JavacParser.parseStatementAsBlock()
+        """
+        pos = self.token.pos
+        statements = self.block_statement()
+        if not statements:
+            self.raise_syntax_error(pos, "IllegalStartOfStmt")
+
+        first = statements[0]
+        if first.kind == TreeKind.CLASS:
+            self.raise_syntax_error(pos, "ClassNotAllowed")
+        if first.kind == TreeKind.VARIABLE:
+            self.raise_syntax_error(pos, "VariableNotAllowed")
+        return first
+
+    def block_statement(self) -> List[ast.StatementTree]:
+        """代码块中的一个表达式
+
+        [JDK Code] JavacParser.blockStatement()
+        """
+        pos = self.token.pos
+        if self.token.kind in {TokenKind.RBRACE, TokenKind.CASE, TokenKind.DEFAULT, TokenKind.EOF}:
+            return []
+        if self.token.kind in {TokenKind.LBRACE, TokenKind.IF, TokenKind.FOR, TokenKind.WHILE, TokenKind.DO,
+                               TokenKind.TRY, TokenKind.SWITCH, TokenKind.SYNCHRONIZED, TokenKind.RETURN,
+                               TokenKind.THROW, TokenKind.BREAK, TokenKind.CONTINUE, TokenKind.SEMI, TokenKind.ELSE,
+                               TokenKind.FINALLY, TokenKind.CATCH, TokenKind.ASSERT}:
+            return [self.parse_simple_statement()]
+
+    def parse_simple_statement(self) -> ast.StatementTree:
+        """解析单个语句
+
+        [JDK Code] JavacParser.parseStatement()
+        Statement =
+             Block
+           | IF ParExpression Statement [ELSE Statement]
+           | FOR "(" ForInitOpt ";" [Expression] ";" ForUpdateOpt ")" Statement
+           | FOR "(" FormalParameter : Expression ")" Statement
+           | WHILE ParExpression Statement
+           | DO Statement WHILE ParExpression ";"
+           | TRY Block ( Catches | [Catches] FinallyPart )
+           | TRY "(" ResourceSpecification ";"opt ")" Block [Catches] [FinallyPart]
+           | SWITCH ParExpression "{" SwitchBlockStatementGroups "}"
+           | SYNCHRONIZED ParExpression Block
+           | RETURN [Expression] ";"
+           | THROW Expression ";"
+           | BREAK [Ident] ";"
+           | CONTINUE [Ident] ";"
+           | ASSERT Expression [ ":" Expression ] ";"
+           | ";"
+
+        TODO 待补充注释处理逻辑
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("{}"), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'BLOCK'
+        >>> JavaParser(LexicalFSM("if (name > 3) {} else {} "), mode=Mode.EXPR).parse_simple_statement().kind.name
+        'IF'
+        """
+        pos = self.token.pos
+        if self.token.kind == TokenKind.LBRACE:
+            return self.block()
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # IfThenStatement:
+        #   if ( Expression ) Statement
+        #
+        # IfThenElseStatement:
+        #   if ( Expression ) StatementNoShortIf else Statement
+        #
+        # IfThenElseStatementNoShortIf:
+        #   if ( Expression ) StatementNoShortIf else StatementNoShortIf
+        if self.token.kind == TokenKind.IF:
+            self.next_token()  # 跳过 IF
+            condition = self.parse_expression()
+            then_statement = self.parse_statement()
+
+            else_statement: Optional[ast.StatementTree] = None
+            if self.token.kind == TokenKind.ELSE:
+                self.next_token()  # 跳过 ELSE
+                else_statement = self.parse_statement_as_block()
+
+            return ast.IfTree.create(
+                condition=condition,
+                then_statement=then_statement,
+                else_statement=else_statement,
+                **self._info_exclude(pos)
+            )
+
+        if self.token.kind == TokenKind.FOR:
+            self.next_token()
+            self.accept(TokenKind.LPAREN)
+            if self.token.kind == TokenKind.SEMI:
+                inits = []
+            else:
+                inits = self.for_init()
 
     def parse_statement(self) -> ast.StatementTree:
         """解析语句
 
         [JDK Code] JavacParser.parseStatement()
         """
-        return ast.StatementTree.mock()  # TODO 待开发真实执行逻辑
+        return self.parse_statement_as_block()
 
     def parse_case_label(self, allow_default: bool) -> ast.CaseLabelTree:
         """switch 语句中的 case 子句
@@ -3053,6 +3188,25 @@ class JavaParser:
             else:
                 return pending_result
             lookahead += 1
+
+    def for_init(self) -> List[ast.StatementTree]:
+        """解析 for 语句的 ( ) 中的语句列表
+
+        [JDK Code] JavacParser.forInit
+        ForInit = StatementExpression MoreStatementExpressions
+                 |  { FINAL | '@' Annotation } Type VariableDeclarators
+        """
+        statements = []
+        pos = self.token.pos
+        if self.token.kind in {TokenKind.FINAL, TokenKind.MONKEYS_AT}:
+            modifiers = self.opt_final([])
+            variable_type = self.parse_type()
+            return self.variable_declarators(
+                modifiers=modifiers,
+                variable_type=self.parse_type(),
+                v_defs=statements,
+                local_decl=True,
+            )
 
     def annotations_opt(self, kind: TreeKind) -> List[ast.AnnotationTree]:
         """可选的多个注解
@@ -3361,6 +3515,152 @@ class JavaParser:
         self.select_expr_mode()
         return self.term1()
 
+    def variable_declarators(self,
+                             modifiers: Optional[ast.ModifiersTree],
+                             variable_type: ast.ExpressionTree,
+                             v_defs: List[ast.VariableTree],
+                             local_decl: bool) -> List[ast.VariableTree]:
+        """多个初始化变量
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        LocalVariableDeclaration:
+          {VariableModifier} LocalVariableType VariableDeclaratorList
+
+        LocalVariableType:
+          UnannType
+          var
+
+        VariableDeclaratorList:
+          VariableDeclarator {, VariableDeclarator}
+
+        [JDK Code] JavacParser.variableDeclarators(JCModifiers, JCExpression, T, boolean)
+        VariableDeclarators = VariableDeclarator { "," VariableDeclarator }
+
+        Examples
+        --------
+        >>> res = JavaParser(LexicalFSM("i = 0, j = 2"), mode=Mode.EXPR).variable_declarators(None,
+        ...                                                                                   ast.ExpressionTree.mock(),
+        ...                                                                                   [], True)
+        >>> len(res)
+        2
+        >>> res[0].kind.name
+        'VARIABLE'
+        >>> res[0].source
+        'i = 0'
+        >>> res[1].kind.name
+        'VARIABLE'
+        >>> res[1].source
+        'j = 2'
+        """
+        return self.variable_declarators_rest(self.token.pos, modifiers, variable_type, self.ident_or_underscore(),
+                                              False, v_defs, local_decl)
+
+    def variable_declarators_rest(self,
+                                  pos: int,
+                                  modifiers: ast.ModifiersTree,
+                                  variable_type: ast.ExpressionTree,
+                                  name: str,
+                                  req_init: bool,
+                                  v_defs: List[ast.VariableTree],
+                                  local_decl: bool) -> List[ast.VariableTree]:
+        """多个初始化变量的剩余部分
+
+        [JDK Code] JavacParser.variableDeclaratorsRest(int, JCModifiers, JCExpression, Name, boolean, Comment, T,
+                                                       boolean)
+
+        VariableDeclaratorsRest = VariableDeclaratorRest { "," VariableDeclarator }
+        ConstantDeclaratorsRest = ConstantDeclaratorRest { "," ConstantDeclarator }
+
+        TODO 待补充注释处理逻辑
+        """
+        head = self.variable_declarator_rest(pos, modifiers, variable_type, name, req_init, local_decl, compound=False)
+        v_defs.append(head)
+        while self.token.kind == TokenKind.COMMA:
+            # TODO 待增加代码位置逻辑
+            self.next_token()
+            v_defs.append(self.variable_declarator(modifiers, variable_type, req_init, local_decl))
+        return v_defs
+
+    def variable_declarator(self,
+                            modifiers: ast.ModifiersTree,
+                            variable_type: ast.ExpressionTree,
+                            req_init: bool,
+                            local_decl: bool
+                            ) -> ast.VariableTree:
+        """初始化的变量
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        VariableDeclarator:
+          VariableDeclaratorId [= VariableInitializer]
+
+        [JDK Code] JavacParser.variableDeclarator(JCModifiers, JCExpression, boolean, Comment, boolean)
+        VariableDeclarator = Ident VariableDeclaratorRest
+        ConstantDeclarator = Ident ConstantDeclaratorRest
+
+        TODO 待补充注释处理逻辑
+        """
+        return self.variable_declarator_rest(self.token.pos, modifiers, variable_type, self.ident_or_underscore(),
+                                             req_init, local_decl, True)
+
+    def variable_declarator_rest(self,
+                                 pos: int,
+                                 modifiers: ast.ModifiersTree,
+                                 variable_type: ast.ExpressionTree,
+                                 name: str,
+                                 req_init: bool,
+                                 local_dec: bool,
+                                 compound: bool
+                                 ) -> ast.VariableTree:
+        """初始化变量的剩余部分
+
+        [JDK Code] JavacParser.variableDeclaratorRest(int, JCModifiers, JCExpression, Name, boolean, Comment, boolean,
+                                                      boolean)
+
+        VariableDeclaratorRest = BracketsOpt ["=" VariableInitializer]
+        ConstantDeclaratorRest = BracketsOpt "=" VariableInitializer
+
+        TODO 待增加 declared_using_var 的逻辑
+        TODO 待增加 local_dec 的逻辑
+        """
+        variable_type = self.brackets_opt(variable_type)  # 匹配可选的方括号
+
+        # TODO 待增加特性逻辑
+        if name == "_":
+            name = None
+
+        # TODO 待增加注释处理逻辑
+
+        initializer = None
+        if self.token.kind == TokenKind.EQ:
+            self.next_token()
+            initializer = self.variable_initializer()
+        elif req_init is True:
+            self.raise_syntax_error(self.token.pos, f"expect EQ, but get {self.token.kind.name}")
+
+        elem_type: ast.Tree = ast.info.inner_most_type(variable_type, skip_annotations=True)
+        if isinstance(elem_type, ast.IdentifierTree):
+            type_name = elem_type.name
+            if self.restricted_type_name_starting_at_source(type_name):
+                if type_name != "var":
+                    self.raise_syntax_error(elem_type.start_pos, f"RestrictedTypeNotAllowedHere {type_name}")
+                elif variable_type.kind == TreeKind.ARRAY_TYPE and not compound:
+                    self.raise_syntax_error(elem_type.start_pos, f"RestrictedTypeNotAllowedArray {type_name}")
+                else:
+                    if compound:
+                        self.raise_syntax_error(elem_type.start_pos, f"RestrictedTypeNotAllowedCompound {type_name}")
+                    # TODO 待补充代码位置逻辑
+                    variable_type = None
+
+        result = ast.VariableTree.create_by_name(
+            modifiers=modifiers,
+            name=name,
+            variable_type=variable_type,
+            initializer=initializer,
+            **self._info_exclude(pos)
+        )
+        # TODO 待处理代码位置
+        return result
+
     def restricted_type_name(self, expression: ast.ExpressionTree) -> Optional[str]:
         """限定类型名称
 
@@ -3446,6 +3746,7 @@ class JavaParser:
                 modifiers=modifiers,
                 name=expression.name,
                 variable_type=variable_type,
+                initializer=None,
                 **self._info_exclude(pos)
             )
         if lambda_parameter and variable_type is None:
@@ -3805,4 +4106,6 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).term3())
+    print(JavaParser(LexicalFSM("i = 0, j = 2"), mode=Mode.EXPR).variable_declarators(None,
+                                                                                      ast.ExpressionTree.mock(),
+                                                                                      [], True))

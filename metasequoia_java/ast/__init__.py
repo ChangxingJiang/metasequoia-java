@@ -1,3 +1,4 @@
+from metasequoia_java.ast import info
 from metasequoia_java.ast.base import *
 from metasequoia_java.ast.constants import ReferenceMode
 from metasequoia_java.ast.element import Modifier, TypeKind

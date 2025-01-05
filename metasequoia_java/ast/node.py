@@ -455,16 +455,18 @@ class VariableTree(StatementTree):
     name: Optional[str] = dataclasses.field(kw_only=True, default=None)
     name_expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True, default=None)
     variable_type: Tree = dataclasses.field(kw_only=True)
-    initializer: Optional[ExpressionTree] = dataclasses.field(kw_only=True, default=None)
+    initializer: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create_by_name(modifiers: ModifiersTree, name: Optional[str], variable_type: Tree,
+                       initializer: Optional[ExpressionTree],
                        start_pos: int, end_pos: int, source: str) -> "VariableTree":
         return VariableTree(
             kind=TreeKind.VARIABLE,
             modifiers=modifiers,
             name=name,
             variable_type=variable_type,
+            initializer=initializer,
             start_pos=start_pos,
             end_pos=end_pos,
             source=source
@@ -527,6 +529,18 @@ class BlockTree(StatementTree):
 
     is_static: bool = dataclasses.field(kw_only=True)
     statements: List[StatementTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(is_static: bool, statements: List[StatementTree], start_pos: int, end_pos: int,
+               source: str) -> "BlockTree":
+        return BlockTree(
+            kind=TreeKind.BLOCK,
+            is_static=is_static,
+            statements=statements,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     @staticmethod
     def mock() -> "BlockTree":
@@ -1140,6 +1154,21 @@ class IfTree(StatementTree):
     condition: ExpressionTree = dataclasses.field(kw_only=True)
     then_statement: StatementTree = dataclasses.field(kw_only=True)
     else_statement: Optional[StatementTree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(condition: ExpressionTree,
+               then_statement: StatementTree,
+               else_statement: Optional[StatementTree],
+               start_pos: int, end_pos: int, source: str) -> "IfTree":
+        return IfTree(
+            kind=TreeKind.IF,
+            condition=condition,
+            then_statement=then_statement,
+            else_statement=else_statement,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         if self.else_statement is None:
