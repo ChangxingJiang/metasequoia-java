@@ -215,6 +215,10 @@ class JavaParser:
           Identifier
           PackageName . Identifier
 
+        TypeName:
+          TypeIdentifier
+          PackageOrTypeName . TypeIdentifier
+
         [JDK Code] JavacParser.qualident
         Qualident = Ident { DOT [Annotations] Ident }
 
@@ -435,6 +439,44 @@ class JavaParser:
                    ) -> ast.ExpressionTree:
         """类型
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Type:
+          PrimitiveType
+          ReferenceType
+
+        PrimitiveType:
+          {Annotation} NumericType
+          {Annotation} boolean
+
+        ReferenceType:
+          ClassOrInterfaceType
+          TypeVariable
+          ArrayType
+
+        ClassOrInterfaceType:
+          ClassType
+          InterfaceType
+
+        ClassType:
+          {Annotation} TypeIdentifier [TypeArguments]
+          PackageName . {Annotation} TypeIdentifier [TypeArguments]
+          ClassOrInterfaceType . {Annotation} TypeIdentifier [TypeArguments]
+
+        InterfaceType:
+          ClassType
+
+        TypeVariable:
+          {Annotation} TypeIdentifier
+
+        ArrayType:
+          PrimitiveType Dims
+          ClassOrInterfaceType Dims
+          TypeVariable Dims
+
+        [JDK Code] JavacParser.parseType()
+        [JDK Code] JavacParser.parseType(boolean)
+        [JDK Code] JavacParser.parseType(List[JCAnnotation])
+
         Parameters
         ----------
         pos : Optional[int], default = None
@@ -443,8 +485,6 @@ class JavaParser:
             是否允许 "var" 作为类型名称
         annotations : Optional[List[ast.AnnotationTree]], default = None
             已经解析的注解
-
-        [JDK Code] JavacParser.parseType
 
         Examples
         --------
@@ -2297,7 +2337,7 @@ class JavaParser:
             )
         return wildcard
 
-    def type_arguments(self, expression: ast.ExpressionTree, diamond_allowed: bool) -> ast.ParameterizedTypeTree:
+    def type_arguments(self, expression: ast.Tree, diamond_allowed: bool) -> ast.ParameterizedTypeTree:
         """包含尖括号的类型实参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3324,6 +3364,10 @@ class JavaParser:
     def restricted_type_name(self, expression: ast.ExpressionTree) -> Optional[str]:
         """限定类型名称
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TypeIdentifier:
+          Identifier but not permits, record, sealed, var, or yield
+
         [JDK Code] JavacParser.restrictedTypeName(JCExpression, boolean)
         """
         if expression.kind == TreeKind.IDENTIFIER:
@@ -3338,7 +3382,7 @@ class JavaParser:
         return None
 
     def restricted_type_name_starting_at_source(self, name: str) -> Optional[str]:
-        """TODO 名称待整理
+        """限制不能作为类型标识符的名称
 
         [JDK Code] JavacParser.restrictedTypeNameStartingAtSource
         """
