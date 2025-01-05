@@ -446,8 +446,16 @@ class JavaParser:
 
         [JDK Code] JavacParser.parseType
 
-        TODO 待补充单元测试（等待 term 完成）
-        TODO 待补充单元测试（等待 type_annotations_opt 完成）
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("int"), mode=Mode.TYPE).parse_type().kind.name
+        'PRIMITIVE_TYPE'
+        >>> JavaParser(LexicalFSM("String"), mode=Mode.TYPE).parse_type().kind.name
+        'IDENTIFIER'
+        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).parse_type().kind.name
+        'PARAMETERIZED_TYPE'
+        >>> JavaParser(LexicalFSM("@Select MyType"), mode=Mode.TYPE).parse_type().kind.name
+        'ANNOTATION_TYPE'
         """
         if pos is None:
             pos = self.token.pos
@@ -457,7 +465,6 @@ class JavaParser:
         result = self.unannotated_type(allow_var=allow_var)
 
         if annotations:
-            # TODO 待确定是否需要实现类似 insertAnnotationsToMostInner 的逻辑
             return ast.AnnotatedTypeTree.create(
                 annotations=annotations,
                 underlying_type=result,
@@ -490,7 +497,7 @@ class JavaParser:
             )
         return first_type
 
-    def unannotated_type(self, allow_var: bool = False, new_mode: Mode = Mode.TYPE) -> ast.ExpressionTree:
+    def unannotated_type(self, allow_var: bool = False, new_mode: Optional[Mode] = None) -> ast.ExpressionTree:
         """解析不包含注解的类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -531,8 +538,10 @@ class JavaParser:
         'IDENTIFIER'
         >>> JavaParser(LexicalFSM("java.util.String"), mode=Mode.EXPR).unannotated_type().kind.name
         'MEMBER_SELECT'
-        >>> JavaParser(LexicalFSM("int"), mode=Mode.EXPR).unannotated_type().kind.name
+        >>> JavaParser(LexicalFSM("int"), mode=Mode.TYPE).unannotated_type().kind.name
         'PRIMITIVE_TYPE'
+        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).unannotated_type().kind.name
+        'PARAMETERIZED_TYPE'
         """
         result = self.term(new_mode)
         restricted_type_name = self.restricted_type_name(result)
@@ -820,7 +829,7 @@ class JavaParser:
                         if modifiers.annotations:
                             type_annotations: List[ast.AnnotationTree] = []
                             for decl in modifiers.annotations:
-                                type_annotations.append(ast.AnnotationTree.create(
+                                type_annotations.append(ast.AnnotationTree.create_type_annotation(
                                     annotation_type=decl.annotation_type,
                                     arguments=decl.arguments,
                                     start_pos=decl.start_pos,
@@ -999,7 +1008,7 @@ class JavaParser:
         >>> parser = JavaParser(LexicalFSM("super::name1.name2"))
         >>> parser.select_expr_mode()
         >>> parser.term3().kind.name
-        'MEMBER_REFERENCE'
+        'MEMBER_SELECT'
         >>> parser = JavaParser(LexicalFSM("super::name1.(arg1)name2"))
         >>> parser.select_expr_mode()
         >>> parser.term3().kind.name
@@ -1031,6 +1040,8 @@ class JavaParser:
         'MEMBER_SELECT'
         >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
         'PRIMITIVE_TYPE'
+        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).term3().kind.name
+        'PARAMETERIZED_TYPE'
         """
         pos = self.token.pos
         type_args = self.type_argument_list_opt()
@@ -3192,7 +3203,7 @@ class JavaParser:
                 arguments=arguments,
                 **self._info_exclude(pos)
             )
-        if kind == TreeKind.ANNOTATION_TYPE:
+        if kind == TreeKind.TYPE_ANNOTATION:
             return ast.AnnotationTree.create_type_annotation(
                 annotation_type=ident,
                 arguments=arguments,
@@ -3750,7 +3761,4 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("@Select \n @Update"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
-    print(JavaParser(LexicalFSM("@Select(name)"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
-    print(JavaParser(LexicalFSM("@Select(name=3)"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
-    print(JavaParser(LexicalFSM("@Select({1, 2, 3})"), mode=Mode.EXPR).annotations_opt(TreeKind.ANNOTATION))
+    print(JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).term3())
