@@ -2,6 +2,8 @@
 
 ## 安装方法
 
+水杉 Java 解析器为纯 Python 开发，不依赖其他第三方包，在任意环境下直接 pip 安装即可：
+
 ```shell
 pip install metasequoia-java
 ```
