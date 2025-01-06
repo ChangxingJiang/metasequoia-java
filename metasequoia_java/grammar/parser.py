@@ -4666,7 +4666,98 @@ class JavaParser:
 
         # TODO 补充注释信息
 
-        members = self.enum_body()
+        members = self.enum_body(name)
+
+    def enum_body(self, enum_name: str) -> List[ast.Tree]:
+        """解析枚举类的元素
+
+        [Java Code] JavacParser.enumBody(Name)
+
+        TODO 待调整报错机制
+        """
+        self.accept(TokenKind.LBRACE)
+        defs = []
+        was_semi = False
+        has_structural_errors = False
+        was_error = False
+        if self.token.kind == TokenKind.COMMA:
+            self.next_token()
+            if self.token.kind == TokenKind.SEMI:
+                was_semi = True
+                self.next_token()
+            elif self.token.kind != TokenKind.RBRACE:
+                self.raise_syntax_error(self.last_token.pos, "Expected RBRACE or SEMI")
+
+        while self.token.kind not in {TokenKind.RBRACE, TokenKind.EOF}:
+            if self.token.kind == TokenKind.SEMI:
+                self.accept(TokenKind.SEMI)
+                was_semi = True
+                if self.token.kind not in {TokenKind.RBRACE, TokenKind.EOF}:
+                    break
+
+            member_type = self.estimate_enumerator_or_member(enum_name)
+            if member_type == grammar_enum.EnumeratorEstimate.UNKNOWN:
+                if was_semi:
+                    member_type = grammar_enum.EnumeratorEstimate.MEMBER
+                else:
+                    member_type = grammar_enum.EnumeratorEstimate.ENUMERATOR
+
+            if member_type == grammar_enum.EnumeratorEstimate.ENUMERATOR:
+                was_error = False
+                if was_semi:
+                    self.raise_syntax_error(self.token.pos, "EnumConstantNotExpected")
+                defs.append(self.enumerator_declaration(enum_name))
+
+    def estimate_enumerator_or_member(self, enum_name: str) -> grammar_enum.EnumeratorEstimate:
+        """评估枚举类中的元素是枚举值还是其他成员
+
+        [JDK Code] JavacParser.estimateEnumeratorOrMember(Name)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("VALUE1(1),")).estimate_enumerator_or_member("MyEnumName").name
+        'ENUMERATOR'
+        >>> JavaParser(LexicalFSM("private int id;")).estimate_enumerator_or_member("MyEnumName").name
+        'MEMBER'
+        >>> JavaParser(LexicalFSM("JSON,")).estimate_enumerator_or_member("MyEnumName").name
+        'ENUMERATOR'
+        """
+        if (self.token.kind in {TokenKind.IDENTIFIER, TokenKind.UNDERSCORE}
+                and self.token.name != enum_name
+                and (not self.allow_records or not self.is_record_start())):
+            next_token = self.lexer.token(1)
+            if next_token.kind in {TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.COMMA, TokenKind.SEMI}:
+                return grammar_enum.EnumeratorEstimate.ENUMERATOR
+        if self.token.kind == TokenKind.IDENTIFIER:
+            if self.allow_records and self.is_record_start():
+                return grammar_enum.EnumeratorEstimate.MEMBER
+        if self.token.kind in {TokenKind.MONKEYS_AT, TokenKind.LT, TokenKind.UNDERSCORE}:
+            return grammar_enum.EnumeratorEstimate.UNKNOWN
+        return grammar_enum.EnumeratorEstimate.MEMBER
+
+    def enumerator_declaration(self, enum_name: str) -> ast.Tree:
+        """解析枚举类中的枚举值
+
+        [JDK Code] JavacParser.enumeratorDeclaration(Name)
+        EnumeratorDeclaration = AnnotationsOpt [TypeArguments] IDENTIFIER [ Arguments ] [ "{" ClassBody "}" ]
+
+        TODO 待补充注释处理逻辑
+        """
+        flags = [Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL, Modifier.ENUM]
+        if self.token.deprecated_flag():
+            flags.append(Modifier.DEPRECATED)
+        pos = self.token.pos
+        annotations = self.annotations_opt(TreeKind.ANNOTATION)
+        modifiers = ast.ModifiersTree.create(
+            flags=flags,
+            annotations=annotations,
+            **self._info_exclude(None if not annotations else pos)
+        )
+        type_args = self.type_argument_list_opt()
+        ident_pos = self.token.pos
+        name = self.ident()
+        create_pos = self.token.pos
+
 
     def type_list(self) -> List[ast.ExpressionTree]:
         """解析逗号分隔的多个类型（extends 子句或 implements 子句）
@@ -5438,6 +5529,7 @@ class JavaParser:
         """
         modifiers = ast.ModifiersTree.create(
             flags=[Modifier.PARAMETER],
+            annotations=None,
             **self._info_include(self.token.pos)  # TODO 下标待修正
         )
         return self.variable_declarator_id(modifiers, None, False, True)
@@ -5453,5 +5545,6 @@ class JavaParser:
 
 if __name__ == "__main__":
     # demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
-    print(JavaParser(LexicalFSM("interface MyClassName { MyType value = new MyType(); }")).interface_declaration(
-        ast.ModifiersTree.mock()))
+    print(JavaParser(LexicalFSM("VALUE1(1),")).estimate_enumerator_or_member("MyEnumName"))
+    print(JavaParser(LexicalFSM("private int id;")).estimate_enumerator_or_member("MyEnumName"))
+    print(JavaParser(LexicalFSM("JSON,")).estimate_enumerator_or_member("MyEnumName"))

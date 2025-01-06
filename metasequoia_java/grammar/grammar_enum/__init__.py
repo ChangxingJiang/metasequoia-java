@@ -1,2 +1,3 @@
+from metasequoia_java.grammar.grammar_enum.enumerator_estimate import EnumeratorEstimate
 from metasequoia_java.grammar.grammar_enum.operator_precedence import OperatorPrecedence
 from metasequoia_java.grammar.grammar_enum.pattern_result import PatternResult
