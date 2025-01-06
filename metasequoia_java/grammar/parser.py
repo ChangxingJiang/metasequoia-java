@@ -9,6 +9,7 @@ from metasequoia_java.ast import ReferenceMode
 from metasequoia_java.ast import TreeKind
 from metasequoia_java.ast.constants import INT_LITERAL_STYLE_HASH
 from metasequoia_java.ast.constants import LONG_LITERAL_STYLE_HASH
+from metasequoia_java.ast.constants import ModuleKind
 from metasequoia_java.ast.element import Modifier
 from metasequoia_java.grammar import grammar_enum
 from metasequoia_java.grammar import grammar_hash
@@ -55,10 +56,10 @@ class JavaParser:
         self.receiver_param: Optional[ast.VariableTree] = None
 
         # 当前源码层级中是否允许出现 yield 语句
-        self.allow_yield_statement: bool = False
+        self.allow_yield_statement: bool = True
 
         # 当前源码层级中是否允许出现 record
-        self.allow_records: bool = False
+        self.allow_records: bool = True
 
         # 当前源码层级中是否允许出现 sealed 类型
         self.allow_sealed_types: bool = True
@@ -142,28 +143,6 @@ class JavaParser:
         else:
             self.raise_syntax_error(pos, "IllegalStartOfType")
 
-    # ------------------------------ 其他解析方法 ------------------------------
-
-    def unqualified_method_identifier(self) -> ast.IdentifierTree:
-        """解析 UnqualifiedMethodIdentifier 元素
-
-        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
-        UnqualifiedMethodIdentifier:
-          Identifier but not yield
-        """
-        if self.token.kind != TokenKind.IDENTIFIER:
-            raise JavaSyntaxError(f"{self.token.source} 不能作为 UnqualifiedMethodIdentifier")
-        if self.token.name in {"yield"}:
-            raise JavaSyntaxError(f"{self.token.name} 不能作为 UnqualifiedMethodIdentifier")
-
-        pos = self.token.pos
-        name = self.token.name
-        self.next_token()
-        return ast.IdentifierTree.create(
-            name=name,
-            **self._info_exclude(pos)
-        )
-
     # ------------------------------ 解析方法 ------------------------------
 
     def ident(self) -> str:
@@ -172,6 +151,9 @@ class JavaParser:
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
         Identifier:
           IdentifierChars but not a ReservedKeyword or BooleanLiteral or NullLiteral
+
+        MethodName:
+          UnqualifiedMethodIdentifier
 
         [JDK Code] JavacParser.ident
 
@@ -220,6 +202,10 @@ class JavaParser:
         PackageName:
           Identifier
           PackageName . Identifier
+
+        PackageOrTypeName:
+          Identifier
+          PackageOrTypeName . Identifier
 
         TypeName:
           TypeIdentifier
@@ -2021,7 +2007,7 @@ class JavaParser:
 
         [JDK Code] JavacParser.lambdaStatement
         """
-        block: ast.BlockTree = self.block(pos2, [])
+        block: ast.BlockTree = self.block(pos2, False)
         return ast.LambdaExpressionTree.create_statement(
             parameters=parameters,
             body=block,
@@ -2877,6 +2863,10 @@ class JavaParser:
     def block(self, pos: Optional[int] = None, is_static: bool = False) -> ast.BlockTree:
         """解析代码块
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        Block:
+          { [BlockStatements] }
+
         [JDK Code] JavacParser.block(int, long)
         [JDK Code] JavacParser.block()
         Block = "{" BlockStatements "}"
@@ -2885,6 +2875,9 @@ class JavaParser:
         --------
         >>> JavaParser(LexicalFSM("{}"), mode=Mode.EXPR).block().statements
         []
+        >>> demo1 = "{ if (name > 3) {} else {} \\n yield result; }"
+        >>> len(JavaParser(LexicalFSM(demo1), mode=Mode.EXPR).block().statements)
+        2
         """
         if pos is None:
             pos = self.token.pos
@@ -2906,6 +2899,10 @@ class JavaParser:
     def block_statements(self) -> List[ast.StatementTree]:
         """代码块中的多个表达式
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        BlockStatements:
+          BlockStatement {BlockStatement}
+
         [JDK Code] JavacParser.blockStatements
         BlockStatements = { BlockStatement }
         BlockStatement  = LocalVariableDeclarationStatement
@@ -2913,6 +2910,17 @@ class JavaParser:
                         | [Ident ":"] Statement
         LocalVariableDeclarationStatement
                         = { FINAL | '@' Annotation } Type VariableDeclarators ";"
+
+        Examples
+        --------
+        >>> demo1 = "if (name > 3) {} else {} \\n yield result; "
+        >>> res = JavaParser(LexicalFSM(demo1)).block_statements()
+        >>> len(res)
+        2
+        >>> res[0].kind.name
+        'IF'
+        >>> res[1].kind.name
+        'YIELD'
         """
         statements: List[ast.StatementTree] = []
         while True:
@@ -2944,20 +2952,238 @@ class JavaParser:
     def block_statement(self) -> List[ast.StatementTree]:
         """代码块中的一个表达式
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        BlockStatement:
+          LocalClassOrInterfaceDeclaration
+          LocalVariableDeclarationStatement
+          Statement
+
+        LocalClassOrInterfaceDeclaration:
+          ClassDeclaration
+          NormalInterfaceDeclaration
+
+        Statement:
+          StatementWithoutTrailingSubstatement
+          LabeledStatement
+          IfThenStatement
+          IfThenElseStatement
+          WhileStatement
+          ForStatement
+
+        StatementNoShortIf:
+          StatementWithoutTrailingSubstatement
+          LabeledStatementNoShortIf
+          IfThenElseStatementNoShortIf
+          WhileStatementNoShortIf
+          ForStatementNoShortIf
+
+        StatementWithoutTrailingSubstatement:
+          Block
+          EmptyStatement
+          ExpressionStatement
+          AssertStatement
+          SwitchStatement
+          DoStatement
+          BreakStatement
+          ContinueStatement
+          ReturnStatement
+          SynchronizedStatement
+          ThrowStatement
+          TryStatement
+          YieldStatement
+
         [JDK Code] JavacParser.blockStatement()
+
+        Examples
+        --------
+        >>> demo1 = "class MyClassName { public MyClassName () {} }"
+        >>> JavaParser(LexicalFSM(demo1)).block_statement()[0].kind.name
+        'CLASS'
+        >>> demo2 = "enum MyEnumName { A(100), B(90), C(75), D(60); }"
+        >>> JavaParser(LexicalFSM(demo2)).block_statement()[0].kind.name
+        'CLASS'
+        >>> demo3 = "interface MyClassName { MyType value = new MyType(); }"
+        >>> JavaParser(LexicalFSM(demo3)).block_statement()[0].kind.name
+        'CLASS'
+        >>> demo4 = "if (name > 3) {} else {} "
+        >>> JavaParser(LexicalFSM(demo4), mode=Mode.EXPR).block_statement()[0].kind.name
+        'IF'
+        >>> demo5 = "yield result; "
+        >>> JavaParser(LexicalFSM(demo5), mode=Mode.EXPR).block_statement()[0].kind.name
+        'YIELD'
+        >>> demo6 = "loop: while (true) {} "
+        >>> JavaParser(LexicalFSM(demo6), mode=Mode.EXPR).block_statement()[0].kind.name
+        'LABELED_STATEMENT'
+        >>> demo7 = "a + 3; "
+        >>> JavaParser(LexicalFSM(demo7), mode=Mode.EXPR).block_statement()[0].kind.name
+        'EXPRESSION_STATEMENT'
         """
+        pos = self.token.pos
+
         if self.token.kind in {TokenKind.RBRACE, TokenKind.CASE, TokenKind.DEFAULT, TokenKind.EOF}:
             return []
+
         if self.token.kind in {TokenKind.LBRACE, TokenKind.IF, TokenKind.FOR, TokenKind.WHILE, TokenKind.DO,
                                TokenKind.TRY, TokenKind.SWITCH, TokenKind.SYNCHRONIZED, TokenKind.RETURN,
                                TokenKind.THROW, TokenKind.BREAK, TokenKind.CONTINUE, TokenKind.SEMI, TokenKind.ELSE,
                                TokenKind.FINALLY, TokenKind.CATCH, TokenKind.ASSERT}:
             return [self.parse_simple_statement()]
+
         if self.token.kind in {TokenKind.MONKEYS_AT, TokenKind.FINAL}:
             # TODO 待补充注释处理逻辑
             modifiers = self.modifiers_opt()
             if self.is_declaration():
-                return self.class_or_record_or_interface_or_enum_declaration(modifiers)
+                return [self.class_or_record_or_interface_or_enum_declaration(modifiers)]
+            else:
+                expression = self.parse_type(allow_var=True)
+                return self.local_variable_declarations(modifiers, expression)
+
+        if self.token.kind in {TokenKind.ABSTRACT, TokenKind.STRICTFP}:
+            # TODO 待补充注释处理逻辑
+            modifiers = self.modifiers_opt()
+            return [self.class_or_record_or_interface_or_enum_declaration(modifiers)]
+
+        if self.token.kind in {TokenKind.INTERFACE, TokenKind.CLASS}:
+            # TODO 待补充注释处理逻辑
+            modifiers = self.modifiers_opt()
+            return [self.class_or_record_or_interface_or_enum_declaration(modifiers)]
+
+        if self.token.kind == TokenKind.ENUM:
+            if not self.allow_records:
+                self.raise_syntax_error(self.token.pos, "localEnum")
+            # TODO 待补充注释处理逻辑
+            modifiers = self.modifiers_opt()
+            return [self.class_or_record_or_interface_or_enum_declaration(modifiers)]
+
+        if self.token.kind == TokenKind.IDENTIFIER:
+            # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+            # YieldStatement:
+            #   yield Expression ;
+            if self.token.name == "yield" and self.allow_yield_statement:
+                next_token = self.lexer.token(1)
+                if next_token.kind in {TokenKind.PLUS, TokenKind.SUB, TokenKind.STRING_LITERAL, TokenKind.CHAR_LITERAL,
+                                       TokenKind.STRING_FRAGMENT, TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL,
+                                       TokenKind.INT_HEX_LITERAL, TokenKind.LONG_OCT_LITERAL,
+                                       TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL, TokenKind.FLOAT_LITERAL,
+                                       TokenKind.DOUBLE_LITERAL, TokenKind.NULL, TokenKind.IDENTIFIER,
+                                       TokenKind.UNDERSCORE, TokenKind.TRUE, TokenKind.FALSE, TokenKind.NEW,
+                                       TokenKind.SWITCH, TokenKind.THIS, TokenKind.SUPER, TokenKind.BYTE,
+                                       TokenKind.CHAR, TokenKind.SHORT, TokenKind.INT, TokenKind.LONG,
+                                       TokenKind.FLOAT, TokenKind.DOUBLE, TokenKind.VOID, TokenKind.BOOLEAN}:
+                    is_yield_statement = True
+                elif next_token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB}:
+                    is_yield_statement = self.lexer.token(2).kind != TokenKind.SEMI
+                elif next_token.kind in {TokenKind.BANG, TokenKind.TILDE}:
+                    # TODO 这里看起来 JDK 的逻辑有点问题
+                    is_yield_statement = self.lexer.token(1).kind != TokenKind.SEMI
+                elif next_token.kind == TokenKind.LPAREN:
+                    lookahead = 2
+                    balance = 1
+                    has_comma = False
+                    in_type_args = False
+                    while True:
+                        lookahead_token = self.lexer.token(lookahead)
+                        if not (lookahead_token.kind != TokenKind.EOF and balance != 0):
+                            break
+                        if lookahead_token.kind == TokenKind.LPAREN:
+                            balance += 1
+                        elif lookahead_token.kind == TokenKind.RPAREN:
+                            balance -= 1
+                        elif lookahead_token.kind == TokenKind.COMMA:
+                            if balance == 1 and not in_type_args:
+                                has_comma = True
+                            else:
+                                break
+                        elif lookahead_token.kind == TokenKind.LT:
+                            in_type_args = True
+                        elif lookahead_token.kind == TokenKind.GT:
+                            in_type_args = False
+                        lookahead += 1
+                    is_yield_statement = (not has_comma and lookahead != 3) or lookahead_token.kind == TokenKind.ARROW
+                elif next_token.kind == TokenKind.SEMI:
+                    is_yield_statement = True
+                else:
+                    is_yield_statement = False
+
+                if is_yield_statement:
+                    self.next_token()
+                    expression = self.term(Mode.EXPR)
+                    self.accept(TokenKind.SEMI)
+                    return [ast.YieldTree.create(
+                        value=expression,
+                        **self._info_exclude(pos)
+                    )]
+
+            else:
+                if self.is_non_sealed_class_start(local=True):
+                    self.raise_syntax_error(self.token.pos, "SealedOrNonSealedLocalClassesNotAllowed")
+                    # TODO 待补充错误恢复机制
+                if self.is_sealed_class_start(local=True):
+                    self.raise_syntax_error(self.token.pos, "SealedOrNonSealedLocalClassesNotAllowed")
+
+        if self.is_record_start() and self.allow_records:
+            return [self.record_declaration(modifiers=ast.ModifiersTree.create_empty())]
+
+        prev_token = self.token
+        expression = self.term(Mode.EXPR | Mode.TYPE)
+
+        if self.token.kind == TokenKind.COLON and expression.kind == TreeKind.IDENTIFIER:
+            self.next_token()
+            statement = self.parse_statement_as_block()
+            return [ast.LabeledStatementTree.create(
+                label=prev_token.name,
+                statement=statement,
+                **self._info_exclude(pos)
+            )]
+
+        if self.was_type_mode() and self.token.kind in LAX_IDENTIFIER:
+            modifiers = ast.ModifiersTree.create_empty()
+            return self.local_variable_declarations(
+                modifiers=modifiers,
+                variable_type=expression
+            )
+
+        # TODO 待增加检查机制
+
+        # [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        # ExpressionStatement:
+        #   StatementExpression ;
+        self.accept(TokenKind.SEMI)
+        return [ast.ExpressionStatementTree.create(
+            expression=expression,
+            **self._info_exclude(pos)
+        )]
+
+    def local_variable_declarations(self,
+                                    modifiers: ast.ModifiersTree,
+                                    variable_type: ast.ExpressionTree
+                                    ) -> List[ast.StatementTree]:
+        """解析声明的本地变量
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        LocalVariableDeclarationStatement:
+          LocalVariableDeclaration ;
+
+        [JDK Code] JavacParser.localVariableDeclarations(JCModifiers, JCExpression, Comment)
+
+        TODO 待补充注释处理逻辑
+
+        Examples
+        --------
+        >>> demo1 = "i = 0, j = 2;"
+        >>> len(JavaParser(LexicalFSM(demo1)).local_variable_declarations(
+        ...     ast.ModifiersTree.mock(), ast.ExpressionTree.mock()))
+        2
+        """
+        statements: List[ast.StatementTree] = self.variable_declarators(
+            modifiers=modifiers,
+            variable_type=variable_type,
+            v_defs=[],
+            local_decl=True,
+        )
+        self.accept(TokenKind.SEMI)
+        # TODO 待补充代码位置处理逻辑
+        return statements
 
     def parse_simple_statement(self) -> ast.StatementTree:
         """解析单个语句
@@ -4375,12 +4601,416 @@ class JavaParser:
         # TODO 待增加异常检查机制
         return expression
 
+    def parse_compilation_unit(self) -> ast.CompilationUnitTree:
+        """解析普通代码和模块代码抽象语法树的根节点
+
+        [JDK Code] JavacParser.parseCompilationUnit
+        CompilationUnit = [ { "@" Annotation } PACKAGE Qualident ";"] {ImportDeclaration} {TypeDeclaration}
+        """
+        first_token = self.token
+        modifiers: Optional[ast.ModifiersTree] = None
+        consumed_top_level_doc = False
+        seen_import = False
+        seen_package = False
+        members: List[ast.Tree] = []
+
+        if self.token.kind == TokenKind.MONKEYS_AT:
+            modifiers = self.modifiers_opt()
+
+        if self.token.kind == TokenKind.PACKAGE:
+            package_pos = self.token.pos
+            annotations: List[ast.AnnotationTree] = []
+            seen_package = True
+            if modifiers is not None:
+                # TODO 待补充检查逻辑
+                annotations = modifiers.annotations
+                modifiers = None
+            self.next_token()
+            package_name = self.qualident(allow_annotations=False)
+            self.accept(TokenKind.SEMI)
+            package_decl = ast.PackageTree.create(
+                annotations=annotations,
+                package_name=package_name,
+                **self._info_exclude(package_pos)
+            )
+            # TODO 待补充注释逻辑
+            consumed_top_level_doc = True
+            members.append(package_decl)
+
+        first_type_decl = True
+        is_implicit_class = False
+
+        while self.token.kind != TokenKind.EOF:
+            # TODO 增加错误恢复机制
+            semi_list = []
+            while first_type_decl and modifiers is None and self.token.kind == TokenKind.SEMI:
+                pos = self.token.pos
+                self.next_token()
+                semi_list.append(ast.EmptyStatementTree.create(**self._info_exclude(pos)))
+                if self.token.kind == TokenKind.EOF:
+                    break
+
+            if first_type_decl and modifiers is None and self.token.kind == TokenKind.IMPORT:
+                # TODO 待补充检查逻辑
+                seen_import = True
+                members.append(self.import_declaration())
+            else:
+                # TODO 待补充注释逻辑
+                if first_type_decl and not seen_import and not seen_package:
+                    consumed_top_level_doc = True
+                if modifiers is not None and self.token.kind != TokenKind.SEMI:
+                    modifiers = self.modifiers_opt(modifiers)
+                if first_type_decl and self.token.kind == TokenKind.IDENTIFIER:
+                    # TODO 待补充检查逻辑
+                    module_kind = ModuleKind.STRONG
+                    if self.token.name == "open":
+                        module_kind = ModuleKind.OPEN
+                        self.next_token()
+                    if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "module":
+                        # TODO 待补充检查逻辑
+                        members.append(self.module_decl(modifiers, module_kind))
+                        consumed_top_level_doc = True
+                        break
+                    elif module_kind != ModuleKind.STRONG:
+                        self.raise_syntax_error(self.token.pos, "ExpectedModule")
+
+                members.extend(semi_list)
+
+                # TODO 待增加推断地测试以查看顶级方法或字段是否可以被解析；如果方法或字段可以被解析，那么它将会被解析；否则将继续进行，就像隐式声明的类不存在一样
+                if self.is_definite_statement_start_token():
+                    self.raise_syntax_error(self.token.pos, "StatementNotExpected")
+                else:
+                    member = self.type_declaration(modifiers)
+                    if isinstance(member, ast.ExpressionStatementTree):
+                        member = member.expression
+                    members.append(member)
+
+                modifiers = None
+                first_type_decl = False
+
+        # TODO 待补充隐式类处理逻辑
+        top_level = ast.CompilationUnitTree.create_by_members(
+            members=members,
+            **self._info_exclude(first_token.pos)
+        )
+        # TODO 待补充注释、代码位置相关逻辑
+        return top_level
+
+    def module_decl(self, modifiers: ast.ModifiersTree, module_kind: ModuleKind) -> ast.ModuleTree:
+        """解析 module 声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ModuleDeclaration:
+          {Annotation} [open] module Identifier {. Identifier} { {ModuleDirective} }
+
+        [JDK Code] JavacParser.moduleDecl(JCModifiers, ModuleKind, Comment)
+
+        Examples
+        --------
+        >>> demo1 = "module name1.name2 { requires moduleName; }"
+        >>> JavaParser(LexicalFSM(demo1)).module_decl(ast.ModifiersTree.mock(), ModuleKind.STRONG).kind.name
+        'MODULE'
+        """
+        pos = self.token.pos
+        # TODO 待补充检查逻辑
+
+        self.next_token()
+        name = self.qualident(allow_annotations=False)
+
+        self.accept(TokenKind.LBRACE)
+        directives: List[ast.DirectiveTree] = self.module_directive_list()
+        self.accept(TokenKind.RBRACE)
+        self.accept(TokenKind.EOF)
+
+        # TODO 待考虑是否需要增加子类
+        result = ast.ModuleTree.create(
+            annotations=modifiers.annotations,
+            module_kind=module_kind,
+            name=name,
+            directives=directives,
+            **self._info_exclude(pos)
+        )
+        # TODO 待增加注释处理逻辑
+        return result
+
+    def module_directive_list(self) -> List[ast.DirectiveTree]:
+        """解析 module 声明语句中的提示子句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ModuleDirective:
+          requires {RequiresModifier} ModuleName ;
+          exports PackageName [to ModuleName {, ModuleName}] ;
+          opens PackageName [to ModuleName {, ModuleName}] ;
+          uses TypeName ;
+          provides TypeName with TypeName {, TypeName} ;
+
+        RequiresModifier:
+          (one of)
+          transitive static
+
+        [JDK Code] JavacParser.moduleDirectiveList()
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("requires moduleName;")).module_directive_list()[0].kind.name
+        'REQUIRES'
+        >>> JavaParser(LexicalFSM("requires transitive moduleName;")).module_directive_list()[0].kind.name
+        'REQUIRES'
+        >>> JavaParser(LexicalFSM("requires transitive static moduleName;")).module_directive_list()[0].kind.name
+        'REQUIRES'
+        >>> JavaParser(LexicalFSM("requires static moduleName;")).module_directive_list()[0].kind.name
+        'REQUIRES'
+        >>> JavaParser(LexicalFSM("exports packageName;")).module_directive_list()[0].kind.name
+        'EXPORTS'
+        >>> JavaParser(LexicalFSM("exports packageName to module1, module2;")).module_directive_list()[0].kind.name
+        'EXPORTS'
+        >>> JavaParser(LexicalFSM("opens packageName;")).module_directive_list()[0].kind.name
+        'OPENS'
+        >>> JavaParser(LexicalFSM("opens packageName to module1, module2;")).module_directive_list()[0].kind.name
+        'OPENS'
+        >>> JavaParser(LexicalFSM("uses typeName;")).module_directive_list()[0].kind.name
+        'USES'
+        >>> JavaParser(LexicalFSM("provides typeName with type1;")).module_directive_list()[0].kind.name
+        'PROVIDES'
+        >>> JavaParser(LexicalFSM("provides typeName with type1, type2;")).module_directive_list()[0].kind.name
+        'PROVIDES'
+        """
+        defs: List[ast.DirectiveTree] = []
+        while self.token.kind == TokenKind.IDENTIFIER:
+            pos = self.token.pos
+            if self.token.name == "requires":
+                self.next_token()
+                is_transitive = False
+                is_static = False
+                while True:
+                    if self.token.kind == TokenKind.IDENTIFIER:
+                        if self.token.name == "transitive":
+                            t1 = self.lexer.token(1)
+                            if t1.kind in {TokenKind.SEMI, TokenKind.DOT}:
+                                break
+                            if is_transitive:
+                                self.raise_syntax_error(self.token.pos, "RepeatedModifier")
+                            is_transitive = True
+                        else:
+                            break
+                    elif self.token.kind == TokenKind.STATIC:
+                        if is_static:
+                            self.raise_syntax_error(self.token.pos, "RepeatedModifier")
+                        is_static = True
+                    else:
+                        break
+                    self.next_token()
+
+                module_name = self.qualident(allow_annotations=False)
+                self.accept(TokenKind.SEMI)
+                defs.append(ast.RequiresTree.create(
+                    is_static=is_static,
+                    is_transitive=is_transitive,
+                    module_name=module_name,
+                    **self._info_exclude(pos)
+                ))
+
+            elif self.token.name == "exports" or self.token.name == "opens":
+                exports = (self.token.name == "exports")
+                self.next_token()
+                package_name = self.qualident(allow_annotations=False)
+                module_names: Optional[List[ast.ExpressionTree]] = None
+                if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "to":
+                    self.next_token()
+                    module_names = self.qualident_list(allow_annotation=False)
+                self.accept(TokenKind.SEMI)
+                if exports:
+                    defs.append(ast.ExportsTree.create(
+                        package_name=package_name,
+                        module_names=module_names,
+                        **self._info_exclude(pos)
+                    ))
+                else:
+                    defs.append(ast.OpensTree.create(
+                        package_name=package_name,
+                        module_names=module_names,
+                        **self._info_exclude(pos)
+                    ))
+
+            elif self.token.name == "provides":
+                self.next_token()
+                service_name = self.qualident(allow_annotations=False)
+                implementation_names: List[ast.ExpressionTree] = []
+                if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "with":
+                    self.next_token()
+                    implementation_names = self.qualident_list(allow_annotation=False)
+                else:
+                    self.raise_syntax_error(self.token.pos, f"expect with, but get {self.token.kind.name}")
+                self.accept(TokenKind.SEMI)
+                defs.append(ast.ProvidesTree.create(
+                    service_name=service_name,
+                    implementation_names=implementation_names,
+                    **self._info_exclude(pos)
+                ))
+
+            elif self.token.name == "uses":
+                self.next_token()
+                service_name = self.qualident(allow_annotations=False)
+                self.accept(TokenKind.SEMI)
+                defs.append(ast.UsesTree.create(
+                    service_name=service_name,
+                    **self._info_exclude(pos)
+                ))
+
+            else:
+                self.raise_syntax_error(pos, "InvalidModuleDirective")
+
+        return defs
+
+    def import_declaration(self) -> ast.Tree:
+        """解析 import 声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ImportDeclaration:
+          SingleTypeImportDeclaration
+          TypeImportOnDemandDeclaration
+          SingleStaticImportDeclaration
+          StaticImportOnDemandDeclaration
+
+        SingleTypeImportDeclaration:
+          import TypeName ;
+
+        TypeImportOnDemandDeclaration:
+          import PackageOrTypeName . * ;
+
+        SingleStaticImportDeclaration:
+          import static TypeName . Identifier ;
+
+        StaticImportOnDemandDeclaration:
+          import static TypeName . * ;
+
+        [JDK Code] JavacParser.importDeclaration()
+        ImportDeclaration = IMPORT [ STATIC ] Ident { "." Ident } [ "." "*" ] ";"
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("import a.b.c;")).import_declaration().kind.name
+        'IMPORT'
+        >>> JavaParser(LexicalFSM("import static a.b.c;")).import_declaration().kind.name
+        'IMPORT'
+        >>> JavaParser(LexicalFSM("import static a.b.*;")).import_declaration().kind.name
+        'IMPORT'
+        """
+        pos = self.token.pos
+        self.next_token()
+        is_static = False
+        if self.token.kind == TokenKind.STATIC:
+            is_static = True
+            self.next_token()
+        elif (self.token.kind == TokenKind.IDENTIFIER
+              and self.token.name == "module"
+              and self.peek_token(0, TokenKind.IDENTIFIER)):
+            # TODO 待补充检查逻辑
+            self.next_token()
+            module_name = self.qualident(allow_annotations=False)
+            self.accept(TokenKind.SEMI)
+            return ast.ImportTree.create_module(
+                identifier=module_name,
+                **self._info_exclude(pos)
+            )
+
+        pos_2 = self.token.pos
+        name = self.ident()
+        pid = ast.IdentifierTree.create(
+            name=name,
+            **self._info_exclude(pos_2)
+        )
+
+        while True:
+            pos_1 = self.token.pos
+            self.accept(TokenKind.DOT)
+            if self.token.kind == TokenKind.STAR:
+                pid = ast.MemberSelectTree.create(
+                    expression=pid,
+                    identifier=ast.IdentifierTree.create(
+                        name="*",
+                        **self._info_exclude(pos_1)
+                    ),
+                    **self._info_exclude(pos_1)
+                )
+                self.next_token()
+                break
+
+            pid = ast.MemberSelectTree.create(
+                expression=pid,
+                identifier=ast.IdentifierTree.create(
+                    name=self.ident(),
+                    **self._info_exclude(pos_1)
+                ),
+                **self._info_exclude(pos_1)
+            )
+
+            if self.token.kind != TokenKind.DOT:
+                break
+
+        self.accept(TokenKind.SEMI)
+        return ast.ImportTree.create(
+            is_static=is_static,
+            is_module=False,
+            identifier=pid,
+            **self._info_exclude(pos)
+        )
+
+    def type_declaration(self, modifiers: Optional[ast.ModifiersTree]) -> ast.Tree:
+        """解析顶级 class 或 interface 的声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        TopLevelClassOrInterfaceDeclaration:
+          ClassDeclaration
+          InterfaceDeclaration
+          ;
+
+        [JDK Code] JavacParser.typeDeclaration(JCModifiers mods, Comment docComment)
+        TypeDeclaration = ClassOrInterfaceOrEnumDeclaration
+                        | ";"
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("class MyClassName { public MyClassName () {} }")).type_declaration(None).kind.name
+        'CLASS'
+        >>> JavaParser(LexicalFSM(";")).type_declaration(None).kind.name
+        'EMPTY_STATEMENT'
+        """
+        pos = self.token.pos
+        if modifiers is None and self.token.kind == TokenKind.SEMI:
+            self.next_token()
+            return ast.EmptyStatementTree.create(**self._info_exclude(pos))
+        else:
+            modifiers = self.modifiers_opt(modifiers)
+            return self.class_or_record_or_interface_or_enum_declaration(
+                modifiers=modifiers
+            )
+
     def class_or_record_or_interface_or_enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.StatementTree:
         """解析 class、record、interface 或 enum 的声明语句
+
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        ClassDeclaration:
+          NormalClassDeclaration
+          EnumDeclaration
+          RecordDeclaration
 
         [JDK Code] JavacParser.classOrRecordOrInterfaceOrEnumDeclaration(JCModifiers, Comment)
         ClassOrInterfaceOrEnumDeclaration = ModifiersOpt
                  (ClassDeclaration | InterfaceDeclaration | EnumDeclaration)
+
+        Examples
+        --------
+        >>> mock = ast.ModifiersTree.mock()
+        >>> demo1 = "class MyClassName { public MyClassName () {} }"
+        >>> JavaParser(LexicalFSM(demo1)).class_or_record_or_interface_or_enum_declaration(mock).kind.name
+        'CLASS'
+        >>> demo2 = "enum MyEnumName { A(100), B(90), C(75), D(60); }"
+        >>> JavaParser(LexicalFSM(demo2)).class_or_record_or_interface_or_enum_declaration(mock).kind.name
+        'CLASS'
+        >>> demo3 = "interface MyClassName { MyType value = new MyType(); }"
+        >>> JavaParser(LexicalFSM(demo3)).class_or_record_or_interface_or_enum_declaration(mock).kind.name
+        'CLASS'
         """
         if self.token.kind == TokenKind.CLASS:
             return self.class_declaration(modifiers)
@@ -4390,6 +5020,7 @@ class JavaParser:
             return self.interface_declaration(modifiers)
         if self.token.kind == TokenKind.ENUM:
             return self.enum_declaration(modifiers)
+        return self.raise_syntax_error(self.token.pos, "cannot find class, record, interface or enum")
 
     def class_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
         """解析 class 声明语句
@@ -4648,7 +5279,17 @@ class JavaParser:
     def enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
         """解析 enum 声明语句
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        EnumDeclaration:
+          {ClassModifier} enum TypeIdentifier [ClassImplements] EnumBody
+
         [Java Code] JavacParser.enumDeclaration(JCModifiers, Comment)
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("enum MyEnumName { A(100), B(90), C(75), D(60); }")).enum_declaration(
+        ...     ast.ModifiersTree.mock()).kind.name
+        'CLASS'
         """
         pos = self.token.pos
         self.accept(TokenKind.ENUM)
@@ -4659,27 +5300,53 @@ class JavaParser:
         if len(type_parameters) > 0:
             raise self.raise_syntax_error(type_name_pos, "EnumCantBeGeneric")
 
-        implementing = []
+        implements_clause = []
         if self.token.kind == TokenKind.IMPLEMENTS:
             self.next_token()
-            implementing = self.type_list()
+            implements_clause = self.type_list()
 
         # TODO 补充注释信息
 
         members = self.enum_body(name)
+        modifiers.flags.append(Modifier.ENUM)
+        result = ast.ClassTree.create(
+            modifiers=modifiers,
+            name=name,
+            type_parameters=[],
+            extends_clause=None,
+            implements_clause=implements_clause,
+            permits_clause=None,
+            members=members,
+            **self._info_exclude(pos)
+        )
+        # TODO 补充注释处理逻辑
+        return result
 
     def enum_body(self, enum_name: str) -> List[ast.Tree]:
         """解析枚举类的元素
 
-        [Java Code] JavacParser.enumBody(Name)
+        [JDK Doument] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        EnumBody:
+          { [EnumConstantList] [,] [EnumBodyDeclarations] }
+
+        EnumConstantList:
+          EnumConstant {, EnumConstant}
+
+        EnumBodyDeclarations:
+          ; {ClassBodyDeclaration}
+
+        [JDK Code] JavacParser.enumBody(Name)
 
         TODO 待调整报错机制
+
+        Examples
+        --------
+        >>> len(JavaParser(LexicalFSM("{ A(100), B(90), C(75), D(60); }")).enum_body("MyEnumName"))
+        4
         """
         self.accept(TokenKind.LBRACE)
-        defs = []
+        members = []
         was_semi = False
-        has_structural_errors = False
-        was_error = False
         if self.token.kind == TokenKind.COMMA:
             self.next_token()
             if self.token.kind == TokenKind.SEMI:
@@ -4692,7 +5359,7 @@ class JavaParser:
             if self.token.kind == TokenKind.SEMI:
                 self.accept(TokenKind.SEMI)
                 was_semi = True
-                if self.token.kind not in {TokenKind.RBRACE, TokenKind.EOF}:
+                if self.token.kind in {TokenKind.RBRACE, TokenKind.EOF}:
                     break
 
             member_type = self.estimate_enumerator_or_member(enum_name)
@@ -4703,10 +5370,29 @@ class JavaParser:
                     member_type = grammar_enum.EnumeratorEstimate.ENUMERATOR
 
             if member_type == grammar_enum.EnumeratorEstimate.ENUMERATOR:
-                was_error = False
                 if was_semi:
                     self.raise_syntax_error(self.token.pos, "EnumConstantNotExpected")
-                defs.append(self.enumerator_declaration(enum_name))
+                members.append(self.enumerator_declaration(enum_name))
+                # TODO 待补充错误恢复机制
+                if self.token.kind not in {TokenKind.RBRACE, TokenKind.SEMI, TokenKind.EOF}:
+                    if self.token.kind == TokenKind.COMMA:
+                        self.next_token()
+                    else:
+                        self.raise_syntax_error(self.last_token.pos,
+                                                f"expect COMMA, RBRACE, SEMI, but get {self.token.kind.name}")
+            else:
+                if not was_semi:
+                    self.raise_syntax_error(self.token.pos, "EnumConstantExpected")
+                members.append(self.class_or_interface_or_record_body_declaration(
+                    modifiers=None,
+                    class_name=enum_name,
+                    is_interface=False,
+                    is_record=False
+                ))
+                # TODO 待补充检查和错误恢复机制
+
+        self.accept(TokenKind.RBRACE)
+        return members
 
     def estimate_enumerator_or_member(self, enum_name: str) -> grammar_enum.EnumeratorEstimate:
         """评估枚举类中的元素是枚举值还是其他成员
@@ -4738,10 +5424,26 @@ class JavaParser:
     def enumerator_declaration(self, enum_name: str) -> ast.Tree:
         """解析枚举类中的枚举值
 
+        [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
+        EnumConstant:
+          {EnumConstantModifier} Identifier [( [ArgumentList] )] [ClassBody]
+
+        EnumConstantModifier:
+          Annotation
+
         [JDK Code] JavacParser.enumeratorDeclaration(Name)
         EnumeratorDeclaration = AnnotationsOpt [TypeArguments] IDENTIFIER [ Arguments ] [ "{" ClassBody "}" ]
 
         TODO 待补充注释处理逻辑
+
+        Examples
+        --------
+        >>> JavaParser(LexicalFSM("VALUE1(1),")).enumerator_declaration("MyEnumName").kind.name
+        'VARIABLE'
+        >>> JavaParser(LexicalFSM("JSON,")).enumerator_declaration("MyEnumName").kind.name
+        'VARIABLE'
+        >>> JavaParser(LexicalFSM("A(100){  },")).enumerator_declaration("MyEnumName").kind.name
+        'VARIABLE'
         """
         flags = [Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL, Modifier.ENUM]
         if self.token.deprecated_flag():
@@ -4753,11 +5455,62 @@ class JavaParser:
             annotations=annotations,
             **self._info_exclude(None if not annotations else pos)
         )
-        type_args = self.type_argument_list_opt()
+        type_arguments = self.type_argument_list_opt()
         ident_pos = self.token.pos
         name = self.ident()
         create_pos = self.token.pos
 
+        # 解析枚举值的参数，例如：VALUE(1)
+        arguments = []
+        if self.token.kind == TokenKind.LPAREN:
+            arguments = self.argument_list()
+
+        # 解析枚举值的定义逻辑
+        class_body = None
+        if self.token.kind == TokenKind.LBRACE:
+            modifiers = ast.ModifiersTree.create(
+                flags=[Modifier.ENUM],
+                annotations=None,
+                **self._info_exclude(None)
+            )
+            members = self.class_interface_or_record_body(None, False, False)
+            class_body = ast.ClassTree.create_anonymous_class(
+                modifiers=modifiers,
+                members=members,
+                **self._info_exclude(ident_pos)
+            )
+
+        if not arguments and not class_body:
+            create_pos = ident_pos
+
+        identifier = ast.IdentifierTree.create(
+            name=enum_name,
+            **self._info_exclude(ident_pos)
+        )
+        initializer = ast.NewClassTree.create(
+            enclosing=None,
+            type_arguments=type_arguments,
+            identifier=identifier,
+            arguments=arguments,
+            class_body=class_body,
+            **self._info_exclude(create_pos)
+        )
+
+        # TODO 待补充代码位置处理逻辑
+
+        identifier = ast.IdentifierTree.create(
+            name=enum_name,
+            **self._info_exclude(ident_pos)
+        )
+        result = ast.VariableTree.create_by_name(
+            modifiers=modifiers,
+            name=name,
+            variable_type=identifier,
+            initializer=initializer,
+            **self._info_exclude(pos)
+        )
+        # TODO 待处理注释逻辑
+        return result
 
     def type_list(self) -> List[ast.ExpressionTree]:
         """解析逗号分隔的多个类型（extends 子句或 implements 子句）
@@ -5544,7 +6297,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    # demo = "switch (kind) { case T1: Case T2: {} break; case T3: break; default: {} }"
-    print(JavaParser(LexicalFSM("VALUE1(1),")).estimate_enumerator_or_member("MyEnumName"))
-    print(JavaParser(LexicalFSM("private int id;")).estimate_enumerator_or_member("MyEnumName"))
-    print(JavaParser(LexicalFSM("JSON,")).estimate_enumerator_or_member("MyEnumName"))
+    print(JavaParser(LexicalFSM("class MyClassName { public MyClassName () {} }")).type_declaration(None))
+    print(JavaParser(LexicalFSM(";")).type_declaration(None))

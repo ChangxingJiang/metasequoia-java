@@ -40,18 +40,6 @@ class LexicalTest(unittest.TestCase):
         with self.assertRaises(JavaSyntaxError):
             JavaParser(LexicalFSM("permits")).type_name()
 
-    def test_unqualified_method_identifier(self):
-        self.assertEqual(ast.IdentifierTree(kind=TreeKind.IDENTIFIER, name="abc", source="abc",
-                                            start_pos=0, end_pos=3),
-                         JavaParser(LexicalFSM("abc")).unqualified_method_identifier())
-        self.assertEqual(ast.IdentifierTree(kind=TreeKind.IDENTIFIER, name="permits", source="permits",
-                                            start_pos=0, end_pos=7),
-                         JavaParser(LexicalFSM("permits")).unqualified_method_identifier())
-        with self.assertRaises(JavaSyntaxError):
-            JavaParser(LexicalFSM("public")).unqualified_method_identifier()
-        with self.assertRaises(JavaSyntaxError):
-            JavaParser(LexicalFSM("yield")).unqualified_method_identifier()
-
     def test_literal(self):
         # 整型
         self.assertEqual(
