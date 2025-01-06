@@ -319,9 +319,9 @@ class AssertTree(StatementTree):
         )
 
     def generate(self) -> str:
-        if self.detail is not None:
-            return f"assert {self.condition.generate()} : {self.detail.generate()} ;"
-        return f"assert {self.condition.generate()} ;"
+        if self.message is not None:
+            return f"assert {self.assertion.generate()} : {self.message.generate()} ;"
+        return f"assert {self.assertion.generate()} ;"
 
 
 @dataclasses.dataclass(slots=True)
@@ -497,6 +497,7 @@ class VariableTree(StatementTree):
             modifiers=modifiers,
             name_expression=name_expression,
             variable_type=variable_type,
+            initializer=None,
             start_pos=start_pos,
             end_pos=end_pos,
             source=source
@@ -848,20 +849,20 @@ class ModuleTree(Tree):
     """
 
     annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
-    module_type: ModuleKind = dataclasses.field(kw_only=True)
+    module_kind: ModuleKind = dataclasses.field(kw_only=True)
     name: ExpressionTree = dataclasses.field(kw_only=True)
     directives: List[DirectiveTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(annotations: List[AnnotationTree],
-               module_type: ModuleKind,
+               module_kind: ModuleKind,
                name: ExpressionTree,
                directives: List[DirectiveTree],
                start_pos: int, end_pos: int, source: str) -> "ModuleTree":
         return ModuleTree(
             kind=TreeKind.MODULE,
             annotations=annotations,
-            module_type=module_type,
+            module_kind=module_kind,
             name=name,
             directives=directives,
             start_pos=start_pos,
@@ -960,11 +961,34 @@ class CompilationUnitTree(Tree):
     """
 
     module: ModuleTree = dataclasses.field(kw_only=True)  # 【JDK 17+】
-    package_annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
-    package_name: ExpressionTree = dataclasses.field(kw_only=True)
     package: PackageTree = dataclasses.field(kw_only=True)
     imports: List[ImportTree] = dataclasses.field(kw_only=True)
-    type_decls: List[Tree] = dataclasses.field(kw_only=True)
+    type_declarations: List[Tree] = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(module: ModuleTree,
+               package: PackageTree,
+               imports: List[ImportTree],
+               type_declarations: List[Tree],
+               start_pos: int, end_pos: int, source: str) -> "CompilationUnitTree":
+        return CompilationUnitTree(
+            kind=TreeKind.COMPILATION_UNIT,
+            module=module,
+            package=package,
+            imports=imports,
+            type_declarations=type_declarations,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
+
+    @property
+    def package_name(self) -> ExpressionTree:
+        return self.package.package_name
+
+    @property
+    def package_annotations(self) -> List[AnnotationTree]:
+        return self.package.annotations
 
     def generate(self) -> str:
         """TODO"""
@@ -1988,7 +2012,7 @@ class OpensTree(DirectiveTree):
     """
 
     package_name: ExpressionTree = dataclasses.field(kw_only=True)
-    module_name: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    module_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(package_name: ExpressionTree,
@@ -2163,8 +2187,8 @@ class ProvidesTree(DirectiveTree):
     @staticmethod
     def create(service_name: ExpressionTree,
                implementation_names: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "PrimitiveTypeTree":
-        return PrimitiveTypeTree(
+               start_pos: int, end_pos: int, source: str) -> "ProvidesTree":
+        return ProvidesTree(
             kind=TreeKind.PROVIDES,
             service_name=service_name,
             implementation_names=implementation_names,
@@ -2523,6 +2547,17 @@ class UsesTree(DirectiveTree):
     """
 
     service_name: ExpressionTree = dataclasses.field(kw_only=True)
+
+    @staticmethod
+    def create(service_name: ExpressionTree,
+               start_pos: int, end_pos: int, source: str) -> "UsesTree":
+        return UsesTree(
+            kind=TreeKind.USES,
+            service_name=service_name,
+            start_pos=start_pos,
+            end_pos=end_pos,
+            source=source
+        )
 
     def generate(self) -> str:
         return f"uses {self.service_name.generate()};"

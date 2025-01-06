@@ -4617,6 +4617,11 @@ class JavaParser:
         if self.token.kind == TokenKind.MONKEYS_AT:
             modifiers = self.modifiers_opt()
 
+        package: Optional[ast.PackageTree] = None
+        module: Optional[ast.ModuleTree] = None
+        imports: List[ast.ImportTree] = []
+        type_declarations: List[ast.Tree] = []
+
         if self.token.kind == TokenKind.PACKAGE:
             package_pos = self.token.pos
             annotations: List[ast.AnnotationTree] = []
@@ -4628,14 +4633,13 @@ class JavaParser:
             self.next_token()
             package_name = self.qualident(allow_annotations=False)
             self.accept(TokenKind.SEMI)
-            package_decl = ast.PackageTree.create(
+            package = ast.PackageTree.create(
                 annotations=annotations,
                 package_name=package_name,
                 **self._info_exclude(package_pos)
             )
             # TODO 待补充注释逻辑
             consumed_top_level_doc = True
-            members.append(package_decl)
 
         first_type_decl = True
         is_implicit_class = False
@@ -4653,7 +4657,7 @@ class JavaParser:
             if first_type_decl and modifiers is None and self.token.kind == TokenKind.IMPORT:
                 # TODO 待补充检查逻辑
                 seen_import = True
-                members.append(self.import_declaration())
+                imports.append(self.import_declaration())
             else:
                 # TODO 待补充注释逻辑
                 if first_type_decl and not seen_import and not seen_package:
@@ -4668,7 +4672,7 @@ class JavaParser:
                         self.next_token()
                     if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "module":
                         # TODO 待补充检查逻辑
-                        members.append(self.module_decl(modifiers, module_kind))
+                        module = self.module_decl(modifiers, module_kind)
                         consumed_top_level_doc = True
                         break
                     elif module_kind != ModuleKind.STRONG:
@@ -4680,17 +4684,20 @@ class JavaParser:
                 if self.is_definite_statement_start_token():
                     self.raise_syntax_error(self.token.pos, "StatementNotExpected")
                 else:
-                    member = self.type_declaration(modifiers)
-                    if isinstance(member, ast.ExpressionStatementTree):
-                        member = member.expression
-                    members.append(member)
+                    type_declaration = self.type_declaration(modifiers)
+                    if isinstance(type_declaration, ast.ExpressionStatementTree):
+                        type_declaration = type_declaration.expression
+                    type_declarations.append(type_declaration)
 
                 modifiers = None
                 first_type_decl = False
 
         # TODO 待补充隐式类处理逻辑
-        top_level = ast.CompilationUnitTree.create_by_members(
-            members=members,
+        top_level = ast.CompilationUnitTree.create(
+            module=module,
+            package=package,
+            imports=imports,
+            type_declarations=type_declarations,
             **self._info_exclude(first_token.pos)
         )
         # TODO 待补充注释、代码位置相关逻辑
@@ -4862,7 +4869,7 @@ class JavaParser:
 
         return defs
 
-    def import_declaration(self) -> ast.Tree:
+    def import_declaration(self) -> ast.ImportTree:
         """解析 import 声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
