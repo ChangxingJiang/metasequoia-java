@@ -83,8 +83,8 @@ class JavaParser:
         if self.token.kind == kind:
             self.next_token()
         else:
-            raise JavaSyntaxError(f"expect TokenKind {kind.name}({kind.value}), "
-                                  f"but get {self.token.kind.name}({self.token.kind.value})")
+            self.raise_syntax_error(self.token.pos, f"expect TokenKind {kind.name}({kind.value}), "
+                                                    f"but get {self.token.kind.name}({self.token.kind.value})")
 
     def _info_include(self, start_pos: Optional[int]) -> Dict[str, Any]:
         """根据开始位置 start_pos 和当前 token 的结束位置（即包含当前 token），获取当前节点的源代码和位置信息"""
@@ -132,7 +132,7 @@ class JavaParser:
 
     def raise_syntax_error(self, pos: int, message: str):
         """报告语法错误"""
-        raise JavaSyntaxError(f"报告语法错误: pos={pos}, message={message}")
+        raise JavaSyntaxError(f"报告语法错误: {message}，当前位置: {self.lexer.text[pos:pos + 100]}")
 
     def illegal(self, pos: Optional[int] = None):
         """报告表达式或类型的非法开始 Token"""
@@ -5075,7 +5075,7 @@ class JavaParser:
 
         # TODO 待增加日志处理逻辑
 
-        members = self.class_interface_or_record_body(name, is_interface=False, is_record=True)
+        members = self.class_interface_or_record_body(name, is_interface=False, is_record=False)
         result = ast.ClassTree.create(
             modifiers=modifiers,
             name=name,
@@ -6304,5 +6304,5 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("class MyClassName { public MyClassName () {} }")).type_declaration(None))
-    print(JavaParser(LexicalFSM(";")).type_declaration(None))
+    print(JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).parse_type())
+    print(JavaParser(LexicalFSM("ProcessWindowFunction<OneRow, OneRow, Long, TimeWindow>"), mode=Mode.TYPE).parse_type())
