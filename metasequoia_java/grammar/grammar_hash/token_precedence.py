@@ -22,6 +22,7 @@ TOKEN_TO_OPERATOR_PRECEDENCE = {
     TokenKind.GT: OperatorPrecedence.ORD_PREC,  # >
     TokenKind.LT_EQ: OperatorPrecedence.ORD_PREC,  # <=
     TokenKind.GT_EQ: OperatorPrecedence.ORD_PREC,  # >=
+    TokenKind.INSTANCEOF: OperatorPrecedence.ORD_PREC,  # instanceof
     TokenKind.LT_LT: OperatorPrecedence.SHIFT_PREC,  # <<
     TokenKind.GT_GT: OperatorPrecedence.SHIFT_PREC,  # >>
     TokenKind.GT_GT_GT: OperatorPrecedence.SHIFT_PREC,  # >>>

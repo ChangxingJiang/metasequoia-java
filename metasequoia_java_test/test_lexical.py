@@ -146,6 +146,9 @@ class LexicalTest(unittest.TestCase):
         self._assert_equal("3.f", [
             (TokenKind.FLOAT_LITERAL, "3.f"),
         ])
+        self._assert_equal("0.5f", [
+            (TokenKind.FLOAT_LITERAL, "0.5f"),
+        ])
 
         # DOUBLE_LITERAL
         self._assert_equal("3.14", [

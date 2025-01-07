@@ -2618,7 +2618,7 @@ class WildcardTree(ExpressionTree):
     ? super bound
     """
 
-    bound: Tree = dataclasses.field(kw_only=True)
+    bound: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果是 "?" 则为 None
 
     @staticmethod
     def create_extends_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
@@ -2641,10 +2641,10 @@ class WildcardTree(ExpressionTree):
         )
 
     @staticmethod
-    def create_unbounded_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
+    def create_unbounded_wildcard(start_pos: int, end_pos: int, source: str) -> "WildcardTree":
         return WildcardTree(
             kind=TreeKind.UNBOUNDED_WILDCARD,
-            bound=bound,
+            bound=None,
             start_pos=start_pos,
             end_pos=end_pos,
             source=source

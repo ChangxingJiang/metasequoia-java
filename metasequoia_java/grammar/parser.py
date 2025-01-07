@@ -101,6 +101,8 @@ class JavaParser:
         """根据开始位置 start_pos 和当前 token 的开始位置（即不包含当前 token），获取当前节点的源代码和位置信息"""
         if start_pos is None:
             return {"source": None, "start_pos": None, "end_pos": None}
+        if self.last_token is None:
+            return {"source": None, "start_pos": None, "end_pos": None}
         end_pos = self.last_token.end_pos
         return {
             "source": self.text[start_pos: end_pos],
@@ -479,6 +481,8 @@ class JavaParser:
         [JDK Code] JavacParser.parseType(boolean)
         [JDK Code] JavacParser.parseType(List[JCAnnotation])
 
+        [Demo & UnitTest] metasequoia_java_test/test_parser/test_parse_type.py
+
         Parameters
         ----------
         pos : Optional[int], default = None
@@ -487,17 +491,6 @@ class JavaParser:
             是否允许 "var" 作为类型名称
         annotations : Optional[List[ast.AnnotationTree]], default = None
             已经解析的注解
-
-        Examples
-        --------
-        >>> JavaParser(LexicalFSM("int"), mode=Mode.TYPE).parse_type().kind.name
-        'PRIMITIVE_TYPE'
-        >>> JavaParser(LexicalFSM("String"), mode=Mode.TYPE).parse_type().kind.name
-        'IDENTIFIER'
-        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).parse_type().kind.name
-        'PARAMETERIZED_TYPE'
-        >>> JavaParser(LexicalFSM("@Select MyType"), mode=Mode.TYPE).parse_type().kind.name
-        'ANNOTATION_TYPE'
         """
         if pos is None:
             pos = self.token.pos
@@ -539,7 +532,7 @@ class JavaParser:
             )
         return first_type
 
-    def unannotated_type(self, allow_var: bool = False, new_mode: Optional[Mode] = None) -> ast.ExpressionTree:
+    def unannotated_type(self, allow_var: bool = False, new_mode: Optional[Mode] = Mode.TYPE) -> ast.ExpressionTree:
         """解析不包含注解的类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -574,16 +567,7 @@ class JavaParser:
 
         [JDK Code] JavacParser.unannotatedType
 
-        Examples
-        --------
-        >>> JavaParser(LexicalFSM("String"), mode=Mode.EXPR).unannotated_type().kind.name
-        'IDENTIFIER'
-        >>> JavaParser(LexicalFSM("java.util.String"), mode=Mode.EXPR).unannotated_type().kind.name
-        'MEMBER_SELECT'
-        >>> JavaParser(LexicalFSM("int"), mode=Mode.TYPE).unannotated_type().kind.name
-        'PRIMITIVE_TYPE'
-        >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).unannotated_type().kind.name
-        'PARAMETERIZED_TYPE'
+        [Demo & UnitTest] metasequoia_java_test/test_parser/test_unannotated_type.py
         """
         result = self.term(new_mode)
         restricted_type_name = self.restricted_type_name(result)
@@ -738,7 +722,7 @@ class JavaParser:
         BIT_XOR_PREC = 7  # "^"
         BIT_AND_PREC = 8  # "&"
         EQ_PREC = 9  # "==" | "!="
-        ORD_PREC = 10  # "<" | ">" | "<=" | ">="
+        ORD_PREC = 10  # "<" | ">" | "<=" | ">=" | instanceof
         SHIFT_PREC = 11  # "<<" | ">>" | ">>>"
         ADD_PREC = 12  # "+" | "-"
         MUL_PREC = 13  # "*" | "/" | "%"
@@ -813,6 +797,8 @@ class JavaParser:
         'PLUS'
         >>> JavaParser(LexicalFSM("(1 + 2) * 3"), mode=Mode.EXPR).term2().kind.name
         'MULTIPLY'
+        >>> JavaParser(LexicalFSM("a instanceof b"), mode=Mode.EXPR).term2().kind.name
+        'INTERSECTION_TYPE'
         """
         expression = self.term3()
         if self.is_mode(Mode.EXPR) and self.prec(self.token.kind) >= grammar_enum.OperatorPrecedence.OR_PREC:
@@ -1436,7 +1422,7 @@ class JavaParser:
 
                 # Primary :: [TypeArguments] Identifier【前缀部分】
                 if self.token.kind == TokenKind.LT:
-                    if not self.is_mode(Mode.EXPR) and self.is_unbound_member_ref():
+                    if not self.is_mode(Mode.TYPE) and self.is_unbound_member_ref():
                         pos_1 = self.token.pos
                         self.accept(TokenKind.LT)
                         type_arguments = [self.type_argument()]
@@ -1832,7 +1818,7 @@ class JavaParser:
             if tk == TokenKind.COMMA:
                 is_type = True
             elif tk in {TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.DOT, TokenKind.AMP}:
-                continue  # 跳过
+                pass  # 跳过
             elif tk == TokenKind.QUES:
                 if self.lexer.token(lookahead + 1).kind in {TokenKind.EXTENDS, TokenKind.SUPER}:
                     is_type = True  # wildcards
@@ -2026,7 +2012,8 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def super_suffix(self, type_args: Optional[List[ast.ExpressionTree]],
+    def super_suffix(self,
+                     type_args: Optional[List[ast.ExpressionTree]],
                      expression: ast.ExpressionTree) -> ast.ExpressionTree:
         """super 关键字之后的元素
 
@@ -2055,7 +2042,8 @@ class JavaParser:
         'MEMBER_REFERENCE'
         """
         self.next_token()
-        if self.token.kind == TokenKind.LPAREN and type_args is not None:
+        # 【异于 JDK 源码逻辑】不再检查 type_args 是否为空，以兼容 super() 的方法
+        if self.token.kind == TokenKind.LPAREN:
             return self.arguments(type_args, expression)
         elif self.token.kind == TokenKind.COL_COL:
             if type_args is not None:
@@ -2251,6 +2239,8 @@ class JavaParser:
         1
         >>> len(JavaParser(LexicalFSM("<String, int>")).type_argument_list(True))
         2
+        >>> len(JavaParser(LexicalFSM("<String, List<Tuple2<String, String>>>")).type_argument_list(True))
+        2
         """
         if self.token.kind != TokenKind.LT:
             raise JavaSyntaxError(f"expect TokenKind.LT in type_arguments, but find {self.token.kind}")
@@ -2272,8 +2262,9 @@ class JavaParser:
         elif self.token.kind == TokenKind.GT:
             self.next_token()
         else:
-            raise JavaSyntaxError(f"expect GT or COMMA in type_arguments, "
-                                  f"but find {self.token.kind.name}({self.token.kind.value})")
+            self.raise_syntax_error(self.token.pos,
+                                    f"expect GT or COMMA in type_arguments, "
+                                    f"but find {self.token.kind.name}({self.token.kind.value})")
 
         return args
 
@@ -2317,6 +2308,8 @@ class JavaParser:
             return self.parse_type(False, annotations)
         pos_2 = self.token.pos
         self.next_token()
+
+        wildcard: Optional[ast.WildcardTree] = None
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
             wildcard = ast.WildcardTree.create_extends_wildcard(
@@ -2329,13 +2322,12 @@ class JavaParser:
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
-        elif self.token.kind == TokenKind.GT:
+        elif self.token.kind in LAX_IDENTIFIER:
+            self.raise_syntax_error(self.token.pos, f"Expected GT, EXTENDS, SUPER, but get {self.token.kind.name}")
+        else:  # self.token.kind in {TokenKind.GT, TokenKind.GT_GT, TokenKind.GT_GT_GT, 。。。}
             wildcard = ast.WildcardTree.create_unbounded_wildcard(
-                bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
-        else:
-            raise JavaSyntaxError(f"类型实参语法错误")
 
         if annotations:
             return ast.AnnotatedTypeTree.create(
@@ -2701,7 +2693,10 @@ class JavaParser:
                     self.accept(TokenKind.RBRACKET)
 
             err_pos = self.token.pos
-            initializers = self.array_initializer_elements()
+            initializers: Optional[List[ast.ExpressionTree]] = None
+            if self.token.kind == TokenKind.LBRACE:
+                initializers = self.array_initializer_elements()
+
             if initializers is not None:
                 self.raise_syntax_error(err_pos, "IllegalArrayCreationBothDimensionAndInitialization")
 
@@ -3405,16 +3400,16 @@ class JavaParser:
 
             block = self.block()
 
-            if self.token.kind not in {TokenKind.CATCH, TokenKind.FINALLY}:
-                self.raise_syntax_error(self.token.pos, "TryWithoutCatchFinallyOrResourceDecls")
-
             catches: List[ast.CatchTree] = []
             finally_block: Optional[ast.BlockTree] = None
-            while self.token.kind == TokenKind.CATCH:
-                catches.append(self.catch_clause())
+            if self.token.kind in {TokenKind.CATCH, TokenKind.FINALLY}:
+                while self.token.kind == TokenKind.CATCH:
+                    catches.append(self.catch_clause())
                 if self.token.kind == TokenKind.FINALLY:
                     self.next_token()
                     finally_block = self.block()
+            elif not resources:
+                self.raise_syntax_error(self.token.pos, "TryWithoutCatchFinallyOrResourceDecls")
 
             return ast.TryTree.create(
                 block=block,
@@ -3675,7 +3670,6 @@ class JavaParser:
                     body=None,
                     **self._info_exclude(pos)
                 )
-                self.accept(TokenKind.SEMI)
             # TODO 补充代码位置逻辑
             return [case_expression]
 
@@ -3704,7 +3698,6 @@ class JavaParser:
                     body=None,
                     **self._info_exclude(pos)
                 )
-                self.accept(TokenKind.SEMI)
             # TODO 补充代码位置逻辑
             return [case_expression]
 
@@ -3845,7 +3838,7 @@ class JavaParser:
                     else:
                         pending_result = grammar_enum.PatternResult.PATTERN
             elif token.kind in {TokenKind.DOT, TokenKind.QUES, TokenKind.EXTENDS, TokenKind.SUPER, TokenKind.COMMA}:
-                continue
+                pass
             elif token.kind == TokenKind.LT:
                 type_depth += 1
             elif token.kind in {TokenKind.GT_GT_GT, TokenKind.GT_GT, TokenKind.GT}:
@@ -4091,6 +4084,8 @@ class JavaParser:
         [<Modifier.PUBLIC: 'public'>, <Modifier.STATIC: 'static'>]
         >>> JavaParser(LexicalFSM("public static final NUMBER")).modifiers_opt(None).flags
         [<Modifier.PUBLIC: 'public'>, <Modifier.STATIC: 'static'>, <Modifier.FINAL: 'final'>]
+        >>> JavaParser(LexicalFSM("private static final NUMBER")).modifiers_opt(None).flags
+        [<Modifier.PUBLIC: 'private'>, <Modifier.STATIC: 'static'>, <Modifier.FINAL: 'final'>]
         """
         if partial is not None:
             flags = partial.flags
@@ -5419,7 +5414,9 @@ class JavaParser:
                 and self.token.name != enum_name
                 and (not self.allow_records or not self.is_record_start())):
             next_token = self.lexer.token(1)
-            if next_token.kind in {TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.COMMA, TokenKind.SEMI}:
+            # 【异于 JDK 源码逻辑】当枚举类中没有其他内容时，最后一个枚举值末尾的 ";" 可以省略，此时下一个元素是 RBRACE
+            if next_token.kind in {TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.COMMA, TokenKind.SEMI,
+                                   TokenKind.RBRACE}:
                 return grammar_enum.EnumeratorEstimate.ENUMERATOR
         if self.token.kind == TokenKind.IDENTIFIER:
             if self.allow_records and self.is_record_start():
@@ -6304,5 +6301,7 @@ class JavaParser:
 
 
 if __name__ == "__main__":
-    print(JavaParser(LexicalFSM("List<String>"), mode=Mode.TYPE).parse_type())
-    print(JavaParser(LexicalFSM("ProcessWindowFunction<OneRow, OneRow, Long, TimeWindow>"), mode=Mode.TYPE).parse_type())
+    # print(JavaParser(LexicalFSM(" OTS }")).estimate_enumerator_or_member("KafkaType"))
+    # print(JavaParser(LexicalFSM("super(new String());")).block_statement())
+    print(JavaParser(LexicalFSM("super(context);")).block_statement())
+    # print(JavaParser(LexicalFSM("myMethod(context);")).block_statement())

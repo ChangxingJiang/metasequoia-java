@@ -131,7 +131,7 @@ class LexicalFSM:
             source=self._ahead[0].source[1:]
         )
         self._ahead[0] = token2
-        return token1
+        return token2
 
 
 class Operator(abc.ABC):
@@ -431,6 +431,27 @@ class MoveReduceCharSetState(Operator):
         )
 
 
+class ReduceStringSetState(Operator):
+    """【不移动指针】将当前词语作为字符串字面值，进行规约操作"""
+
+    def __init__(self, state: LexicalState):
+        self._state = state
+
+    def __call__(self, fsm: LexicalFSM):
+        pos = fsm.pos_start
+        source = fsm.get_word()
+        fsm.state = self._state
+        fsm.pos_start = fsm.pos
+        return StringToken(
+            kind=TokenKind.STRING_LITERAL,
+            pos=pos,
+            end_pos=fsm.pos,
+            affiliations=fsm.pop_affiliation(),
+            source=source,
+            value=source[1:-1]
+        )
+
+
 class MoveReduceStringSetState(Operator):
     """【移动指针】将当前词语作为字符串字面值，进行规约操作"""
 
@@ -642,6 +663,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # 当前没有正在解析的词语
     LexicalState.INIT: {
         " ": MoveComment(style=AffiliationStyle.SPACE),
+        "\t": MoveComment(style=AffiliationStyle.SPACE),
         "\n": MoveComment(style=AffiliationStyle.LINEBREAK),
         "{": MoveFixed(kind=TokenKind.LBRACE, source="{"),
         "}": MoveFixed(kind=TokenKind.RBRACE, source="}"),
@@ -690,9 +712,10 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
         frozenset({"l", "L"}): ShiftSetState(state=LexicalState.DEC_L),
         frozenset({"f", "F"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_F),
         frozenset({"d", "D"}): ShiftSetState(state=LexicalState.DEC_DOT_NUM_E_NUM_D),
+        ".": ShiftSetState(state=LexicalState.DEC_DOT_NUM),
         NUMBER: ShiftSetState(state=LexicalState.OCT),
         OPERATOR: FixedIntSetState(source="0", state=LexicalState.INIT),
-        END_WORD: FixedIntSetState(source="0", state=LexicalState.INIT),
+        frozenset(END_WORD - {"."}): FixedIntSetState(source="0", state=LexicalState.INIT),
         END_CHAR: FixedIntSetState(source="0", state=LexicalState.INIT),
     },
 
@@ -821,7 +844,7 @@ FSM_OPERATION_MAP_SOURCE: Dict[LexicalState, Dict[str, Operator]] = {
     # ""
     LexicalState.DQ_DQ: {
         "\"": ShiftSetState(state=LexicalState.LIT_BLOCK),
-        DEFAULT: MoveFixedSetState(kind=TokenKind.STRING_LITERAL, source="\"\"", state=LexicalState.INIT),
+        DEFAULT: ReduceStringSetState(state=LexicalState.INIT),
     },
 
     # 在双引号字符串中
@@ -1039,9 +1062,62 @@ for state_, operation_map in FSM_OPERATION_MAP_SOURCE.items():
             FSM_OPERATION_MAP[(state_, ch)] = FSM_OPERATION_MAP_DEFAULT[state_]
 
 if __name__ == "__main__":
-    lexical_fsm = LexicalFSM("::name")
+    lexical_fsm = LexicalFSM("""
+package com.tyc.darwin.markets.company_clean_info.util;
+
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.ParseException;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * @author: LanChunqian
+ * @date:2017年10月24日 下午3:45:32
+ * 
+ */
+public class FileUtil {
+	private static final Logger logger = LoggerFactory.getLogger(FileUtil.class);
+
+	/**
+	 * 单例
+	 */
+	private static class FileUtilHolder {
+		private static final FileUtil INSTANCE = new FileUtil();
+	}
+
+	public static final FileUtil getInstance() {
+		return FileUtilHolder.INSTANCE;
+	}
+
+	/**
+	 * Suppress default constructor for noninstantiability
+	 */
+	private FileUtil() {}
+	
+	/**
+	 * 在指定文件中写入内容并换行
+	 * @param path 指定文件的路径
+	 * @param data 要添加的内容
+	 * @param append 是否在原文件中追加内容，即是否保留原文件中内容
+	 */
+	public synchronized static void writeToNewLine(String path, String data, boolean append) {
+		try {
+			String newLineData = data + "\r\n";
+			FileUtils.write(new File(path), newLineData, "UTF-8", append);
+		} catch (IOException e) {
+			System.out.println("Write To File Error!");
+			logger.info("Write To File Error!");
+			e.printStackTrace();
+		}
+	}
+    """)
     token_list = []
     while token := lexical_fsm.lex():
-        print("token:", token, token.pos, token.end_pos)
+        print("token:", token.name, token.kind.name, token.pos, token.end_pos)
         if token.kind == TokenKind.EOF:
             break
