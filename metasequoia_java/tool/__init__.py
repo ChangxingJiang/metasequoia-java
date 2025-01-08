@@ -1,0 +1,2 @@
+from metasequoia_java.tool.namespace import NameSpace, NameSpaceManager
+from metasequoia_java.tool.parse_properties import parse_properties
