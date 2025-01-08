@@ -18,6 +18,7 @@ from metasequoia_java.ast.element import Modifier
 from metasequoia_java.ast.element import TypeKind
 from metasequoia_java.ast.generate_utils import Separator, change_int_to_string, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
+from metasequoia_java.tool import NameSpace
 
 __all__ = [
     "AnnotatedTypeTree",  # 包含注解的类型
@@ -833,6 +834,28 @@ class ClassTree(StatementTree):
     def generate(self) -> str:
         """TODO"""
 
+    def get_method_by_name(self, method_name: str) -> Optional["MethodTree"]:
+        """根据方法名获取 Method 对象"""
+        for member in self.members:
+            if isinstance(member, MethodTree) and member.name == method_name:
+                return member
+        return None
+
+    def get_variable_list(self) -> List["VariableTree"]:
+        """获取类属性的列表"""
+        variable_list = []
+        for member in self.members:
+            if isinstance(member, VariableTree):
+                variable_list.append(member)
+        return variable_list
+
+    def get_variable_namespace(self) -> NameSpace:
+        name_space = NameSpace()
+        for variable in self.get_variable_list():
+            variable_name = variable.name
+            class_name = variable.variable_type.generate()
+            name_space.set_variable_info(variable_name, class_name)
+        return name_space
 
 @dataclasses.dataclass(slots=True)
 class ModuleTree(Tree):
@@ -992,6 +1015,30 @@ class CompilationUnitTree(Tree):
 
     def generate(self) -> str:
         """TODO"""
+
+    def get_public_class(self) -> Optional[ClassTree]:
+        """获取文件中的公有类，如果没有则返回 None"""
+        for class_declaration in self.get_class_declaration_list():
+            if Modifier.PUBLIC in class_declaration.modifiers.flags:
+                return class_declaration
+        return None
+
+    def get_class_declaration_list(self) -> List[ClassTree]:
+        """获取文件中的类对象，如果没有则返回空列表"""
+        class_declaration_list = []
+        for declaration in self.type_declarations:
+            if isinstance(declaration, ClassTree):
+                class_declaration_list.append(declaration)
+        return class_declaration_list
+
+    def get_pure_namespace(self) -> NameSpace:
+        """获取通过 import 生成的文件顶级命名空间，其中不包含 package 中其他类的名称"""
+        name_space = NameSpace()
+        for import_node in self.imports:
+            full_name = import_node.identifier.generate()
+            class_name = full_name[full_name.rindex(".") + 1:] if "." in full_name else full_name
+            name_space.set_type_info(class_name, full_name)
+        return name_space
 
 
 @dataclasses.dataclass(slots=True)
@@ -1809,7 +1856,7 @@ class MemberSelectTree(ExpressionTree):
         )
 
     def generate(self) -> str:
-        return f"{self.expression.generate()}.{self.identifier}"
+        return f"{self.expression.generate()}.{self.identifier.generate()}"
 
 
 @dataclasses.dataclass(slots=True)
@@ -2196,7 +2243,6 @@ class ProvidesTree(DirectiveTree):
             end_pos=end_pos,
             source=source
         )
-
 
     def generate(self) -> str:
         """TODO"""
