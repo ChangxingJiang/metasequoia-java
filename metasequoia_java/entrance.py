@@ -21,7 +21,7 @@ def init_parser(code: str, mode: Mode = Mode.NULL) -> JavaParser:
     return JavaParser(LexicalFSM(code), mode=mode)
 
 
-def parse_compilation_unit(code: str) -> ast.Tree:
+def parse_compilation_unit(code: str) -> ast.CompilationUnitTree:
     """解析根节点"""
     return init_parser(code).parse_compilation_unit()
 
