@@ -47,13 +47,13 @@ class JavaParser:
 
         # 如果 permit_type_annotations_push_back 为假，那么当解析器遇到额外的注解时会直接抛出错误；否则会将额外的注解存入 type_annotations_push_back 变量中
         self.permit_type_annotations_push_back: bool = False
-        self.type_annotations_pushed_back: List[ast.AnnotationTree] = []
+        self.type_annotations_pushed_back: List[ast.Annotation] = []
 
         # 如果 allow_this_ident 为真，则允许将 "this" 视作标识符
         self.allow_this_ident: Optional[bool] = None
 
         # 方法接收的第一个 this 参数类型
-        self.receiver_param: Optional[ast.VariableTree] = None
+        self.receiver_param: Optional[ast.Variable] = None
 
         # 当前源码层级中是否允许出现 yield 语句
         self.allow_yield_statement: bool = True
@@ -65,7 +65,7 @@ class JavaParser:
         self.allow_sealed_types: bool = True
 
         # 为节省每次二元操作时分配新的操作数 / 操作符栈的开销，所以采用供应机制
-        self.od_stack_supply: List[List[Optional[ast.ExpressionTree]]] = []
+        self.od_stack_supply: List[List[Optional[ast.Expression]]] = []
         self.op_stack_supply: List[List[Optional[Token]]] = []
 
     def next_token(self):
@@ -193,7 +193,7 @@ class JavaParser:
         """
         return self.ident()
 
-    def qualident(self, allow_annotations: bool) -> ast.ExpressionTree:
+    def qualident(self, allow_annotations: bool) -> ast.Expression:
         """多个用 DOT 分隔的标识符
 
         [JDK Document]
@@ -226,31 +226,31 @@ class JavaParser:
         TODO 补充单元测试：allow_annotations = True
         """
         pos = self.token.pos
-        expression: ast.ExpressionTree = ast.IdentifierTree.create(
+        expression: ast.Expression = ast.Identifier.create(
             name=self.ident(),
             **self._info_exclude(pos)
         )
         while self.token.kind == TokenKind.DOT:
             self.next_token()
             type_annotations = self.type_annotations_opt() if allow_annotations is True else None
-            identifier: ast.IdentifierTree = ast.IdentifierTree.create(
+            identifier: ast.Identifier = ast.Identifier.create(
                 name=self.ident(),
                 **self._info_exclude(pos)
             )
-            expression = ast.MemberSelectTree.create(
+            expression = ast.MemberSelect.create(
                 expression=expression,
                 identifier=identifier,
                 **self._info_include(pos)
             )
             if type_annotations:
-                expression = ast.AnnotatedTypeTree.create(
+                expression = ast.AnnotatedType.create(
                     annotations=type_annotations,
                     underlying_type=expression,
                     **self._info_include(pos)
                 )
         return expression
 
-    def literal(self) -> ast.LiteralTree:
+    def literal(self) -> ast.Literal:
         """解析字面值
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -277,52 +277,52 @@ class JavaParser:
         """
         pos = self.token.pos
         if self.token.kind in {TokenKind.INT_OCT_LITERAL, TokenKind.INT_DEC_LITERAL, TokenKind.INT_HEX_LITERAL}:
-            literal = ast.IntLiteralTree.create(
+            literal = ast.IntLiteral.create(
                 style=INT_LITERAL_STYLE_HASH[self.token.kind],
                 value=self.token.int_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind in {TokenKind.LONG_OCT_LITERAL, TokenKind.LONG_DEC_LITERAL, TokenKind.LONG_HEX_LITERAL}:
-            literal = ast.LongLiteralTree.create(
+            literal = ast.LongLiteral.create(
                 style=LONG_LITERAL_STYLE_HASH[self.token.kind],
                 value=self.token.int_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.FLOAT_LITERAL:
-            literal = ast.FloatLiteralTree.create(
+            literal = ast.FloatLiteral.create(
                 value=self.token.float_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.DOUBLE_LITERAL:
-            literal = ast.DoubleLiteralTree.create(
+            literal = ast.DoubleLiteral.create(
                 value=self.token.float_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.TRUE:
-            literal = ast.TrueLiteralTree.create(
+            literal = ast.TrueLiteral.create(
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.FALSE:
-            literal = ast.FalseLiteralTree.create(
+            literal = ast.FalseLiteral.create(
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.CHAR_LITERAL:
-            literal = ast.CharacterLiteralTree.create(
+            literal = ast.CharacterLiteral.create(
                 value=self.token.char_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.STRING_LITERAL:
-            literal = ast.StringLiteralTree.create_string(
+            literal = ast.StringLiteral.create_string(
                 value=self.token.string_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.TEXT_BLOCK:
-            literal = ast.StringLiteralTree.create_text_block(
+            literal = ast.StringLiteral.create_text_block(
                 value=self.token.string_value(),
                 **self._info_include(pos)
             )
         elif self.token.kind == TokenKind.NULL:
-            literal = ast.NullLiteralTree.create(
+            literal = ast.NullLiteral.create(
                 **self._info_include(pos)
             )
         else:
@@ -330,7 +330,7 @@ class JavaParser:
         self.next_token()
         return literal
 
-    def parse_expression(self) -> ast.ExpressionTree:
+    def parse_expression(self) -> ast.Expression:
         """解析表达式（可以是表达式或类型）
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -351,9 +351,9 @@ class JavaParser:
         """
         return self.term(Mode.EXPR)
 
-    def parse_pattern(self, pos: int, modifiers: Optional[ast.ModifiersTree],
-                      parsed_type: Optional[ast.ExpressionTree],
-                      allow_var: bool, check_guard: bool) -> ast.PatternTree:
+    def parse_pattern(self, pos: int, modifiers: Optional[ast.Modifiers],
+                      parsed_type: Optional[ast.Expression],
+                      allow_var: bool, check_guard: bool) -> ast.Pattern:
         """解析模式
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -383,7 +383,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("_")).parse_pattern(0, ast.ModifiersTree.create_empty(), None, False, True).kind.name
+        >>> JavaParser(LexicalFSM("_")).parse_pattern(0, ast.Modifiers.create_empty(), None, False, True).kind.name
         'ANY_PATTERN'
         """
         if modifiers is None:
@@ -391,7 +391,7 @@ class JavaParser:
 
         if self.token.kind == TokenKind.UNDERSCORE and parsed_type is None:
             self.next_token()
-            return ast.AnyPatternTree.create(**self._info_exclude(self.token.pos))
+            return ast.AnyPattern.create(**self._info_exclude(self.token.pos))
 
         if parsed_type is None:
             var = (self.token.kind == TokenKind.IDENTIFIER and self.token.name == "var")
@@ -403,7 +403,7 @@ class JavaParser:
 
         # ReferenceType ( [ComponentPatternList] )
         if self.token.kind == TokenKind.LPAREN:
-            nested: List[ast.PatternTree] = []
+            nested: List[ast.Pattern] = []
             if self.peek_token(0, TokenKind.RPAREN):
                 self.next_token()
             else:
@@ -414,7 +414,7 @@ class JavaParser:
                         break
             self.accept(TokenKind.RPAREN)
             # TODO 待补充检查逻辑
-            return ast.DeconstructionPatternTree.create(
+            return ast.DeconstructionPattern.create(
                 deconstructor=expression,
                 nested_patterns=nested,
                 **self._info_exclude(pos)
@@ -423,7 +423,7 @@ class JavaParser:
         var_pos = self.token.pos
         name: str = self.ident_or_underscore()
         # TODO 待考虑补充特性逻辑
-        variable = ast.VariableTree.create_by_name(
+        variable = ast.Variable.create_by_name(
             modifiers=modifiers,
             name=name,
             variable_type=expression,
@@ -431,16 +431,16 @@ class JavaParser:
             **self._info_exclude(var_pos)
         )
         # TODO 补充检查日志逻辑
-        return ast.BindingPatternTree.create(
+        return ast.BindingPattern.create(
             variable=variable,
             **self._info_exclude(pos)
         )
 
     def parse_type(self,
                    allow_var: bool = False,
-                   annotations: Optional[List[ast.AnnotationTree]] = None,
+                   annotations: Optional[List[ast.Annotation]] = None,
                    pos: Optional[int] = None
-                   ) -> ast.ExpressionTree:
+                   ) -> ast.Expression:
         """类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -500,14 +500,14 @@ class JavaParser:
         result = self.unannotated_type(allow_var=allow_var)
 
         if annotations:
-            return ast.AnnotatedTypeTree.create(
+            return ast.AnnotatedType.create(
                 annotations=annotations,
                 underlying_type=result,
                 **self._info_include(pos)
             )
         return result
 
-    def parse_intersection_type(self, pos: int, first_type: ast.ExpressionTree):
+    def parse_intersection_type(self, pos: int, first_type: ast.Expression):
         """解析 CAST 语句中的交叉类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -518,7 +518,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM(" & type2")).parse_intersection_type(0, ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM(" & type2")).parse_intersection_type(0, ast.Expression.mock()).kind.name
         'INTERSECTION_TYPE'
         """
         bounds = [first_type]
@@ -526,13 +526,13 @@ class JavaParser:
             self.accept(TokenKind.AMP)
             bounds.append(self.parse_type())
         if len(bounds) > 1:
-            return ast.IntersectionTypeTree.create(
+            return ast.IntersectionType.create(
                 bounds=bounds,
                 **self._info_include(pos)
             )
         return first_type
 
-    def unannotated_type(self, allow_var: bool = False, new_mode: Optional[Mode] = Mode.TYPE) -> ast.ExpressionTree:
+    def unannotated_type(self, allow_var: bool = False, new_mode: Optional[Mode] = Mode.TYPE) -> ast.Expression:
         """解析不包含注解的类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -575,7 +575,7 @@ class JavaParser:
             self.raise_syntax_error(result.start_pos, f"RestrictedTypeNotAllowedHere, but get {result.kind.name}")
         return result
 
-    def term(self, new_mode: Optional[Mode] = None) -> ast.ExpressionTree:
+    def term(self, new_mode: Optional[Mode] = None) -> ast.Expression:
         """解析第 0 层级语法元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -633,7 +633,7 @@ class JavaParser:
 
         return expression
 
-    def term_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def term_rest(self, expression: ast.Expression) -> ast.Expression:
         """解析第 0 层级语法元素的剩余部分
 
         [JDK Code] JavacParser.termRest(JCExpression)
@@ -643,7 +643,7 @@ class JavaParser:
             self.next_token()
             self.select_expr_mode()
             expression_1 = self.term()
-            return ast.AssignmentTree.create(
+            return ast.Assignment.create(
                 variable=expression,
                 expression=expression_1,
                 **self._info_exclude(pos)
@@ -656,7 +656,7 @@ class JavaParser:
             self.next_token()
             self.select_expr_mode()
             expression_1 = self.term()
-            return ast.CompoundAssignmentTree.create(
+            return ast.CompoundAssignment.create(
                 kind=grammar_hash.ASSIGN_OPERATOR_TO_TREE_KIND[tk],
                 variable=expression,
                 expression=expression_1,
@@ -665,7 +665,7 @@ class JavaParser:
         else:
             return expression
 
-    def term1(self) -> ast.ExpressionTree:
+    def term1(self) -> ast.Expression:
         """解析第 1 层级语法元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -691,7 +691,7 @@ class JavaParser:
         else:
             return expression
 
-    def term1_rest(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def term1_rest(self, expression: ast.Expression) -> ast.Expression:
         """解析第 1 层级语法元素的剩余部分
 
         [JDK Code] JavacParser.term1Rest
@@ -703,7 +703,7 @@ class JavaParser:
             expression_1 = self.term()
             self.accept(TokenKind.COLON)
             expression_2 = self.term1()
-            return ast.ConditionalExpressionTree.create(
+            return ast.ConditionalExpression.create(
                 condition=expression,
                 true_expression=expression_1,
                 false_expression=expression_2,
@@ -806,8 +806,8 @@ class JavaParser:
             return self.term2_rest(expression, grammar_enum.OperatorPrecedence.OR_PREC)
         return expression
 
-    def term2_rest(self, expression: ast.ExpressionTree,
-                   min_prec: grammar_enum.OperatorPrecedence) -> ast.ExpressionTree:
+    def term2_rest(self, expression: ast.Expression,
+                   min_prec: grammar_enum.OperatorPrecedence) -> ast.Expression:
         """解析第 2 层级语法元素的剩余部分
 
         [JDK Code] JavacParser.term2Rest(JCExpression, int)
@@ -825,7 +825,7 @@ class JavaParser:
                         | "+" | "-"
                         | "*" | "/" | "%"
         """
-        od_stack: List[ast.ExpressionTree] = self.new_od_stack()
+        od_stack: List[ast.Expression] = self.new_od_stack()
         op_stack: List[Token] = self.new_op_stack()
 
         top = 0
@@ -855,9 +855,9 @@ class JavaParser:
                         pattern = self.parse_pattern(pattern_pos, modifiers, instance_type, False, False)
                     else:
                         if modifiers.annotations:
-                            type_annotations: List[ast.AnnotationTree] = []
+                            type_annotations: List[ast.Annotation] = []
                             for decl in modifiers.annotations:
-                                type_annotations.append(ast.AnnotationTree.create_type_annotation(
+                                type_annotations.append(ast.Annotation.create_type_annotation(
                                     annotation_type=decl.annotation_type,
                                     arguments=decl.arguments,
                                     start_pos=decl.start_pos,
@@ -865,14 +865,14 @@ class JavaParser:
                                     source=decl.source,
                                 ))
                             # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
-                            instance_type = ast.AnnotatedTypeTree.create(
+                            instance_type = ast.AnnotatedType.create(
                                 annotations=type_annotations,
                                 underlying_type=instance_type,
                                 **self._info_include(None)
                             )
                         pattern = instance_type
 
-                od_stack[top] = ast.InstanceOfTree.create(
+                od_stack[top] = ast.InstanceOf.create(
                     expression=od_stack[top],
                     pattern=pattern,
                     **self._info_exclude(pos)
@@ -885,7 +885,7 @@ class JavaParser:
                 od_stack[top] = self.term3()
 
             while top > 0 and self.prec(top_op.kind) >= self.prec(self.token.kind):  # 上一个运算符的优先级大于等于下一个运算符的优先级
-                od_stack[top - 1] = ast.BinaryTree.create(
+                od_stack[top - 1] = ast.Binary.create(
                     kind=grammar_hash.BINARY_OPERATOR_TO_TREE_KIND[top_op.kind],
                     left_operand=od_stack[top - 1],
                     right_operand=od_stack[top],
@@ -904,7 +904,7 @@ class JavaParser:
 
         return expression
 
-    def new_od_stack(self) -> List[Optional[ast.ExpressionTree]]:
+    def new_od_stack(self) -> List[Optional[ast.Expression]]:
         """构造操作数的数组
 
         TODO 待设计适用于 Python 的优化方法
@@ -922,7 +922,7 @@ class JavaParser:
             return [None] * (self.INFIX_PRECEDENCE_LEVELS + 1)
         return self.op_stack_supply.pop()
 
-    def term3(self) -> ast.ExpressionTree:
+    def term3(self) -> ast.Expression:
         """解析第 3 层级语法元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html（不包含在代码中已单独注释了 [JDK Document] 的语义组）
@@ -1062,17 +1062,17 @@ class JavaParser:
         >>> res = JavaParser(LexicalFSM("boolean[].class"), mode=Mode.EXPR).term3()
         >>> res.kind.name
         'MEMBER_SELECT'
-        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelect) else None
         'ARRAY_TYPE'
         >>> res = JavaParser(LexicalFSM("boolean.class"), mode=Mode.EXPR).term3()
         >>> res.kind.name
         'MEMBER_SELECT'
-        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelect) else None
         'PRIMITIVE_TYPE'
         >>> res = JavaParser(LexicalFSM("void.class"), mode=Mode.EXPR).term3()
         >>> res.kind.name
         'MEMBER_SELECT'
-        >>> res.expression.kind.name if isinstance(res, ast.MemberSelectTree) else None
+        >>> res.expression.kind.name if isinstance(res, ast.MemberSelect) else None
         'PRIMITIVE_TYPE'
         >>> JavaParser(LexicalFSM("List<String>"), mode=Mode.EXPR).term3().kind.name
         'PARAMETERIZED_TYPE'
@@ -1120,7 +1120,7 @@ class JavaParser:
                 return self.term3_rest(self.literal(), type_args)
 
             expression = self.term3()
-            return ast.UnaryTree.create(
+            return ast.Unary.create(
                 kind=grammar_hash.UNARY_OPERATOR_TO_TREE_KIND[tk],
                 expression=expression,
                 **self._info_include(pos)
@@ -1143,7 +1143,7 @@ class JavaParser:
                 self.accept(TokenKind.RPAREN)
                 self.select_expr_mode()
                 expression = self.term3()
-                return ast.TypeCastTree.create(
+                return ast.TypeCast.create(
                     cast_type=cast_type,
                     expression=expression,
                     **self._info_include(pos)
@@ -1162,7 +1162,7 @@ class JavaParser:
                 expression = self.term_rest(self.term1_rest(self.term2_rest(self.term3(),
                                                                             grammar_enum.OperatorPrecedence.OR_PREC)))
                 self.accept(TokenKind.RPAREN)
-                expression = ast.ParenthesizedTree.create(
+                expression = ast.Parenthesized.create(
                     expression=expression,
                     **self._info_exclude(pos)
                 )
@@ -1174,7 +1174,7 @@ class JavaParser:
             if not self.is_mode(Mode.EXPR):
                 self.raise_syntax_error(self.token.pos, "illegal")
             self.select_expr_mode()
-            expression = ast.IdentifierTree.create(
+            expression = ast.Identifier.create(
                 name="this",
                 **self._info_include(pos)
             )
@@ -1191,7 +1191,7 @@ class JavaParser:
             if not self.is_mode(Mode.EXPR):
                 self.raise_syntax_error(self.token.pos, "illegal")
             self.select_expr_mode()
-            expression = ast.IdentifierTree.create(
+            expression = ast.Identifier.create(
                 name="super",
                 **self._info_include(pos)
             )
@@ -1243,8 +1243,8 @@ class JavaParser:
             expression = self.term3()
             if not self.is_mode(Mode.TYPE):
                 if expression.kind == TreeKind.MEMBER_REFERENCE:
-                    assert isinstance(expression, ast.MemberReferenceTree)
-                    expression.expression = ast.AnnotatedTypeTree.create(
+                    assert isinstance(expression, ast.MemberReference)
+                    expression.expression = ast.AnnotatedType.create(
                         annotations=type_annotations,
                         underlying_type=expression.expression,
                         **self._info_exclude(self.token.pos)
@@ -1257,7 +1257,7 @@ class JavaParser:
                     self.illegal(type_annotations[0].start_pos)
             else:
                 # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
-                expression = ast.AnnotatedTypeTree.create(
+                expression = ast.AnnotatedType.create(
                     annotations=type_annotations,
                     underlying_type=expression,
                     **self._info_include(None)
@@ -1275,7 +1275,7 @@ class JavaParser:
                 return self.term3_rest(expression, None)
 
             # 将当前元素当作标识符处理
-            expression = ast.IdentifierTree.create(
+            expression = ast.Identifier.create(
                 name=self.ident(),
                 **self._info_exclude(pos)
             )
@@ -1291,12 +1291,12 @@ class JavaParser:
                         # TypeName [ ] . class
                         self.next_token()
                         expression = self.brackets_opt(expression)
-                        expression = ast.ArrayTypeTree.create(
+                        expression = ast.ArrayType.create(
                             expression=expression,
                             **self._info_exclude(pos)
                         )
                         if annotations:
-                            expression = ast.AnnotatedTypeTree.create(
+                            expression = ast.AnnotatedType.create(
                                 annotations=annotations,
                                 underlying_type=expression,
                                 **self._info_exclude(pos)
@@ -1309,7 +1309,7 @@ class JavaParser:
                             index = self.term()
                             if annotations:
                                 self.illegal()
-                            expression = ast.ArrayAccessTree.create(
+                            expression = ast.ArrayAccess.create(
                                 expression=expression,
                                 index=index,
                                 **self._info_exclude(pos)
@@ -1346,10 +1346,10 @@ class JavaParser:
                             if type_args:
                                 self.illegal()
                             self.select_expr_mode()
-                            expression = ast.MemberSelectTree.create(
+                            expression = ast.MemberSelect.create(
                                 expression=expression,
-                                identifier=ast.IdentifierTree.create(name="class",
-                                                                     **self._info_exclude(self.token.pos)),
+                                identifier=ast.Identifier.create(name="class",
+                                                                 **self._info_exclude(self.token.pos)),
                                 **self._info_include(pos)
                             )
                             self.next_token()
@@ -1360,10 +1360,10 @@ class JavaParser:
                             if type_args:
                                 self.illegal()
                             self.select_expr_mode()
-                            expression = ast.MemberSelectTree.create(
+                            expression = ast.MemberSelect.create(
                                 expression=expression,
-                                identifier=ast.IdentifierTree.create(name="this",
-                                                                     **self._info_exclude(self.token.pos)),
+                                identifier=ast.Identifier.create(name="this",
+                                                                 **self._info_exclude(self.token.pos)),
                                 **self._info_include(pos)
                             )
                             self.next_token()
@@ -1372,10 +1372,10 @@ class JavaParser:
                         # TypeName . super :: [TypeArguments] Identifier
                         if self.token.kind == TokenKind.SUPER:
                             self.select_expr_mode()
-                            expression = ast.MemberSelectTree.create(
+                            expression = ast.MemberSelect.create(
                                 expression=expression,
-                                identifier=ast.IdentifierTree.create(name="super",
-                                                                     **self._info_exclude(self.token.pos)),
+                                identifier=ast.Identifier.create(name="super",
+                                                                 **self._info_exclude(self.token.pos)),
                                 **self._info_include(pos)
                             )
                             expression = self.super_suffix(type_args, expression)
@@ -1396,18 +1396,18 @@ class JavaParser:
                             break
 
                     # 继续第二轮循环
-                    type_annotations: Optional[List[ast.AnnotationTree]] = None
+                    type_annotations: Optional[List[ast.Annotation]] = None
                     if self.is_mode(Mode.TYPE) and self.token.kind == TokenKind.MONKEYS_AT:
                         type_annotations = self.type_annotations_opt()
 
-                    expression = ast.MemberSelectTree.create(
+                    expression = ast.MemberSelect.create(
                         expression=expression,
-                        identifier=ast.IdentifierTree.create(name=self.ident(), **self._info_exclude(self.token.pos)),
+                        identifier=ast.Identifier.create(name=self.ident(), **self._info_exclude(self.token.pos)),
                         **self._info_include(pos)
                     )
                     # TODO 待增加失败恢复的机制
                     if type_annotations:
-                        expression = ast.AnnotatedTypeTree.create(
+                        expression = ast.AnnotatedType.create(
                             annotations=type_annotations,
                             underlying_type=expression,
                             **self._info_exclude(type_annotations[0].start_pos)
@@ -1431,7 +1431,7 @@ class JavaParser:
                             type_arguments.append(self.type_argument())
                         self.accept(TokenKind.GT)
 
-                        expression = ast.ParameterizedTypeTree.create(
+                        expression = ast.ParameterizedType.create(
                             type_name=expression,
                             type_arguments=type_arguments,
                             **self._info_exclude(pos_1)
@@ -1440,10 +1440,10 @@ class JavaParser:
                         while self.token.kind == TokenKind.DOT:
                             self.next_token()
                             self.select_type_mode()
-                            expression = ast.MemberSelectTree.create(
+                            expression = ast.MemberSelect.create(
                                 expression=expression,
-                                identifier=ast.IdentifierTree.create(name=self.ident(),
-                                                                     **self._info_include(self.token.pos)),
+                                identifier=ast.Identifier.create(name=self.ident(),
+                                                                 **self._info_include(self.token.pos)),
                                 **self._info_include(self.token.pos)
                             )
                             expression = self.type_arguments_opt(expression)
@@ -1479,12 +1479,12 @@ class JavaParser:
                 self.next_token()
                 if self.token.kind != TokenKind.DOT:
                     self.illegal(pos)
-                expression = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+                expression = ast.PrimitiveType.create_void(**self._info_include(pos))
                 expression = self.brackets_suffix(expression)
                 return self.term3_rest(expression, None)
             else:
                 # 通过向下一个阶段传递一个 void 类型来支持 myMethodHandle.<void>invoke() 的特殊情况
-                expression = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+                expression = ast.PrimitiveType.create_void(**self._info_include(pos))
                 self.next_token()
                 return expression
 
@@ -1497,13 +1497,13 @@ class JavaParser:
             self.next_token()
             expression = self.par_expression()
             self.accept(TokenKind.LBRACE)
-            cases: List[ast.CaseTree] = []
+            cases: List[ast.Case] = []
             while True:
                 pos = self.token.pos
                 if self.token.kind in {TokenKind.CASE, TokenKind.DEFAULT}:
                     cases.extend(self.switch_expression_statement_group())
                 elif self.token.kind in {TokenKind.RBRACE, TokenKind.EOF}:
-                    switch_expression = ast.SwitchExpressionTree.create(
+                    switch_expression = ast.SwitchExpression.create(
                         expression=expression,
                         cases=cases,
                         **self._info_exclude(switch_pos)
@@ -1517,7 +1517,7 @@ class JavaParser:
 
         self.raise_syntax_error(self.token.pos, f"无法解析为 term3 的 Token 元素: {self.token.kind.name}")
 
-    def switch_expression_statement_group(self) -> List[ast.CaseTree]:
+    def switch_expression_statement_group(self) -> List[ast.Case]:
         """解析 Switch 表达式中的一组 Case 语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1538,31 +1538,31 @@ class JavaParser:
         TODO 补充单元测试（等待 parse_expression、parse_statement 和 block_statements）
         """
         case_pos = self.token.pos
-        case_expression_list: List[ast.CaseTree] = []
-        labels: List[ast.CaseLabelTree] = []
+        case_expression_list: List[ast.Case] = []
+        labels: List[ast.CaseLabel] = []
 
         if self.token.kind == TokenKind.DEFAULT:
             self.next_token()
-            labels.append(ast.DefaultCaseLabelTree.create(**self._info_exclude(case_pos)))
+            labels.append(ast.DefaultCaseLabel.create(**self._info_exclude(case_pos)))
         else:
             self.accept(TokenKind.CASE)
             allow_default = False
             while True:
-                label: ast.CaseLabelTree = self.parse_case_label(allow_default=allow_default)
+                label: ast.CaseLabel = self.parse_case_label(allow_default=allow_default)
                 labels.append(label)
                 if self.token.kind != TokenKind.COMMA:
                     break
                 self.next_token()  # 跳过 COMMA
                 # TODO 待确定 isNone 的逻辑是否正确
                 allow_default = (label.kind == TreeKind.CONSTANT_CASE_LABEL
-                                 and isinstance(label, ast.ConstantCaseLabelTree)
+                                 and isinstance(label, ast.ConstantCaseLabel)
                                  and label.expression.kind == TreeKind.NULL_LITERAL)
             guard = self.parse_guard(labels[-1])
             if self.token.kind == TokenKind.ARROW:
                 self.next_token()
                 if self.token.kind == TokenKind.THROW or self.token.kind == TokenKind.LBRACE:
                     statements = [self.parse_statement()]
-                    case_expression_list.append(ast.CaseTree.create_rule(
+                    case_expression_list.append(ast.Case.create_rule(
                         labels=labels,
                         guard=guard,
                         statements=statements,
@@ -1571,8 +1571,8 @@ class JavaParser:
                     ))
                 else:
                     value = self.parse_expression()
-                    statements = [ast.YieldTree.create(value=value, **self._info_exclude(value.start_pos))]
-                    case_expression_list.append(ast.CaseTree.create_statement(
+                    statements = [ast.Yield.create(value=value, **self._info_exclude(value.start_pos))]
+                    case_expression_list.append(ast.Case.create_statement(
                         labels=labels,
                         guard=guard,
                         statements=statements,
@@ -1583,7 +1583,7 @@ class JavaParser:
             else:
                 self.accept(TokenKind.COLON)
                 statements = self.block_statements()
-                case_expression_list.append(ast.CaseTree.create_statement(
+                case_expression_list.append(ast.Case.create_statement(
                     labels=labels,
                     guard=guard,
                     statements=statements,
@@ -1592,8 +1592,8 @@ class JavaParser:
                 ))
             return case_expression_list
 
-    def term3_rest(self, expression: ast.ExpressionTree,
-                   type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
+    def term3_rest(self, expression: ast.Expression,
+                   type_args: Optional[List[ast.Expression]]) -> ast.Expression:
         """解析第 3 层级语法元素的剩余部分
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1613,20 +1613,20 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("[]"), mode=Mode.TYPE).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        >>> JavaParser(LexicalFSM("[]"), mode=Mode.TYPE).term3_rest(ast.Expression.mock(), None).kind.name
         'ARRAY_TYPE'
-        >>> JavaParser(LexicalFSM("[1]"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        >>> JavaParser(LexicalFSM("[1]"), mode=Mode.EXPR).term3_rest(ast.Expression.mock(), None).kind.name
         'ARRAY_ACCESS'
-        >>> JavaParser(LexicalFSM("++"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        >>> JavaParser(LexicalFSM("++"), mode=Mode.EXPR).term3_rest(ast.Expression.mock(), None).kind.name
         'PREFIX_INCREMENT'
-        >>> JavaParser(LexicalFSM("--"), mode=Mode.EXPR).term3_rest(ast.ExpressionTree.mock(), None).kind.name
+        >>> JavaParser(LexicalFSM("--"), mode=Mode.EXPR).term3_rest(ast.Expression.mock(), None).kind.name
         'PREFIX_DECREMENT'
         """
         if type_args is not None:
             self.illegal()
         while True:
             pos_1 = self.token.pos
-            annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+            annotations: List[ast.Annotation] = self.type_annotations_opt()
             if self.token.kind == TokenKind.LBRACKET:
                 self.next_token()  # 跳过 LBRACKET
                 if self.is_mode(Mode.TYPE):
@@ -1636,7 +1636,7 @@ class JavaParser:
                         # term3 [ ]
                         self.next_token()  # 跳过 RBRACKET
                         expression = self.brackets_opt(expression)
-                        expression = ast.ArrayTypeTree.create(
+                        expression = ast.ArrayType.create(
                             expression=expression,
                             **self._info_exclude(pos_1)
                         )
@@ -1646,7 +1646,7 @@ class JavaParser:
                             self.select_expr_mode()
                             continue
                         if annotations:
-                            expression = ast.AnnotatedTypeTree.create(
+                            expression = ast.AnnotatedType.create(
                                 annotations=annotations,
                                 underlying_type=expression,
                                 **self._info_exclude(pos_1)
@@ -1658,7 +1658,7 @@ class JavaParser:
                 if self.is_mode(Mode.EXPR):
                     self.select_expr_mode()
                     index = self.term()
-                    expression = ast.ArrayAccessTree.create(
+                    expression = ast.ArrayAccess.create(
                         expression=expression,
                         index=index,
                         **self._info_exclude(pos_1)
@@ -1671,9 +1671,9 @@ class JavaParser:
                 # term3 . super ( expression , ... )
                 if self.token.kind == TokenKind.SUPER and self.is_mode(Mode.EXPR):
                     self.select_expr_mode()
-                    expression = ast.MemberSelectTree.create(
+                    expression = ast.MemberSelect.create(
                         expression=expression,
-                        identifier=ast.IdentifierTree.create(name="super", **self._info_include(self.token.pos)),
+                        identifier=ast.Identifier.create(name="super", **self._info_include(self.token.pos)),
                         **self._info_include(self.token.pos)
                     )
                     self.next_token()  # 跳过 SUPER
@@ -1694,17 +1694,17 @@ class JavaParser:
 
                 # term . identifier {type_annotations} {(argument, ...)}
                 else:
-                    type_annotations: Optional[List[ast.AnnotationTree]] = None
+                    type_annotations: Optional[List[ast.Annotation]] = None
                     if self.is_mode(Mode.TYPE) and self.token.kind == TokenKind.MONKEYS_AT:
                         type_annotations = self.type_annotations_opt()
-                    expression = ast.MemberSelectTree.create(
+                    expression = ast.MemberSelect.create(
                         expression=expression,
-                        identifier=ast.IdentifierTree.create(name=self.ident(), **self._info_exclude(self.token.pos)),
+                        identifier=ast.Identifier.create(name=self.ident(), **self._info_exclude(self.token.pos)),
                         **self._info_include(self.token.pos)
                     )
                     # TODO 待补充错误恢复逻辑
                     if type_annotations:
-                        expression = ast.AnnotatedTypeTree.create(
+                        expression = ast.AnnotatedType.create(
                             annotations=type_annotations,
                             underlying_type=expression,
                             **self._info_exclude(type_annotations[0].start_pos)
@@ -1738,7 +1738,7 @@ class JavaParser:
 
         while self.token.kind in {TokenKind.PLUS_PLUS, TokenKind.SUB_SUB} and self.is_mode(Mode.EXPR):
             self.select_expr_mode()
-            expression = ast.UnaryTree.create(
+            expression = ast.Unary.create(
                 kind=grammar_hash.UNARY_OPERATOR_TO_TREE_KIND[self.token.kind],
                 expression=expression,
                 **self._info_include(self.token.pos)
@@ -1944,7 +1944,7 @@ class JavaParser:
                     return lookahead
             lookahead += 1
 
-    def lambda_expression_or_statement(self, has_parens: bool, explicit_params: bool, pos: int) -> ast.ExpressionTree:
+    def lambda_expression_or_statement(self, has_parens: bool, explicit_params: bool, pos: int) -> ast.Expression:
         """lambda 表达式或 lambda 语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1973,7 +1973,7 @@ class JavaParser:
             parameters = self.implicit_parameters(has_parens)
         return self.lambda_expression_or_statement_rest(parameters, pos)
 
-    def lambda_expression_or_statement_rest(self, parameters: List[ast.VariableTree], pos: int) -> ast.ExpressionTree:
+    def lambda_expression_or_statement_rest(self, parameters: List[ast.Variable], pos: int) -> ast.Expression:
         """lambda 表达式或 lambda 语句除参数外的剩余部分
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -1988,33 +1988,33 @@ class JavaParser:
             return self.lambda_statement(parameters, pos, self.token.pos)
         return self.lambda_expression(parameters, pos)
 
-    def lambda_statement(self, parameters: List[ast.VariableTree], pos: int, pos2: int) -> ast.ExpressionTree:
+    def lambda_statement(self, parameters: List[ast.Variable], pos: int, pos2: int) -> ast.Expression:
         """lambda 语句的语句部分
 
         [JDK Code] JavacParser.lambdaStatement
         """
-        block: ast.BlockTree = self.block(pos2, False)
-        return ast.LambdaExpressionTree.create_statement(
+        block: ast.Block = self.block(pos2, False)
+        return ast.LambdaExpression.create_statement(
             parameters=parameters,
             body=block,
             **self._info_exclude(pos)
         )
 
-    def lambda_expression(self, parameters: List[ast.VariableTree], pos: int) -> ast.ExpressionTree:
+    def lambda_expression(self, parameters: List[ast.Variable], pos: int) -> ast.Expression:
         """lambda 表达式的表达式部分
 
         [JDK Code] JavacParser.lambdaExpression
         """
-        expr: ast.ExpressionTree = self.parse_expression()
-        return ast.LambdaExpressionTree.create_expression(
+        expr: ast.Expression = self.parse_expression()
+        return ast.LambdaExpression.create_expression(
             parameters=parameters,
             body=expr,
             **self._info_exclude(pos)
         )
 
     def super_suffix(self,
-                     type_args: Optional[List[ast.ExpressionTree]],
-                     expression: ast.ExpressionTree) -> ast.ExpressionTree:
+                     type_args: Optional[List[ast.Expression]],
+                     expression: ast.Expression) -> ast.Expression:
         """super 关键字之后的元素
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2032,13 +2032,13 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("super::name")).super_suffix(None, ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM("super::name")).super_suffix(None, ast.Expression.mock()).kind.name
         'MEMBER_REFERENCE'
-        >>> JavaParser(LexicalFSM("super::name1.name2")).super_suffix(None, ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM("super::name1.name2")).super_suffix(None, ast.Expression.mock()).kind.name
         'MEMBER_REFERENCE'
-        >>> JavaParser(LexicalFSM("super::name1.(arg1)name2")).super_suffix(None, ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM("super::name1.(arg1)name2")).super_suffix(None, ast.Expression.mock()).kind.name
         'MEMBER_REFERENCE'
-        >>> JavaParser(LexicalFSM("super::name1.(arg1)name2(arg2)")).super_suffix(None, ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM("super::name1.(arg1)name2(arg2)")).super_suffix(None, ast.Expression.mock()).kind.name
         'MEMBER_REFERENCE'
         """
         self.next_token()
@@ -2052,17 +2052,17 @@ class JavaParser:
         else:
             pos = self.token.pos
             self.accept(TokenKind.DOT)
-            type_args: Optional[List[ast.ExpressionTree]] = None
+            type_args: Optional[List[ast.Expression]] = None
             if self.token.kind == TokenKind.LT:
                 type_args = self.type_argument_list(False)
             name = self.ident()
-            ident = ast.IdentifierTree.create(
+            ident = ast.Identifier.create(
                 name=name,
                 **self._info_exclude(pos)
             )
             return self.arguments_opt(type_args, ident)
 
-    def basic_type(self) -> ast.PrimitiveTypeTree:
+    def basic_type(self) -> ast.PrimitiveType:
         """原生类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2096,7 +2096,7 @@ class JavaParser:
         'BYTE'
         """
         type_kind = grammar_hash.TOKEN_TO_TYPE_KIND[self.token.kind]
-        primitive_type = ast.PrimitiveTypeTree.create(
+        primitive_type = ast.PrimitiveType.create(
             type_kind=type_kind,
             **self._info_include(self.token.pos)
         )
@@ -2104,8 +2104,8 @@ class JavaParser:
         return primitive_type
 
     def arguments_opt(self,
-                      type_args: Optional[List[ast.ExpressionTree]],
-                      expression: ast.ExpressionTree) -> ast.ExpressionTree:
+                      type_args: Optional[List[ast.Expression]],
+                      expression: ast.Expression) -> ast.Expression:
         """可选择的包含括号的实参列表
 
         [JDK Code] JavacParser.argumentsOpt
@@ -2115,18 +2115,18 @@ class JavaParser:
         --------
         >>> parser = JavaParser(LexicalFSM("(name1)"))
         >>> parser.select_expr_mode()
-        >>> res1 = parser.arguments_opt(None, ast.ExpressionTree.mock())
+        >>> res1 = parser.arguments_opt(None, ast.Expression.mock())
         >>> res1.kind.name
         'METHOD_INVOCATION'
-        >>> if isinstance(res1, ast.MethodInvocationTree):
+        >>> if isinstance(res1, ast.MethodInvocation):
         ...     len(res1.arguments)
         1
         >>> parser = JavaParser(LexicalFSM("(name1, name2)"))
         >>> parser.select_expr_mode()
-        >>> res1 = parser.arguments_opt(None, ast.ExpressionTree.mock())
+        >>> res1 = parser.arguments_opt(None, ast.Expression.mock())
         >>> res1.kind.name
         'METHOD_INVOCATION'
-        >>> if isinstance(res1, ast.MethodInvocationTree):
+        >>> if isinstance(res1, ast.MethodInvocation):
         ...     len(res1.arguments)
         2
         """
@@ -2136,7 +2136,7 @@ class JavaParser:
         else:
             return expression
 
-    def argument_list(self) -> List[ast.ExpressionTree]:
+    def argument_list(self) -> List[ast.Expression]:
         """包含括号的实参节点的列表
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2158,21 +2158,21 @@ class JavaParser:
         self.accept(TokenKind.RPAREN)
         return args
 
-    def arguments(self, type_arguments: List[ast.ExpressionTree], expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def arguments(self, type_arguments: List[ast.Expression], expression: ast.Expression) -> ast.Expression:
         """包含括号的实参节点
 
         [JDK Code] JavacParser.arguments(List<JCExpression>, JCExpression)
         """
         pos = self.token.pos
         arguments = self.argument_list()
-        return ast.MethodInvocationTree.create(
+        return ast.MethodInvocation.create(
             type_arguments=type_arguments,
             method_select=expression,
             arguments=arguments,
             **self._info_exclude(pos)
         )
 
-    def type_arguments_opt(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def type_arguments_opt(self, expression: ast.Expression) -> ast.Expression:
         """可选的类型实参
 
         [JDK Code] JavacParser.typeArgumentsOpt(JCExpression t)
@@ -2182,7 +2182,7 @@ class JavaParser:
         --------
         >>> parser = JavaParser(LexicalFSM("<name1>"))
         >>> parser.select_expr_mode()
-        >>> parser.type_arguments_opt(ast.ExpressionTree.mock()).kind.name
+        >>> parser.type_arguments_opt(ast.Expression.mock()).kind.name
         'PARAMETERIZED_TYPE'
         """
         if self.token.kind == TokenKind.LT and self.is_mode(Mode.TYPE) and not self.is_mode(Mode.NO_PARAMS):
@@ -2190,7 +2190,7 @@ class JavaParser:
             return self.type_arguments(expression, False)
         return expression
 
-    def type_argument_list_opt(self, use_mode: Mode = Mode.TYPE) -> Optional[List[ast.ExpressionTree]]:
+    def type_argument_list_opt(self, use_mode: Mode = Mode.TYPE) -> Optional[List[ast.Expression]]:
         """可选的多个类型实参的列表
 
         [JDK Code 1] JavacParser.typeArgumentsOpt()
@@ -2213,7 +2213,7 @@ class JavaParser:
         self.set_mode(use_mode)
         return self.type_argument_list(False)
 
-    def type_argument_list(self, diamond_allowed: bool) -> List[ast.ExpressionTree]:
+    def type_argument_list(self, diamond_allowed: bool) -> List[ast.Expression]:
         """多个类型实参的列表
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2268,7 +2268,7 @@ class JavaParser:
 
         return args
 
-    def type_argument(self) -> ast.ExpressionTree:
+    def type_argument(self) -> ast.Expression:
         """单个类型实参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2303,41 +2303,41 @@ class JavaParser:
         'SUPER_WILDCARD'
         """
         pos_1 = self.token.pos
-        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        annotations: List[ast.Annotation] = self.type_annotations_opt()
         if self.token.kind != TokenKind.QUES:
             return self.parse_type(False, annotations)
         pos_2 = self.token.pos
         self.next_token()
 
-        wildcard: Optional[ast.WildcardTree] = None
+        wildcard: Optional[ast.Wildcard] = None
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
-            wildcard = ast.WildcardTree.create_extends_wildcard(
+            wildcard = ast.Wildcard.create_extends_wildcard(
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
         elif self.token.kind == TokenKind.SUPER:
             self.next_token()
-            wildcard = ast.WildcardTree.create_super_wildcard(
+            wildcard = ast.Wildcard.create_super_wildcard(
                 bound=self.parse_type(),
                 **self._info_include(pos_2)
             )
         elif self.token.kind in LAX_IDENTIFIER:
             self.raise_syntax_error(self.token.pos, f"Expected GT, EXTENDS, SUPER, but get {self.token.kind.name}")
         else:  # self.token.kind in {TokenKind.GT, TokenKind.GT_GT, TokenKind.GT_GT_GT, 。。。}
-            wildcard = ast.WildcardTree.create_unbounded_wildcard(
+            wildcard = ast.Wildcard.create_unbounded_wildcard(
                 **self._info_include(pos_2)
             )
 
         if annotations:
-            return ast.AnnotatedTypeTree.create(
+            return ast.AnnotatedType.create(
                 annotations=annotations,
                 underlying_type=wildcard,
                 **self._info_include(pos_1)
             )
         return wildcard
 
-    def type_arguments(self, expression: ast.Tree, diamond_allowed: bool) -> ast.ParameterizedTypeTree:
+    def type_arguments(self, expression: ast.Tree, diamond_allowed: bool) -> ast.ParameterizedType:
         """包含尖括号的类型实参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2349,20 +2349,20 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("<>")).type_arguments(ast.ExpressionTree.mock(), True).kind.name
+        >>> JavaParser(LexicalFSM("<>")).type_arguments(ast.Expression.mock(), True).kind.name
         'PARAMETERIZED_TYPE'
-        >>> JavaParser(LexicalFSM("<String>")).type_arguments(ast.ExpressionTree.mock(), False).kind.name
+        >>> JavaParser(LexicalFSM("<String>")).type_arguments(ast.Expression.mock(), False).kind.name
         'PARAMETERIZED_TYPE'
         """
         pos = self.token.pos
         type_arguments = self.type_argument_list(diamond_allowed=diamond_allowed)
-        return ast.ParameterizedTypeTree.create(
+        return ast.ParameterizedType.create(
             type_name=expression,
             type_arguments=type_arguments,
             **self._info_exclude(pos)
         )
 
-    def brackets_opt(self, expression: ast.ExpressionTree, annotations: Optional[List[ast.AnnotationTree]] = None):
+    def brackets_opt(self, expression: ast.Expression, annotations: Optional[List[ast.Annotation]] = None):
         """可选的数组标记（空方括号）
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2374,17 +2374,17 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).kind.name
+        >>> JavaParser(LexicalFSM(" = 5")).brackets_opt(ast.Identifier.mock(name="ident")).kind.name
         'IDENTIFIER'
-        >>> JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
+        >>> JavaParser(LexicalFSM("[] = 5")).brackets_opt(ast.Identifier.mock(name="ident")).source
         '[]'
-        >>> JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.IdentifierTree.mock(name="ident")).source
+        >>> JavaParser(LexicalFSM("[][] = 5")).brackets_opt(ast.Identifier.mock(name="ident")).source
         '[][]'
         """
         if annotations is None:
             annotations = []
 
-        next_level_annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        next_level_annotations: List[ast.Annotation] = self.type_annotations_opt()
         if self.token.kind == TokenKind.LBRACKET:
             pos = self.token.pos
             self.next_token()
@@ -2396,30 +2396,30 @@ class JavaParser:
                 return self.illegal(next_level_annotations[0].start_pos)
 
         if len(annotations) > 0:
-            return ast.AnnotatedTypeTree.create(
+            return ast.AnnotatedType.create(
                 annotations=annotations,
                 underlying_type=expression,
                 **self._info_include(self.token.pos)
             )
         return expression
 
-    def brackets_opt_cont(self, expression: ast.ExpressionTree, pos: int, annotations: List[ast.AnnotationTree]):
+    def brackets_opt_cont(self, expression: ast.Expression, pos: int, annotations: List[ast.Annotation]):
         """构造数组类型对象"""
         self.accept(TokenKind.RBRACKET)
         expression = self.brackets_opt(expression)
-        expression = ast.ArrayTypeTree.create(
+        expression = ast.ArrayType.create(
             expression=expression,
             **self._info_exclude(pos)
         )
         if len(annotations):
-            expression = ast.AnnotatedTypeTree.create(
+            expression = ast.AnnotatedType.create(
                 annotations=annotations,
                 underlying_type=expression,
                 **self._info_exclude(pos)
             )
         return expression
 
-    def brackets_suffix(self, expression: ast.ExpressionTree) -> ast.ExpressionTree:
+    def brackets_suffix(self, expression: ast.Expression) -> ast.Expression:
         """可选的 .class
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2435,7 +2435,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM(".class"), mode=Mode.EXPR).brackets_suffix(ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM(".class"), mode=Mode.EXPR).brackets_suffix(ast.Expression.mock()).kind.name
         'MEMBER_SELECT'
         """
         if self.is_mode(Mode.EXPR) and self.token.kind == TokenKind.DOT:
@@ -2445,9 +2445,9 @@ class JavaParser:
             pos2 = self.token.pos
             self.accept(TokenKind.CLASS)
             # TODO 待增加语法检查和错误语法处理逻辑
-            return ast.MemberSelectTree.create(
+            return ast.MemberSelect.create(
                 expression=expression,
-                identifier=ast.IdentifierTree.create(name="class", **self._info_exclude(pos2)),
+                identifier=ast.Identifier.create(name="class", **self._info_exclude(pos2)),
                 **self._info_include(pos1)
             )
         elif self.is_mode(Mode.TYPE):
@@ -2457,7 +2457,7 @@ class JavaParser:
             self.raise_syntax_error(self.token.pos, "DotClassExpected")
         return expression
 
-    def member_reference_suffix(self, expression: ast.ExpressionTree, pos: Optional[int] = None) -> ast.ExpressionTree:
+    def member_reference_suffix(self, expression: ast.Expression, pos: Optional[int] = None) -> ast.Expression:
         """方法引用表达式的后缀
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2476,7 +2476,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("::name")).member_reference_suffix(ast.ExpressionTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM("::name")).member_reference_suffix(ast.Expression.mock()).kind.name
         'MEMBER_REFERENCE'
         """
         if pos is None:
@@ -2484,7 +2484,7 @@ class JavaParser:
             self.accept(TokenKind.COL_COL)
 
         self.select_expr_mode()
-        type_arguments: Optional[List[ast.ExpressionTree]] = None
+        type_arguments: Optional[List[ast.Expression]] = None
         if self.token.kind == TokenKind.LT:
             type_arguments = self.type_argument_list(False)
         if self.token.kind == TokenKind.NEW:
@@ -2494,7 +2494,7 @@ class JavaParser:
         else:
             ref_mode = ReferenceMode.INVOKE
             ref_name = self.ident()
-        return ast.MemberReferenceTree.create(
+        return ast.MemberReference.create(
             mode=ref_mode,
             name=ref_name,
             qualifier_expression=expression,
@@ -2502,7 +2502,7 @@ class JavaParser:
             **self._info_exclude(pos)
         )
 
-    def creator(self, new_pos: int, type_args: Optional[List[ast.ExpressionTree]]) -> ast.ExpressionTree:
+    def creator(self, new_pos: int, type_args: Optional[List[ast.Expression]]) -> ast.Expression:
         """调用的构造方法
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2521,12 +2521,12 @@ class JavaParser:
         >>> res = JavaParser(LexicalFSM("ClassName (name1, name2) {}")).creator(0, [])
         >>> res.kind.name
         'NEW_CLASS'
-        >>> len(res.arguments) if isinstance(res, ast.NewClassTree) else None
+        >>> len(res.arguments) if isinstance(res, ast.NewClass) else None
         2
         >>> res = JavaParser(LexicalFSM("wrap1.wrap2.ClassName (name1, name2) {}")).creator(0, [])
         >>> res.kind.name
         'NEW_CLASS'
-        >>> len(res.arguments) if isinstance(res, ast.NewClassTree) else None
+        >>> len(res.arguments) if isinstance(res, ast.NewClass) else None
         2
         """
         new_annotations = self.type_annotations_opt()
@@ -2538,7 +2538,7 @@ class JavaParser:
             if len(new_annotations) == 0:
                 return self.array_creator_rest(new_pos, self.basic_type())
             else:
-                annotated_type = ast.AnnotatedTypeTree.create(
+                annotated_type = ast.AnnotatedType.create(
                     annotations=new_annotations,
                     underlying_type=self.basic_type(),
                     **self._info_exclude(new_annotations[0].start_pos)
@@ -2564,12 +2564,12 @@ class JavaParser:
             pos = self.token.pos
             self.next_token()
             type_annotations = self.type_annotations_opt()
-            expression = ast.IdentifierTree.create(
+            expression = ast.Identifier.create(
                 name=self.ident(),
                 **self._info_exclude(pos)
             )
             if type_annotations is not None and len(type_annotations) > 0:
-                expression = ast.AnnotatedTypeTree.create(
+                expression = ast.AnnotatedType.create(
                     annotations=type_annotations,
                     underlying_type=expression,
                     **self._info_exclude(pos)
@@ -2582,7 +2582,7 @@ class JavaParser:
         if self.token.kind in {TokenKind.LBRACKET, TokenKind.MONKEYS_AT}:
             if new_annotations:
                 # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
-                expression = ast.AnnotatedTypeTree.create(
+                expression = ast.AnnotatedType.create(
                     annotations=new_annotations,
                     underlying_type=expression,
                     **self._info_include(None)
@@ -2597,7 +2597,7 @@ class JavaParser:
         elif self.token.kind == TokenKind.LPAREN:
             if new_annotations:
                 # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
-                expression = ast.AnnotatedTypeTree.create(
+                expression = ast.AnnotatedType.create(
                     annotations=new_annotations,
                     underlying_type=expression,
                     **self._info_include(None)
@@ -2607,21 +2607,21 @@ class JavaParser:
             self.raise_syntax_error(new_pos, f"expect LPAREN or LBRACKET, but get {self.token.kind.name}")
 
     def inner_creator(self, new_pos: int,
-                      type_args: List[ast.ExpressionTree],
-                      encl: ast.ExpressionTree) -> ast.ExpressionTree:
+                      type_args: List[ast.Expression],
+                      encl: ast.Expression) -> ast.Expression:
         """TODO 名称待整理
 
         [JDK Code] JavacParser.innerCreator(int, List<JCExpression>, JCExpression)
         InnerCreator = [Annotations] Ident [TypeArguments] ClassCreatorRest
         """
         new_annotations = self.type_annotations_opt()
-        expression = ast.IdentifierTree.create(
+        expression = ast.Identifier.create(
             name=self.ident(),
             **self._info_exclude(self.token.pos)
         )
 
         if new_annotations:
-            expression = ast.AnnotatedTypeTree.create(
+            expression = ast.AnnotatedType.create(
                 annotations=new_annotations,
                 underlying_type=expression,
                 **self._info_exclude(new_annotations[0].start_pos)
@@ -2634,7 +2634,7 @@ class JavaParser:
 
         return self.class_creator_rest(new_pos, encl, type_args, expression)
 
-    def array_creator_rest(self, new_pos: int, elem_type: ast.ExpressionTree) -> ast.ExpressionTree:
+    def array_creator_rest(self, new_pos: int, elem_type: ast.Expression) -> ast.Expression:
         """数组的构造方法的剩余部分
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2650,12 +2650,12 @@ class JavaParser:
 
         Examples
         --------
-        >>> res = JavaParser(LexicalFSM("[]{}")).array_creator_rest(0, ast.ExpressionTree.mock())
+        >>> res = JavaParser(LexicalFSM("[]{}")).array_creator_rest(0, ast.Expression.mock())
         >>> res.kind.name
         'NEW_ARRAY'
         >>> len(getattr(res, "initializers"))
         0
-        >>> res = JavaParser(LexicalFSM("[]{1, 2, 3}")).array_creator_rest(0, ast.ExpressionTree.mock())
+        >>> res = JavaParser(LexicalFSM("[]{1, 2, 3}")).array_creator_rest(0, ast.Expression.mock())
         >>> res.kind.name
         'NEW_ARRAY'
         >>> len(getattr(res, "initializers"))
@@ -2671,14 +2671,14 @@ class JavaParser:
             array = self.array_initializer(new_pos, elem_type)
             if len(annotations) > 0:
                 # 如果将注解没有写在 [ ] 之中，则需要修正它
-                assert isinstance(elem_type, ast.AnnotatedTypeTree)
+                assert isinstance(elem_type, ast.AnnotatedType)
                 assert elem_type.annotations == annotations
                 array.annotations = elem_type.annotations
                 array.array_type = elem_type.underlying_type
             return array
         else:
-            dims: List[ast.ExpressionTree] = []
-            dim_annotations: List[List[ast.AnnotationTree]] = [annotations]
+            dims: List[ast.Expression] = []
+            dim_annotations: List[List[ast.Annotation]] = [annotations]
             dims.append(self.parse_expression())
             self.accept(TokenKind.RBRACKET)
             while self.token.kind in {TokenKind.LBRACKET, TokenKind.MONKEYS_AT}:
@@ -2693,14 +2693,14 @@ class JavaParser:
                     self.accept(TokenKind.RBRACKET)
 
             err_pos = self.token.pos
-            initializers: Optional[List[ast.ExpressionTree]] = None
+            initializers: Optional[List[ast.Expression]] = None
             if self.token.kind == TokenKind.LBRACE:
                 initializers = self.array_initializer_elements()
 
             if initializers is not None:
                 self.raise_syntax_error(err_pos, "IllegalArrayCreationBothDimensionAndInitialization")
 
-            new_array = ast.NewArrayTree.create(
+            new_array = ast.NewArray.create(
                 array_type=elem_type,
                 dimensions=dims,
                 initializers=initializers,
@@ -2711,9 +2711,9 @@ class JavaParser:
 
     def class_creator_rest(self,
                            new_pos: int,
-                           enclosing: Optional[ast.ExpressionTree],
-                           type_arguments: List[ast.ExpressionTree],
-                           expression: ast.ExpressionTree) -> ast.NewClassTree:
+                           enclosing: Optional[ast.Expression],
+                           type_arguments: List[ast.Expression],
+                           expression: ast.Expression) -> ast.NewClass:
         """类构造方法的剩余部分
 
         [JDK Code] JavacParser.classCreatorRest
@@ -2721,7 +2721,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> res = JavaParser(LexicalFSM("(name1, name2) {}")).class_creator_rest(0, None, [], ast.ExpressionTree.mock())
+        >>> res = JavaParser(LexicalFSM("(name1, name2) {}")).class_creator_rest(0, None, [], ast.Expression.mock())
         >>> res.kind.name
         'NEW_CLASS'
         >>> res.identifier.kind.name
@@ -2730,17 +2730,17 @@ class JavaParser:
         2
         """
         arguments = self.argument_list()
-        class_body: Optional[ast.NewClassTree] = None
+        class_body: Optional[ast.NewClass] = None
         if self.token.kind == TokenKind.LBRACE:
             pos = self.token.pos
             members: List[ast.Tree] = self.class_interface_or_record_body(None, False, False)
-            modifiers = ast.ModifiersTree.create_empty()
-            class_body = ast.ClassTree.create_anonymous_class(
+            modifiers = ast.Modifiers.create_empty()
+            class_body = ast.Class.create_anonymous_class(
                 modifiers=modifiers,
                 members=members,
                 **self._info_exclude(pos)
             )
-        return ast.NewClassTree.create(
+        return ast.NewClass.create(
             enclosing=enclosing,
             type_arguments=type_arguments,
             identifier=expression,
@@ -2749,7 +2749,7 @@ class JavaParser:
             **self._info_exclude(new_pos)
         )
 
-    def array_initializer(self, new_pos: int, expression: Optional[ast.ExpressionTree]) -> ast.NewArrayTree:
+    def array_initializer(self, new_pos: int, expression: Optional[ast.Expression]) -> ast.NewArray:
         """数组初始化
 
         [JDK Code] JavacParser.arrayInitializer
@@ -2781,7 +2781,7 @@ class JavaParser:
         'NEW_ARRAY'
         """
         initializers = self.array_initializer_elements()
-        return ast.NewArrayTree.create(
+        return ast.NewArray.create(
             array_type=expression,
             dimensions=[],
             initializers=initializers,
@@ -2789,7 +2789,7 @@ class JavaParser:
             **self._info_exclude(new_pos)
         )
 
-    def array_initializer_elements(self) -> List[ast.ExpressionTree]:
+    def array_initializer_elements(self) -> List[ast.Expression]:
         """数组初始化时，包含大括号的值列表
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2815,7 +2815,7 @@ class JavaParser:
         self.accept(TokenKind.RBRACE)
         return initializers
 
-    def variable_initializer(self) -> ast.ExpressionTree:
+    def variable_initializer(self) -> ast.Expression:
         """初始化变量值
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2835,7 +2835,7 @@ class JavaParser:
             return self.array_initializer(self.token.pos, None)
         return self.parse_expression()
 
-    def par_expression(self) -> ast.ParenthesizedTree:
+    def par_expression(self) -> ast.Parenthesized:
         """括号框柱的表达式
 
         [JDK Code] JavacParser.parExpression()
@@ -2850,12 +2850,12 @@ class JavaParser:
         self.accept(TokenKind.LPAREN)
         expression = self.parse_expression()
         self.accept(TokenKind.RPAREN)
-        return ast.ParenthesizedTree.create(
+        return ast.Parenthesized.create(
             expression=expression,
             **self._info_exclude(pos)
         )
 
-    def block(self, pos: Optional[int] = None, is_static: bool = False) -> ast.BlockTree:
+    def block(self, pos: Optional[int] = None, is_static: bool = False) -> ast.Block:
         """解析代码块
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2880,7 +2880,7 @@ class JavaParser:
         self.accept(TokenKind.LBRACE)
         # TODO 待补充注释处理逻辑
         statements = self.block_statements()
-        expression = ast.BlockTree.create(
+        expression = ast.Block.create(
             is_static=is_static,
             statements=statements,
             **self._info_exclude(pos)
@@ -2891,7 +2891,7 @@ class JavaParser:
         self.accept(TokenKind.RBRACE)
         return expression
 
-    def block_statements(self) -> List[ast.StatementTree]:
+    def block_statements(self) -> List[ast.Statement]:
         """代码块中的多个表达式
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -2917,7 +2917,7 @@ class JavaParser:
         >>> res[1].kind.name
         'YIELD'
         """
-        statements: List[ast.StatementTree] = []
+        statements: List[ast.Statement] = []
         while True:
             statement = self.block_statement()
             # TODO 待增加注释处理逻辑
@@ -2927,7 +2927,7 @@ class JavaParser:
                 # TODO 待增加异常恢复机制
                 statements.extend(statement)
 
-    def parse_statement_as_block(self) -> ast.StatementTree:
+    def parse_statement_as_block(self) -> ast.Statement:
         """解析语句
 
         [JDK Code] JavacParser.parseStatementAsBlock()
@@ -2944,7 +2944,7 @@ class JavaParser:
             self.raise_syntax_error(pos, "VariableNotAllowed")
         return first
 
-    def block_statement(self) -> List[ast.StatementTree]:
+    def block_statement(self) -> List[ast.Statement]:
         """代码块中的一个表达式
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3104,7 +3104,7 @@ class JavaParser:
                     self.next_token()
                     expression = self.term(Mode.EXPR)
                     self.accept(TokenKind.SEMI)
-                    return [ast.YieldTree.create(
+                    return [ast.Yield.create(
                         value=expression,
                         **self._info_exclude(pos)
                     )]
@@ -3117,7 +3117,7 @@ class JavaParser:
                     self.raise_syntax_error(self.token.pos, "SealedOrNonSealedLocalClassesNotAllowed")
 
         if self.is_record_start() and self.allow_records:
-            return [self.record_declaration(modifiers=ast.ModifiersTree.create_empty())]
+            return [self.record_declaration(modifiers=ast.Modifiers.create_empty())]
 
         prev_token = self.token
         expression = self.term(Mode.EXPR | Mode.TYPE)
@@ -3125,14 +3125,14 @@ class JavaParser:
         if self.token.kind == TokenKind.COLON and expression.kind == TreeKind.IDENTIFIER:
             self.next_token()
             statement = self.parse_statement_as_block()
-            return [ast.LabeledStatementTree.create(
+            return [ast.LabeledStatement.create(
                 label=prev_token.name,
                 statement=statement,
                 **self._info_exclude(pos)
             )]
 
         if self.was_type_mode() and self.token.kind in LAX_IDENTIFIER:
-            modifiers = ast.ModifiersTree.create_empty()
+            modifiers = ast.Modifiers.create_empty()
             return self.local_variable_declarations(
                 modifiers=modifiers,
                 variable_type=expression
@@ -3144,15 +3144,15 @@ class JavaParser:
         # ExpressionStatement:
         #   StatementExpression ;
         self.accept(TokenKind.SEMI)
-        return [ast.ExpressionStatementTree.create(
+        return [ast.ExpressionStatement.create(
             expression=expression,
             **self._info_exclude(pos)
         )]
 
     def local_variable_declarations(self,
-                                    modifiers: ast.ModifiersTree,
-                                    variable_type: ast.ExpressionTree
-                                    ) -> List[ast.StatementTree]:
+                                    modifiers: ast.Modifiers,
+                                    variable_type: ast.Expression
+                                    ) -> List[ast.Statement]:
         """解析声明的本地变量
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3167,10 +3167,10 @@ class JavaParser:
         --------
         >>> demo1 = "i = 0, j = 2;"
         >>> len(JavaParser(LexicalFSM(demo1)).local_variable_declarations(
-        ...     ast.ModifiersTree.mock(), ast.ExpressionTree.mock()))
+        ...     ast.Modifiers.mock(), ast.Expression.mock()))
         2
         """
-        statements: List[ast.StatementTree] = self.variable_declarators(
+        statements: List[ast.Statement] = self.variable_declarators(
             modifiers=modifiers,
             variable_type=variable_type,
             v_defs=[],
@@ -3180,7 +3180,7 @@ class JavaParser:
         # TODO 待补充代码位置处理逻辑
         return statements
 
-    def parse_simple_statement(self) -> ast.StatementTree:
+    def parse_simple_statement(self) -> ast.Statement:
         """解析单个语句
 
         [JDK Code] JavacParser.parseSimpleStatement()
@@ -3225,15 +3225,15 @@ class JavaParser:
         >>> res = JavaParser(LexicalFSM(demo)).parse_simple_statement()
         >>> res.kind.name
         'TRY'
-        >>> res.block.kind.name if isinstance(res, ast.TryTree) else None
+        >>> res.block.kind.name if isinstance(res, ast.Try) else None
         'BLOCK'
-        >>> res.catches[0].kind.name if isinstance(res, ast.TryTree) else None
+        >>> res.catches[0].kind.name if isinstance(res, ast.Try) else None
         'CATCH'
-        >>> res.catches[0].parameter.variable_type.kind.name if isinstance(res, ast.TryTree) else None
+        >>> res.catches[0].parameter.variable_type.kind.name if isinstance(res, ast.Try) else None
         'UNION_TYPE'
-        >>> res.finally_block.kind.name if isinstance(res, ast.TryTree) else None
+        >>> res.finally_block.kind.name if isinstance(res, ast.Try) else None
         'BLOCK'
-        >>> len(res.resources) if isinstance(res, ast.TryTree) else None
+        >>> len(res.resources) if isinstance(res, ast.Try) else None
         1
         >>> JavaParser(LexicalFSM("synchronized ( 1 + 1 ) {}")).parse_simple_statement().kind.name
         'SYNCHRONIZED'
@@ -3268,12 +3268,12 @@ class JavaParser:
             condition = self.parse_expression()
             then_statement = self.parse_statement()
 
-            else_statement: Optional[ast.StatementTree] = None
+            else_statement: Optional[ast.Statement] = None
             if self.token.kind == TokenKind.ELSE:
                 self.next_token()  # 跳过 ELSE
                 else_statement = self.parse_statement_as_block()
 
-            return ast.IfTree.create(
+            return ast.If.create(
                 condition=condition,
                 then_statement=then_statement,
                 else_statement=else_statement,
@@ -3297,13 +3297,13 @@ class JavaParser:
             variable = initializer[0] if len(initializer) >= 1 else None
             if (len(initializer) == 1
                     and self.token.kind == TokenKind.COLON
-                    and isinstance(variable, ast.VariableTree)
+                    and isinstance(variable, ast.Variable)
                     and variable.initializer is None):
                 self.accept(TokenKind.COLON)
                 expression = self.parse_expression()
                 self.accept(TokenKind.RPAREN)
                 statement = self.parse_statement_as_block()
-                return ast.EnhancedForLoopTree.create(
+                return ast.EnhancedForLoop.create(
                     variable=variable,
                     expression=expression,
                     statement=statement,
@@ -3331,7 +3331,7 @@ class JavaParser:
                 update = [] if self.token.kind == TokenKind.RPAREN else self.for_update()
                 self.accept(TokenKind.RPAREN)
                 statement = self.parse_statement_as_block()
-                return ast.ForLoopTree.create(
+                return ast.ForLoop.create(
                     initializer=initializer,
                     condition=condition,
                     update=update,
@@ -3349,7 +3349,7 @@ class JavaParser:
             self.next_token()
             condition = self.par_expression()
             statement = self.parse_statement_as_block()
-            return ast.WhileLoopTree.create(
+            return ast.WhileLoop.create(
                 condition=condition,
                 statement=statement,
                 **self._info_exclude(pos)
@@ -3364,7 +3364,7 @@ class JavaParser:
             self.accept(TokenKind.WHILE)
             condition = self.par_expression()
             self.accept(TokenKind.SEMI)
-            return ast.DoWhileLoopTree.create(
+            return ast.DoWhileLoop.create(
                 condition=condition,
                 statement=statement,
                 **self._info_exclude(pos)
@@ -3400,8 +3400,8 @@ class JavaParser:
 
             block = self.block()
 
-            catches: List[ast.CatchTree] = []
-            finally_block: Optional[ast.BlockTree] = None
+            catches: List[ast.Catch] = []
+            finally_block: Optional[ast.Block] = None
             if self.token.kind in {TokenKind.CATCH, TokenKind.FINALLY}:
                 while self.token.kind == TokenKind.CATCH:
                     catches.append(self.catch_clause())
@@ -3411,7 +3411,7 @@ class JavaParser:
             elif not resources:
                 self.raise_syntax_error(self.token.pos, "TryWithoutCatchFinallyOrResourceDecls")
 
-            return ast.TryTree.create(
+            return ast.Try.create(
                 block=block,
                 catches=catches,
                 finally_block=finally_block,
@@ -3427,7 +3427,7 @@ class JavaParser:
             selector = self.par_expression()
             self.accept(TokenKind.LBRACE)
             cases = self.switch_block_statement_groups()
-            expression = ast.SwitchTree.create(
+            expression = ast.Switch.create(
                 expression=selector,
                 cases=cases,
                 **self._info_exclude(pos)
@@ -3444,7 +3444,7 @@ class JavaParser:
             self.next_token()
             expression = self.par_expression()
             block = self.block()
-            return ast.SynchronizedTree.create(
+            return ast.Synchronized.create(
                 expression=expression,
                 block=block,
                 **self._info_exclude(pos)
@@ -3460,7 +3460,7 @@ class JavaParser:
             else:
                 expression = None
             self.accept(TokenKind.SEMI)
-            return ast.ReturnTree.create(
+            return ast.Return.create(
                 expression=expression,
                 **self._info_exclude(pos)
             )
@@ -3472,7 +3472,7 @@ class JavaParser:
             self.next_token()
             expression = self.parse_expression()
             self.accept(TokenKind.SEMI)
-            return ast.ThrowTree.create(
+            return ast.Throw.create(
                 expression=expression,
                 **self._info_exclude(pos)
             )
@@ -3487,7 +3487,7 @@ class JavaParser:
             else:
                 label = None
             self.accept(TokenKind.SEMI)
-            return ast.BreakTree.create(
+            return ast.Break.create(
                 label=label,
                 **self._info_exclude(pos)
             )
@@ -3502,7 +3502,7 @@ class JavaParser:
             else:
                 label = None
             self.accept(TokenKind.SEMI)
-            return ast.ContinueTree.create(
+            return ast.Continue.create(
                 label=label,
                 **self._info_exclude(pos)
             )
@@ -3512,7 +3512,7 @@ class JavaParser:
         #   ;
         if self.token.kind == TokenKind.SEMI:
             self.next_token()
-            return ast.EmptyStatementTree.create(**self._info_exclude(pos))
+            return ast.EmptyStatement.create(**self._info_exclude(pos))
 
         if self.token.kind == TokenKind.ELSE:
             self.raise_syntax_error(self.token.pos, "ElseWithoutIf")
@@ -3536,7 +3536,7 @@ class JavaParser:
             else:
                 message = None
             self.accept(TokenKind.SEMI)
-            return ast.AssertTree.create(
+            return ast.Assert.create(
                 assertion=assertion,
                 message=message,
                 **self._info_exclude(pos)
@@ -3544,7 +3544,7 @@ class JavaParser:
 
         raise AssertionError("should not reach here")
 
-    def catch_clause(self) -> ast.CatchTree:
+    def catch_clause(self) -> ast.Catch:
         """解析 catch 子句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3573,7 +3573,7 @@ class JavaParser:
         modifiers = self.opt_final([Modifier.PARAMETER])
         catch_types = self.catch_types()
         if len(catch_types) > 1:
-            param_type = ast.UnionTypeTree.create(
+            param_type = ast.UnionType.create(
                 type_alternatives=catch_types,
                 **self._info_exclude(catch_types[0].start_pos)
             )
@@ -3582,13 +3582,13 @@ class JavaParser:
         parameter = self.variable_declarator_id(modifiers, param_type, True, False)
         self.accept(TokenKind.RPAREN)
         block = self.block()
-        return ast.CatchTree.create(
+        return ast.Catch.create(
             parameter=parameter,
             block=block,
             **self._info_exclude(pos)
         )
 
-    def catch_types(self) -> List[ast.ExpressionTree]:
+    def catch_types(self) -> List[ast.Expression]:
         """解析 catch 子句中的异常类型
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3604,7 +3604,7 @@ class JavaParser:
             # TODO 考虑 JDK 源码注释中的问题
         return catch_types
 
-    def switch_block_statement_groups(self) -> List[ast.CaseTree]:
+    def switch_block_statement_groups(self) -> List[ast.Case]:
         """解析 switch 语句中的多个 case 语句子句
 
         [JDK Code] JavacParser.switchBlockStatementGroups()
@@ -3614,7 +3614,7 @@ class JavaParser:
 
         TODO 待补充单元测试（block_statement 完成后）
         """
-        cases: List[ast.CaseTree] = []
+        cases: List[ast.Case] = []
         while True:
             pos = self.token.pos
             if self.token.kind in {TokenKind.CASE, TokenKind.DEFAULT}:
@@ -3624,7 +3624,7 @@ class JavaParser:
             else:
                 self.raise_syntax_error(pos, f"Expect CASE, DEFAULT, RBRACE, but get {self.token.kind.name}")
 
-    def switch_block_statement_group(self) -> List[ast.CaseTree]:
+    def switch_block_statement_group(self) -> List[ast.Case]:
         """解析 switch 语句中的单个 case 语句子句
 
         [JDK Code] JavacParser.switchBlockStatementGroup()
@@ -3632,10 +3632,10 @@ class JavaParser:
         TODO 待补充单元测试（block_statement 完成后）
         """
         pos = self.token.pos
-        statements: List[ast.StatementTree]
+        statements: List[ast.Statement]
         if self.token.kind == TokenKind.CASE:
             self.next_token()
-            labels: List[ast.CaseLabelTree] = []
+            labels: List[ast.CaseLabel] = []
             allow_default = False
             while True:
                 label = self.parse_case_label(allow_default)
@@ -3645,7 +3645,7 @@ class JavaParser:
                 self.next_token()
                 # TODO 待确定 isNone 的逻辑是否正确
                 allow_default = (label.kind == TreeKind.CONSTANT_CASE_LABEL
-                                 and isinstance(label, ast.ConstantCaseLabelTree)
+                                 and isinstance(label, ast.ConstantCaseLabel)
                                  and label.expression.kind == TreeKind.NULL_LITERAL)
 
             guard = self.parse_guard(labels[-1])
@@ -3653,7 +3653,7 @@ class JavaParser:
                 self.accept(TokenKind.ARROW)
                 statements = [self.parse_statement_as_block()]
                 # TODO 补充检查逻辑
-                case_expression = ast.CaseTree.create_rule(
+                case_expression = ast.Case.create_rule(
                     labels=labels,
                     guard=guard,
                     statements=statements,
@@ -3663,7 +3663,7 @@ class JavaParser:
             else:
                 self.accept(TokenKind.COLON)
                 statements = self.block_statements()
-                case_expression = ast.CaseTree.create_statement(
+                case_expression = ast.Case.create_statement(
                     labels=labels,
                     guard=guard,
                     statements=statements,
@@ -3675,13 +3675,13 @@ class JavaParser:
 
         if self.token.kind == TokenKind.DEFAULT:
             self.next_token()
-            default_pattern = ast.DefaultCaseLabelTree.create(**self._info_exclude(pos))
+            default_pattern = ast.DefaultCaseLabel.create(**self._info_exclude(pos))
             guard = self.parse_guard(default_pattern)
             if self.token.kind == TokenKind.ARROW:
                 self.accept(TokenKind.ARROW)
                 statements = [self.parse_statement_as_block()]
                 # TODO 补充检查逻辑
-                case_expression = ast.CaseTree.create_rule(
+                case_expression = ast.Case.create_rule(
                     labels=[default_pattern],
                     guard=guard,
                     statements=statements,
@@ -3691,7 +3691,7 @@ class JavaParser:
             else:
                 self.accept(TokenKind.COLON)
                 statements = self.block_statements()
-                case_expression = ast.CaseTree.create_statement(
+                case_expression = ast.Case.create_statement(
                     labels=[default_pattern],
                     guard=guard,
                     statements=statements,
@@ -3703,14 +3703,14 @@ class JavaParser:
 
         raise AssertionError("should not reach here")
 
-    def parse_statement(self) -> ast.StatementTree:
+    def parse_statement(self) -> ast.Statement:
         """解析语句
 
         [JDK Code] JavacParser.parseStatement()
         """
         return self.parse_statement_as_block()
 
-    def parse_case_label(self, allow_default: bool) -> ast.CaseLabelTree:
+    def parse_case_label(self, allow_default: bool) -> ast.CaseLabel:
         """switch 语句中的 case 子句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3744,7 +3744,7 @@ class JavaParser:
             if not allow_default:
                 self.raise_syntax_error(pattern_pos, "DefaultLabelNotAllowed")
             self.next_token()
-            return ast.DefaultCaseLabelTree.create(**self._info_exclude(pattern_pos))
+            return ast.DefaultCaseLabel.create(**self._info_exclude(pattern_pos))
 
         modifiers = self.opt_final([])
 
@@ -3752,7 +3752,7 @@ class JavaParser:
         if (modifiers.flags or modifiers.annotations
                 or self.analyze_pattern(lookahead=0) == grammar_enum.PatternResult.PATTERN):
             pattern = self.parse_pattern(pattern_pos, modifiers, None, False, True)
-            return ast.PatternCaseLabelTree.create(
+            return ast.PatternCaseLabel.create(
                 pattern=pattern,
                 **self._info_exclude(pattern_pos)
             )
@@ -3760,12 +3760,12 @@ class JavaParser:
         # case CaseConstant {, CaseConstant}
         else:
             expression = self.term(new_mode=Mode.EXPR | Mode.NO_LAMBDA)
-            return ast.ConstantCaseLabelTree.create(
+            return ast.ConstantCaseLabel.create(
                 expression=expression,
                 **self._info_exclude(pattern_pos)
             )
 
-    def parse_guard(self, label: ast.CaseLabelTree) -> Optional[ast.ExpressionTree]:
+    def parse_guard(self, label: ast.CaseLabel) -> Optional[ast.Expression]:
         """解析 when Expression 的逻辑
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3776,7 +3776,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("when expr")).parse_guard(ast.PatternCaseLabelTree.mock()) is not None
+        >>> JavaParser(LexicalFSM("when expr")).parse_guard(ast.PatternCaseLabel.mock()) is not None
         True
         """
         if not (self.token.kind == TokenKind.IDENTIFIER and self.token.name == "when"):
@@ -3891,9 +3891,9 @@ class JavaParser:
 
     def more_statement_expressions(self,
                                    pos: int,
-                                   first: ast.ExpressionTree,
-                                   statements: List[ast.ExpressionStatementTree]
-                                   ) -> List[ast.ExpressionStatementTree]:
+                                   first: ast.Expression,
+                                   statements: List[ast.ExpressionStatement]
+                                   ) -> List[ast.ExpressionStatement]:
         """解析更多的语句表达式
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3903,7 +3903,7 @@ class JavaParser:
         [JDK Code] JavacParser.moreStatementExpressions(int, JCExpression, T)
         """
         # TODO 待增加表达式类型检查逻辑
-        statements.append(ast.ExpressionStatementTree.create(
+        statements.append(ast.ExpressionStatement.create(
             expression=first,
             **self._info_exclude(pos)
         ))
@@ -3911,13 +3911,13 @@ class JavaParser:
             self.next_token()
             pos = self.token.pos
             expression = self.parse_expression()
-            statements.append(ast.ExpressionStatementTree.create(
+            statements.append(ast.ExpressionStatement.create(
                 expression=expression,
                 **self._info_exclude(pos)
             ))
         return statements
 
-    def for_init(self) -> List[ast.StatementTree]:
+    def for_init(self) -> List[ast.Statement]:
         """解析 for 语句的 ( ) 中的第 1 个 ; 之前的语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3962,7 +3962,7 @@ class JavaParser:
 
         return self.more_statement_expressions(pos, expression, [])
 
-    def for_update(self) -> List[ast.ExpressionStatementTree]:
+    def for_update(self) -> List[ast.ExpressionStatement]:
         """解析 for 语句的 ( ) 中第 2 个 ; 之后的语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -3983,7 +3983,7 @@ class JavaParser:
         first = self.parse_expression()
         return self.more_statement_expressions(pos, first, [])
 
-    def annotations_opt(self, kind: TreeKind) -> List[ast.AnnotationTree]:
+    def annotations_opt(self, kind: TreeKind) -> List[ast.Annotation]:
         """可选的多个注解
 
         [JDK Code] JavacParser.annotationsOpt(Tag)
@@ -4004,7 +4004,7 @@ class JavaParser:
         """
         if self.token.kind != TokenKind.MONKEYS_AT:
             return []
-        annotations: List[ast.AnnotationTree] = []
+        annotations: List[ast.Annotation] = []
         prev_mode = self.mode
         while self.token.kind == TokenKind.MONKEYS_AT:
             pos = self.token.pos
@@ -4014,14 +4014,14 @@ class JavaParser:
         self.set_mode(prev_mode)
         return annotations
 
-    def type_annotations_opt(self) -> List[ast.AnnotationTree]:
+    def type_annotations_opt(self) -> List[ast.Annotation]:
         """可选的多个类型注解
 
         [JDK Code] JavacParser.typeAnnotationsOpt()
         """
         return self.annotations_opt(TreeKind.TYPE_ANNOTATION)
 
-    def modifiers_opt(self, partial: Optional[ast.ModifiersTree] = None) -> ast.ModifiersTree:
+    def modifiers_opt(self, partial: Optional[ast.Modifiers] = None) -> ast.Modifiers:
         """修饰词
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4139,13 +4139,13 @@ class JavaParser:
         if len([flag for flag in flags if not flag.is_virtual()]) == 0 and len(annotations) == 0:
             pos = None
 
-        return ast.ModifiersTree.create(
+        return ast.Modifiers.create(
             flags=flags,
             annotations=annotations,
             **self._info_exclude(pos)
         )
 
-    def annotation(self, pos: int, kind: TreeKind) -> ast.AnnotationTree:
+    def annotation(self, pos: int, kind: TreeKind) -> ast.Annotation:
         """单个注解
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4167,22 +4167,22 @@ class JavaParser:
         Annotation              = "@" Qualident [ "(" AnnotationFieldValues ")" ]
         """
         ident: ast.Tree = self.qualident(allow_annotations=False)
-        arguments: List[ast.ExpressionTree] = self.annotation_field_values_opt()
+        arguments: List[ast.Expression] = self.annotation_field_values_opt()
         if kind == TreeKind.ANNOTATION:
-            return ast.AnnotationTree.create_annotation(
+            return ast.Annotation.create_annotation(
                 annotation_type=ident,
                 arguments=arguments,
                 **self._info_exclude(pos)
             )
         if kind == TreeKind.TYPE_ANNOTATION:
-            return ast.AnnotationTree.create_type_annotation(
+            return ast.Annotation.create_type_annotation(
                 annotation_type=ident,
                 arguments=arguments,
                 **self._info_exclude(pos)
             )
         self.raise_syntax_error(pos, f"Unhandled annotation kind: {kind.name}")
 
-    def annotation_field_values_opt(self) -> List[ast.ExpressionTree]:
+    def annotation_field_values_opt(self) -> List[ast.Expression]:
         """可选的注解参数
 
         [Java Code] JavacParser.annotationFieldValuesOpt()
@@ -4192,7 +4192,7 @@ class JavaParser:
         else:
             return []
 
-    def annotation_field_values(self) -> List[ast.ExpressionTree]:
+    def annotation_field_values(self) -> List[ast.Expression]:
         """注解参数
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4212,7 +4212,7 @@ class JavaParser:
         self.accept(TokenKind.RPAREN)
         return buf
 
-    def annotation_field_value(self) -> ast.ExpressionTree:
+    def annotation_field_value(self) -> ast.Expression:
         """注解参数中的一个参数
 
         [JavaCode] JavacParser.annotationFieldValue()
@@ -4226,7 +4226,7 @@ class JavaParser:
                 pos = self.token.pos
                 self.accept(TokenKind.EQ)
                 expression = self.annotation_value()
-                return ast.AssignmentTree.create(
+                return ast.Assignment.create(
                     variable=variable,
                     expression=expression,
                     **self._info_exclude(pos)
@@ -4236,7 +4236,7 @@ class JavaParser:
         else:
             return self.annotation_value()
 
-    def annotation_value(self) -> ast.ExpressionTree:
+    def annotation_value(self) -> ast.Expression:
         """注解参数中一个参数的实参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4280,7 +4280,7 @@ class JavaParser:
                         break
                     initializers.append(self.annotation_value())
             self.accept(TokenKind.RBRACE)
-            return ast.NewArrayTree.create(
+            return ast.NewArray.create(
                 array_type=None,
                 dimensions=[],
                 initializers=initializers,
@@ -4293,10 +4293,10 @@ class JavaParser:
         return self.term1()
 
     def variable_declarators(self,
-                             modifiers: Optional[ast.ModifiersTree],
-                             variable_type: ast.ExpressionTree,
-                             v_defs: List[ast.VariableTree],
-                             local_decl: bool) -> List[ast.VariableTree]:
+                             modifiers: Optional[ast.Modifiers],
+                             variable_type: ast.Expression,
+                             v_defs: List[ast.Variable],
+                             local_decl: bool) -> List[ast.Variable]:
         """多个初始化变量
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4316,7 +4316,7 @@ class JavaParser:
         Examples
         --------
         >>> res = JavaParser(LexicalFSM("i = 0, j = 2"), mode=Mode.EXPR).variable_declarators(None,
-        ...                                                                                   ast.ExpressionTree.mock(),
+        ...                                                                                   ast.Expression.mock(),
         ...                                                                                   [], True)
         >>> len(res)
         2
@@ -4334,12 +4334,12 @@ class JavaParser:
 
     def variable_declarators_rest(self,
                                   pos: int,
-                                  modifiers: ast.ModifiersTree,
-                                  variable_type: ast.ExpressionTree,
+                                  modifiers: ast.Modifiers,
+                                  variable_type: ast.Expression,
                                   name: str,
                                   req_init: bool,
-                                  v_defs: List[ast.VariableTree],
-                                  local_decl: bool) -> List[ast.VariableTree]:
+                                  v_defs: List[ast.Variable],
+                                  local_decl: bool) -> List[ast.Variable]:
         """多个初始化变量的剩余部分
 
         [JDK Code] JavacParser.variableDeclaratorsRest(int, JCModifiers, JCExpression, Name, boolean, Comment, T,
@@ -4359,11 +4359,11 @@ class JavaParser:
         return v_defs
 
     def variable_declarator(self,
-                            modifiers: ast.ModifiersTree,
-                            variable_type: ast.ExpressionTree,
+                            modifiers: ast.Modifiers,
+                            variable_type: ast.Expression,
                             req_init: bool,
                             local_decl: bool
-                            ) -> ast.VariableTree:
+                            ) -> ast.Variable:
         """初始化的变量
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4381,13 +4381,13 @@ class JavaParser:
 
     def variable_declarator_rest(self,
                                  pos: int,
-                                 modifiers: ast.ModifiersTree,
-                                 variable_type: ast.ExpressionTree,
+                                 modifiers: ast.Modifiers,
+                                 variable_type: ast.Expression,
                                  name: str,
                                  req_init: bool,
                                  local_dec: bool,
                                  compound: bool
-                                 ) -> ast.VariableTree:
+                                 ) -> ast.Variable:
         """初始化变量的剩余部分
 
         [JDK Code] JavacParser.variableDeclaratorRest(int, JCModifiers, JCExpression, Name, boolean, Comment, boolean,
@@ -4415,7 +4415,7 @@ class JavaParser:
             self.raise_syntax_error(self.token.pos, f"expect EQ, but get {self.token.kind.name}")
 
         elem_type: ast.Tree = ast.info.inner_most_type(variable_type, skip_annotations=True)
-        if isinstance(elem_type, ast.IdentifierTree):
+        if isinstance(elem_type, ast.Identifier):
             type_name = elem_type.name
             if self.restricted_type_name_starting_at_source(type_name):
                 if type_name != "var":
@@ -4428,7 +4428,7 @@ class JavaParser:
                     # TODO 待补充代码位置逻辑
                     variable_type = None
 
-        result = ast.VariableTree.create_by_name(
+        result = ast.Variable.create_by_name(
             modifiers=modifiers,
             name=name,
             variable_type=variable_type,
@@ -4438,7 +4438,7 @@ class JavaParser:
         # TODO 待处理代码位置
         return result
 
-    def restricted_type_name(self, expression: ast.ExpressionTree) -> Optional[str]:
+    def restricted_type_name(self, expression: ast.Expression) -> Optional[str]:
         """限定类型名称
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4448,13 +4448,13 @@ class JavaParser:
         [JDK Code] JavacParser.restrictedTypeName(JCExpression, boolean)
         """
         if expression.kind == TreeKind.IDENTIFIER:
-            assert isinstance(expression, ast.IdentifierTree)
+            assert isinstance(expression, ast.Identifier)
             if expression.name is not None:
                 return self.restricted_type_name_starting_at_source(expression.name)
             else:
                 return None
         if expression.kind == TreeKind.ARRAY_TYPE:
-            assert isinstance(expression, ast.ArrayTypeTree)
+            assert isinstance(expression, ast.ArrayType)
             return self.restricted_type_name(expression.expression)
         return None
 
@@ -4469,8 +4469,8 @@ class JavaParser:
         return None
 
     def variable_declarator_id(self,
-                               modifiers: ast.ModifiersTree,
-                               variable_type: Optional[ast.ExpressionTree],
+                               modifiers: ast.Modifiers,
+                               variable_type: Optional[ast.Expression],
                                catch_parameter: bool,
                                lambda_parameter: bool):
         """解析变量声明语句中的标识符
@@ -4485,13 +4485,13 @@ class JavaParser:
 
         Examples
         --------
-        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).kind
+        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.Modifiers.mock(), None, False, False).kind
         <TreeKind.VARIABLE: 54>
-        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).source
+        >>> JavaParser(LexicalFSM("abc")).variable_declarator_id(ast.Modifiers.mock(), None, False, False).source
         'abc'
-        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(), None, False, False).kind
+        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.Modifiers.mock(), None, False, False).kind
         <TreeKind.VARIABLE: 54>
-        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.ModifiersTree.mock(),
+        >>> JavaParser(LexicalFSM("abc[]")).variable_declarator_id(ast.Modifiers.mock(),
         ...                                                        None, False, False).variable_type.kind
         <TreeKind.ARRAY_TYPE: 5>
         """
@@ -4510,7 +4510,7 @@ class JavaParser:
                                          "器本应假设该 lambda 表达式为显式形式，但它可能包含隐式参数或显式参数的混合")
 
         if self.token.kind == TokenKind.UNDERSCORE and (catch_parameter or lambda_parameter):
-            expression = ast.IdentifierTree.create(
+            expression = ast.Identifier.create(
                 name=self.ident_or_underscore(),
                 **self._info_exclude(pos)
             )
@@ -4519,7 +4519,7 @@ class JavaParser:
 
         if expression.kind == TreeKind.IDENTIFIER and expression.name != "this":
             variable_type = self.brackets_opt(variable_type)
-            return ast.VariableTree.create_by_name(
+            return ast.Variable.create_by_name(
                 modifiers=modifiers,
                 name=expression.name,
                 variable_type=variable_type,
@@ -4529,7 +4529,7 @@ class JavaParser:
         if lambda_parameter and variable_type is None:
             self.raise_syntax_error(pos, "we have a lambda parameter that is not an identifier this is a syntax error")
         else:
-            return ast.VariableTree.create_by_name_expression(
+            return ast.Variable.create_by_name_expression(
                 modifiers=modifiers,
                 name_expression=expression,
                 variable_type=variable_type,
@@ -4596,14 +4596,14 @@ class JavaParser:
         # TODO 待增加异常检查机制
         return expression
 
-    def parse_compilation_unit(self) -> ast.CompilationUnitTree:
+    def parse_compilation_unit(self) -> ast.CompilationUnit:
         """解析普通代码和模块代码抽象语法树的根节点
 
         [JDK Code] JavacParser.parseCompilationUnit
         CompilationUnit = [ { "@" Annotation } PACKAGE Qualident ";"] {ImportDeclaration} {TypeDeclaration}
         """
         first_token = self.token
-        modifiers: Optional[ast.ModifiersTree] = None
+        modifiers: Optional[ast.Modifiers] = None
         consumed_top_level_doc = False
         seen_import = False
         seen_package = False
@@ -4612,14 +4612,14 @@ class JavaParser:
         if self.token.kind == TokenKind.MONKEYS_AT:
             modifiers = self.modifiers_opt()
 
-        package: Optional[ast.PackageTree] = None
-        module: Optional[ast.ModuleTree] = None
-        imports: List[ast.ImportTree] = []
+        package: Optional[ast.Package] = None
+        module: Optional[ast.Module] = None
+        imports: List[ast.Import] = []
         type_declarations: List[ast.Tree] = []
 
         if self.token.kind == TokenKind.PACKAGE:
             package_pos = self.token.pos
-            annotations: List[ast.AnnotationTree] = []
+            annotations: List[ast.Annotation] = []
             seen_package = True
             if modifiers is not None:
                 # TODO 待补充检查逻辑
@@ -4628,7 +4628,7 @@ class JavaParser:
             self.next_token()
             package_name = self.qualident(allow_annotations=False)
             self.accept(TokenKind.SEMI)
-            package = ast.PackageTree.create(
+            package = ast.Package.create(
                 annotations=annotations,
                 package_name=package_name,
                 **self._info_exclude(package_pos)
@@ -4645,7 +4645,7 @@ class JavaParser:
             while first_type_decl and modifiers is None and self.token.kind == TokenKind.SEMI:
                 pos = self.token.pos
                 self.next_token()
-                semi_list.append(ast.EmptyStatementTree.create(**self._info_exclude(pos)))
+                semi_list.append(ast.EmptyStatement.create(**self._info_exclude(pos)))
                 if self.token.kind == TokenKind.EOF:
                     break
 
@@ -4680,7 +4680,7 @@ class JavaParser:
                     self.raise_syntax_error(self.token.pos, "StatementNotExpected")
                 else:
                     type_declaration = self.type_declaration(modifiers)
-                    if isinstance(type_declaration, ast.ExpressionStatementTree):
+                    if isinstance(type_declaration, ast.ExpressionStatement):
                         type_declaration = type_declaration.expression
                     type_declarations.append(type_declaration)
 
@@ -4688,7 +4688,7 @@ class JavaParser:
                 first_type_decl = False
 
         # TODO 待补充隐式类处理逻辑
-        top_level = ast.CompilationUnitTree.create(
+        top_level = ast.CompilationUnit.create(
             module=module,
             package=package,
             imports=imports,
@@ -4698,7 +4698,7 @@ class JavaParser:
         # TODO 待补充注释、代码位置相关逻辑
         return top_level
 
-    def module_decl(self, modifiers: ast.ModifiersTree, module_kind: ModuleKind) -> ast.ModuleTree:
+    def module_decl(self, modifiers: ast.Modifiers, module_kind: ModuleKind) -> ast.Module:
         """解析 module 声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4710,7 +4710,7 @@ class JavaParser:
         Examples
         --------
         >>> demo1 = "module name1.name2 { requires moduleName; }"
-        >>> JavaParser(LexicalFSM(demo1)).module_decl(ast.ModifiersTree.mock(), ModuleKind.STRONG).kind.name
+        >>> JavaParser(LexicalFSM(demo1)).module_decl(ast.Modifiers.mock(), ModuleKind.STRONG).kind.name
         'MODULE'
         """
         pos = self.token.pos
@@ -4720,12 +4720,12 @@ class JavaParser:
         name = self.qualident(allow_annotations=False)
 
         self.accept(TokenKind.LBRACE)
-        directives: List[ast.DirectiveTree] = self.module_directive_list()
+        directives: List[ast.Directive] = self.module_directive_list()
         self.accept(TokenKind.RBRACE)
         self.accept(TokenKind.EOF)
 
         # TODO 待考虑是否需要增加子类
-        result = ast.ModuleTree.create(
+        result = ast.Module.create(
             annotations=modifiers.annotations,
             module_kind=module_kind,
             name=name,
@@ -4735,7 +4735,7 @@ class JavaParser:
         # TODO 待增加注释处理逻辑
         return result
 
-    def module_directive_list(self) -> List[ast.DirectiveTree]:
+    def module_directive_list(self) -> List[ast.Directive]:
         """解析 module 声明语句中的提示子句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4777,7 +4777,7 @@ class JavaParser:
         >>> JavaParser(LexicalFSM("provides typeName with type1, type2;")).module_directive_list()[0].kind.name
         'PROVIDES'
         """
-        defs: List[ast.DirectiveTree] = []
+        defs: List[ast.Directive] = []
         while self.token.kind == TokenKind.IDENTIFIER:
             pos = self.token.pos
             if self.token.name == "requires":
@@ -4805,7 +4805,7 @@ class JavaParser:
 
                 module_name = self.qualident(allow_annotations=False)
                 self.accept(TokenKind.SEMI)
-                defs.append(ast.RequiresTree.create(
+                defs.append(ast.Requires.create(
                     is_static=is_static,
                     is_transitive=is_transitive,
                     module_name=module_name,
@@ -4816,19 +4816,19 @@ class JavaParser:
                 exports = (self.token.name == "exports")
                 self.next_token()
                 package_name = self.qualident(allow_annotations=False)
-                module_names: Optional[List[ast.ExpressionTree]] = None
+                module_names: Optional[List[ast.Expression]] = None
                 if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "to":
                     self.next_token()
                     module_names = self.qualident_list(allow_annotation=False)
                 self.accept(TokenKind.SEMI)
                 if exports:
-                    defs.append(ast.ExportsTree.create(
+                    defs.append(ast.Exports.create(
                         package_name=package_name,
                         module_names=module_names,
                         **self._info_exclude(pos)
                     ))
                 else:
-                    defs.append(ast.OpensTree.create(
+                    defs.append(ast.Opens.create(
                         package_name=package_name,
                         module_names=module_names,
                         **self._info_exclude(pos)
@@ -4837,14 +4837,14 @@ class JavaParser:
             elif self.token.name == "provides":
                 self.next_token()
                 service_name = self.qualident(allow_annotations=False)
-                implementation_names: List[ast.ExpressionTree] = []
+                implementation_names: List[ast.Expression] = []
                 if self.token.kind == TokenKind.IDENTIFIER and self.token.name == "with":
                     self.next_token()
                     implementation_names = self.qualident_list(allow_annotation=False)
                 else:
                     self.raise_syntax_error(self.token.pos, f"expect with, but get {self.token.kind.name}")
                 self.accept(TokenKind.SEMI)
-                defs.append(ast.ProvidesTree.create(
+                defs.append(ast.Provides.create(
                     service_name=service_name,
                     implementation_names=implementation_names,
                     **self._info_exclude(pos)
@@ -4854,7 +4854,7 @@ class JavaParser:
                 self.next_token()
                 service_name = self.qualident(allow_annotations=False)
                 self.accept(TokenKind.SEMI)
-                defs.append(ast.UsesTree.create(
+                defs.append(ast.Uses.create(
                     service_name=service_name,
                     **self._info_exclude(pos)
                 ))
@@ -4864,7 +4864,7 @@ class JavaParser:
 
         return defs
 
-    def import_declaration(self) -> ast.ImportTree:
+    def import_declaration(self) -> ast.Import:
         """解析 import 声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4911,14 +4911,14 @@ class JavaParser:
             self.next_token()
             module_name = self.qualident(allow_annotations=False)
             self.accept(TokenKind.SEMI)
-            return ast.ImportTree.create_module(
+            return ast.Import.create_module(
                 identifier=module_name,
                 **self._info_exclude(pos)
             )
 
         pos_2 = self.token.pos
         name = self.ident()
-        pid = ast.IdentifierTree.create(
+        pid = ast.Identifier.create(
             name=name,
             **self._info_exclude(pos_2)
         )
@@ -4927,9 +4927,9 @@ class JavaParser:
             pos_1 = self.token.pos
             self.accept(TokenKind.DOT)
             if self.token.kind == TokenKind.STAR:
-                pid = ast.MemberSelectTree.create(
+                pid = ast.MemberSelect.create(
                     expression=pid,
-                    identifier=ast.IdentifierTree.create(
+                    identifier=ast.Identifier.create(
                         name="*",
                         **self._info_exclude(pos_1)
                     ),
@@ -4938,9 +4938,9 @@ class JavaParser:
                 self.next_token()
                 break
 
-            pid = ast.MemberSelectTree.create(
+            pid = ast.MemberSelect.create(
                 expression=pid,
-                identifier=ast.IdentifierTree.create(
+                identifier=ast.Identifier.create(
                     name=self.ident(),
                     **self._info_exclude(pos_1)
                 ),
@@ -4951,14 +4951,14 @@ class JavaParser:
                 break
 
         self.accept(TokenKind.SEMI)
-        return ast.ImportTree.create(
+        return ast.Import.create(
             is_static=is_static,
             is_module=False,
             identifier=pid,
             **self._info_exclude(pos)
         )
 
-    def type_declaration(self, modifiers: Optional[ast.ModifiersTree]) -> ast.Tree:
+    def type_declaration(self, modifiers: Optional[ast.Modifiers]) -> ast.Tree:
         """解析顶级 class 或 interface 的声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -4981,14 +4981,14 @@ class JavaParser:
         pos = self.token.pos
         if modifiers is None and self.token.kind == TokenKind.SEMI:
             self.next_token()
-            return ast.EmptyStatementTree.create(**self._info_exclude(pos))
+            return ast.EmptyStatement.create(**self._info_exclude(pos))
         else:
             modifiers = self.modifiers_opt(modifiers)
             return self.class_or_record_or_interface_or_enum_declaration(
                 modifiers=modifiers
             )
 
-    def class_or_record_or_interface_or_enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.StatementTree:
+    def class_or_record_or_interface_or_enum_declaration(self, modifiers: ast.Modifiers) -> ast.Statement:
         """解析 class、record、interface 或 enum 的声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5003,7 +5003,7 @@ class JavaParser:
 
         Examples
         --------
-        >>> mock = ast.ModifiersTree.mock()
+        >>> mock = ast.Modifiers.mock()
         >>> demo1 = "class MyClassName { public MyClassName () {} }"
         >>> JavaParser(LexicalFSM(demo1)).class_or_record_or_interface_or_enum_declaration(mock).kind.name
         'CLASS'
@@ -5024,7 +5024,7 @@ class JavaParser:
             return self.enum_declaration(modifiers)
         return self.raise_syntax_error(self.token.pos, "cannot find class, record, interface or enum")
 
-    def class_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+    def class_declaration(self, modifiers: ast.Modifiers) -> ast.Class:
         """解析 class 声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5047,16 +5047,16 @@ class JavaParser:
         Examples
         --------
         >>> demo = "class MyClassName { public MyClassName () {} }"
-        >>> JavaParser(LexicalFSM(demo)).class_declaration(ast.ModifiersTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM(demo)).class_declaration(ast.Modifiers.mock()).kind.name
         'CLASS'
         """
         pos = self.token.pos
         self.accept(TokenKind.CLASS)
         name = self.type_name()
 
-        type_parameters: List[ast.TypeParameterTree] = self.type_parameters_opt()
+        type_parameters: List[ast.TypeParameter] = self.type_parameters_opt()
 
-        extends_clause: Optional[ast.ExpressionTree] = None
+        extends_clause: Optional[ast.Expression] = None
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
             extends_clause = self.parse_type()
@@ -5071,7 +5071,7 @@ class JavaParser:
         # TODO 待增加日志处理逻辑
 
         members = self.class_interface_or_record_body(name, is_interface=False, is_record=False)
-        result = ast.ClassTree.create(
+        result = ast.Class.create(
             modifiers=modifiers,
             name=name,
             type_parameters=type_parameters,
@@ -5084,7 +5084,7 @@ class JavaParser:
         # TODO 待处理注释逻辑
         return result
 
-    def record_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+    def record_declaration(self, modifiers: ast.Modifiers) -> ast.Class:
         """解析声明 record 语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5143,7 +5143,7 @@ class JavaParser:
         for field in fields:
             members.insert(0, field)
 
-        result = ast.ClassTree.create(
+        result = ast.Class.create(
             modifiers=modifiers,
             name=name,
             type_parameters=type_parameters,
@@ -5176,7 +5176,7 @@ class JavaParser:
             self.raise_syntax_error(pos, f"RestrictedTypeNotAllowed: {name}")
         return name
 
-    def interface_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+    def interface_declaration(self, modifiers: ast.Modifiers) -> ast.Class:
         """解析 interface 的声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5236,7 +5236,7 @@ class JavaParser:
         Examples
         --------
         >>> demo = "interface MyClassName { MyType value = new MyType(); }"
-        >>> JavaParser(LexicalFSM(demo)).interface_declaration(ast.ModifiersTree.mock()).kind.name
+        >>> JavaParser(LexicalFSM(demo)).interface_declaration(ast.Modifiers.mock()).kind.name
         'CLASS'
         """
         pos = self.token.pos
@@ -5254,7 +5254,7 @@ class JavaParser:
 
         # TODO 待补充注释处理逻辑
         members = self.class_interface_or_record_body(name, True, False)
-        result = ast.ClassTree.create(
+        result = ast.Class.create(
             modifiers=modifiers,
             name=name,
             type_parameters=type_parameters,
@@ -5267,7 +5267,7 @@ class JavaParser:
         # TODO 待处理注释逻辑
         return result
 
-    def permits_clause(self, modifiers: ast.ModifiersTree, class_or_interface: str) -> List[ast.ExpressionTree]:
+    def permits_clause(self, modifiers: ast.Modifiers, class_or_interface: str) -> List[ast.Expression]:
         """解析 permits 子句
 
         [JDK Code] JavacParser.permitsClause(JCModifiers mods, String classOrInterface)
@@ -5278,7 +5278,7 @@ class JavaParser:
             return self.qualident_list(allow_annotation=False)
         return []
 
-    def enum_declaration(self, modifiers: ast.ModifiersTree) -> ast.ClassTree:
+    def enum_declaration(self, modifiers: ast.Modifiers) -> ast.Class:
         """解析 enum 声明语句
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5290,7 +5290,7 @@ class JavaParser:
         Examples
         --------
         >>> JavaParser(LexicalFSM("enum MyEnumName { A(100), B(90), C(75), D(60); }")).enum_declaration(
-        ...     ast.ModifiersTree.mock()).kind.name
+        ...     ast.Modifiers.mock()).kind.name
         'CLASS'
         """
         pos = self.token.pos
@@ -5311,7 +5311,7 @@ class JavaParser:
 
         members = self.enum_body(name)
         modifiers.flags.append(Modifier.ENUM)
-        result = ast.ClassTree.create(
+        result = ast.Class.create(
             modifiers=modifiers,
             name=name,
             type_parameters=[],
@@ -5454,7 +5454,7 @@ class JavaParser:
             flags.append(Modifier.DEPRECATED)
         pos = self.token.pos
         annotations = self.annotations_opt(TreeKind.ANNOTATION)
-        modifiers = ast.ModifiersTree.create(
+        modifiers = ast.Modifiers.create(
             flags=flags,
             annotations=annotations,
             **self._info_exclude(None if not annotations else pos)
@@ -5472,13 +5472,13 @@ class JavaParser:
         # 解析枚举值的定义逻辑
         class_body = None
         if self.token.kind == TokenKind.LBRACE:
-            modifiers = ast.ModifiersTree.create(
+            modifiers = ast.Modifiers.create(
                 flags=[Modifier.ENUM],
                 annotations=None,
                 **self._info_exclude(None)
             )
             members = self.class_interface_or_record_body(None, False, False)
-            class_body = ast.ClassTree.create_anonymous_class(
+            class_body = ast.Class.create_anonymous_class(
                 modifiers=modifiers,
                 members=members,
                 **self._info_exclude(ident_pos)
@@ -5487,11 +5487,11 @@ class JavaParser:
         if not arguments and not class_body:
             create_pos = ident_pos
 
-        identifier = ast.IdentifierTree.create(
+        identifier = ast.Identifier.create(
             name=enum_name,
             **self._info_exclude(ident_pos)
         )
-        initializer = ast.NewClassTree.create(
+        initializer = ast.NewClass.create(
             enclosing=None,
             type_arguments=type_arguments,
             identifier=identifier,
@@ -5502,11 +5502,11 @@ class JavaParser:
 
         # TODO 待补充代码位置处理逻辑
 
-        identifier = ast.IdentifierTree.create(
+        identifier = ast.Identifier.create(
             name=enum_name,
             **self._info_exclude(ident_pos)
         )
-        result = ast.VariableTree.create_by_name(
+        result = ast.Variable.create_by_name(
             modifiers=modifiers,
             name=name,
             variable_type=identifier,
@@ -5516,7 +5516,7 @@ class JavaParser:
         # TODO 待处理注释逻辑
         return result
 
-    def type_list(self) -> List[ast.ExpressionTree]:
+    def type_list(self) -> List[ast.Expression]:
         """解析逗号分隔的多个类型（extends 子句或 implements 子句）
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -5566,7 +5566,7 @@ class JavaParser:
         return defs
 
     def class_or_interface_or_record_body_declaration(self,
-                                                      modifiers: Optional[ast.ModifiersTree],
+                                                      modifiers: Optional[ast.Modifiers],
                                                       class_name: Optional[str],
                                                       is_interface: bool,
                                                       is_record: bool) -> List[ast.Tree]:
@@ -5675,7 +5675,7 @@ class JavaParser:
         )
 
     def constructor_or_method_or_field_declaration(self,
-                                                   modifiers: Optional[ast.ModifiersTree],
+                                                   modifiers: Optional[ast.Modifiers],
                                                    class_name: Optional[str],
                                                    is_interface: bool,
                                                    is_record: bool) -> List[ast.Tree]:
@@ -5686,16 +5686,16 @@ class JavaParser:
         Examples
         --------
         >>> JavaParser(LexicalFSM("MyType(int value) {}")).constructor_or_method_or_field_declaration(
-        ...     ast.ModifiersTree.mock(), "MyType", False, False)[0].kind.name
+        ...     ast.Modifiers.mock(), "MyType", False, False)[0].kind.name
         'METHOD'
         >>> JavaParser(LexicalFSM("void methodName(int value) {}")).constructor_or_method_or_field_declaration(
-        ...     ast.ModifiersTree.mock(), "MyClassName", False, False)[0].kind.name
+        ...     ast.Modifiers.mock(), "MyClassName", False, False)[0].kind.name
         'METHOD'
         >>> JavaParser(LexicalFSM("MyType value = new MyType();")).constructor_or_method_or_field_declaration(
-        ...     ast.ModifiersTree.mock(), "MyClassName", False, False)[0].kind.name
+        ...     ast.Modifiers.mock(), "MyClassName", False, False)[0].kind.name
         'VARIABLE'
         >>> JavaParser(LexicalFSM("MyType value = new MyType();")).constructor_or_method_or_field_declaration(
-        ...     ast.ModifiersTree.mock(), "MyClassName", True, False)[0].kind.name
+        ...     ast.Modifiers.mock(), "MyClassName", True, False)[0].kind.name
         'VARIABLE'
         """
         type_parameters = self.type_parameters_opt()
@@ -5712,7 +5712,7 @@ class JavaParser:
         token = self.token
         is_void = self.token.kind == TokenKind.VOID
         if is_void:
-            return_type = ast.PrimitiveTypeTree.create_void(**self._info_include(pos))
+            return_type = ast.PrimitiveType.create_void(**self._info_include(pos))
             self.next_token()
         else:
             return_type = self.unannotated_type(allow_var=False)
@@ -5880,10 +5880,10 @@ class JavaParser:
 
     def method_declarator_rest(self,
                                pos: int,
-                               modifiers: ast.ModifiersTree,
-                               return_type: Optional[ast.ExpressionTree],
+                               modifiers: ast.Modifiers,
+                               return_type: Optional[ast.Expression],
                                name: str,
-                               type_parameters: List[ast.TypeParameterTree],
+                               type_parameters: List[ast.TypeParameter],
                                is_interface: bool,
                                is_void: bool,
                                is_record: bool
@@ -5923,8 +5923,8 @@ class JavaParser:
         # TODO 待考虑是否有必要增加 try ... finally 逻辑
         try:
             self.receiver_param = None
-            parameters: List[ast.VariableTree] = []
-            throws: List[ast.ExpressionTree] = []
+            parameters: List[ast.Variable] = []
+            throws: List[ast.Expression] = []
             if not is_record or name != "init" or self.token.kind == TokenKind.LPAREN:
                 parameters = self.formal_parameters()
                 if not is_void:
@@ -5933,8 +5933,8 @@ class JavaParser:
                     self.next_token()
                     throws = self.qualident_list(True)
 
-            block: Optional[ast.BlockTree] = None
-            default_value: Optional[ast.ExpressionTree]
+            block: Optional[ast.Block] = None
+            default_value: Optional[ast.Expression]
             if self.token.kind == TokenKind.LBRACE:
                 block = self.block()
                 default_value = None
@@ -5945,7 +5945,7 @@ class JavaParser:
             else:
                 default_value = None
                 self.accept(TokenKind.SEMI)
-            return ast.MethodTree.create(
+            return ast.Method.create(
                 modifiers=modifiers,
                 name=name,
                 return_type=return_type,
@@ -5961,7 +5961,7 @@ class JavaParser:
         finally:
             self.receiver_param = prev_receiver_param
 
-    def qualident_list(self, allow_annotation: bool) -> List[ast.ExpressionTree]:
+    def qualident_list(self, allow_annotation: bool) -> List[ast.Expression]:
         """解析多个逗号分隔的 Qualident
 
         [JDK Code] JavacParser.qualidentList(boolean)
@@ -5971,7 +5971,7 @@ class JavaParser:
         >>> len(JavaParser(LexicalFSM("a.b, c.d")).qualident_list(False))
         2
         """
-        result: List[ast.ExpressionTree] = []
+        result: List[ast.Expression] = []
 
         if allow_annotation:
             type_annotations = self.type_annotations_opt()
@@ -5981,7 +5981,7 @@ class JavaParser:
         qualident = self.qualident(allow_annotation)
 
         if type_annotations:
-            result.append(ast.AnnotatedTypeTree.create(
+            result.append(ast.AnnotatedType.create(
                 annotations=type_annotations,
                 underlying_type=qualident,
                 **self._info_include(None)
@@ -6000,7 +6000,7 @@ class JavaParser:
             qualident = self.qualident(allow_annotation)
 
             if type_annotations:
-                result.append(ast.AnnotatedTypeTree.create(
+                result.append(ast.AnnotatedType.create(
                     annotations=type_annotations,
                     underlying_type=qualident,
                     **self._info_include(None)
@@ -6010,7 +6010,7 @@ class JavaParser:
 
         return result
 
-    def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameterTree]:
+    def type_parameters_opt(self, parse_empty: bool = False) -> List[ast.TypeParameter]:
         """可选的多个类型参数
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -6045,14 +6045,14 @@ class JavaParser:
             self.accept(TokenKind.GT)
             return []
 
-        ty_params: List[ast.TypeParameterTree] = [self.type_parameter()]
+        ty_params: List[ast.TypeParameter] = [self.type_parameter()]
         while self.token.kind == TokenKind.COMMA:
             self.next_token()
             ty_params.append(self.type_parameter())
         self.accept(TokenKind.GT)
         return ty_params
 
-    def type_parameter(self) -> ast.TypeParameterTree:
+    def type_parameter(self) -> ast.TypeParameter:
         """类型参数
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -6084,16 +6084,16 @@ class JavaParser:
         1
         """
         pos = self.token.pos
-        annotations: List[ast.AnnotationTree] = self.type_annotations_opt()
+        annotations: List[ast.Annotation] = self.type_annotations_opt()
         name: str = self.type_name()
-        bounds: List[ast.ExpressionTree] = []
+        bounds: List[ast.Expression] = []
         if self.token.kind == TokenKind.EXTENDS:
             self.next_token()
             bounds.append(self.parse_type())
             while self.token.kind == TokenKind.AMP:
                 self.next_token()
                 bounds.append(self.parse_type())
-        return ast.TypeParameterTree.create(
+        return ast.TypeParameter.create(
             name=name,
             bounds=bounds,
             annotations=annotations,
@@ -6102,7 +6102,7 @@ class JavaParser:
 
     def formal_parameters(self,
                           lambda_parameter: bool = False,
-                          record_component: bool = False) -> List[ast.VariableTree]:
+                          record_component: bool = False) -> List[ast.Variable]:
         """形参的列表
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -6137,7 +6137,7 @@ class JavaParser:
         1
         """
         self.accept(TokenKind.LPAREN)
-        params: List[ast.VariableTree] = []
+        params: List[ast.Variable] = []
         if self.token.kind != TokenKind.RPAREN:
             self.allow_this_ident = not lambda_parameter and not record_component
             self.select_type_mode()
@@ -6212,7 +6212,7 @@ class JavaParser:
 
     def formal_parameter(self,
                          lambda_parameter: bool = False,
-                         record_component: bool = False) -> ast.VariableTree:
+                         record_component: bool = False) -> ast.Variable:
         """形参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -6258,10 +6258,10 @@ class JavaParser:
         self.permit_type_annotations_push_back = False
 
         if self.token.kind == TokenKind.ELLIPSIS:
-            varargs_annotations: List[ast.AnnotationTree] = self.type_annotations_pushed_back
+            varargs_annotations: List[ast.Annotation] = self.type_annotations_pushed_back
             modifiers.flags.append(Modifier.VARARGS)
             # TODO 考虑是否需要增加 insertAnnotationsToMostInner 的逻辑
-            param_type = ast.AnnotatedTypeTree.create(
+            param_type = ast.AnnotatedType.create(
                 annotations=varargs_annotations,
                 underlying_type=param_type,
                 **self._info_include(None)
@@ -6270,7 +6270,7 @@ class JavaParser:
         self.type_annotations_pushed_back = []
         return self.variable_declarator_id(modifiers, param_type, False, lambda_parameter)
 
-    def implicit_parameter(self) -> ast.VariableTree:
+    def implicit_parameter(self) -> ast.Variable:
         """隐式形参
 
         [JDK Document] https://docs.oracle.com/javase/specs/jls/se22/html/jls-19.html
@@ -6284,7 +6284,7 @@ class JavaParser:
         >>> result.name
         'name1'
         """
-        modifiers = ast.ModifiersTree.create(
+        modifiers = ast.Modifiers.create(
             flags=[Modifier.PARAMETER],
             annotations=None,
             **self._info_include(self.token.pos)  # TODO 下标待修正

@@ -23,8 +23,8 @@ class LexicalTest(unittest.TestCase):
         return token_list
 
     def test_identifier(self):
-        self.assertEqual(ast.IdentifierTree(kind=TreeKind.IDENTIFIER, name="abc", source="abc",
-                                            start_pos=0, end_pos=3),
+        self.assertEqual(ast.Identifier(kind=TreeKind.IDENTIFIER, name="abc", source="abc",
+                                        start_pos=0, end_pos=3),
                          JavaParser(LexicalFSM("abc")).ident())
         with self.assertRaises(JavaSyntaxError):
             JavaParser(LexicalFSM("public")).ident()
@@ -32,8 +32,8 @@ class LexicalTest(unittest.TestCase):
             JavaParser(LexicalFSM("null")).ident()
 
     def test_type_identifier(self):
-        self.assertEqual(ast.IdentifierTree(kind=TreeKind.IDENTIFIER, name="abc", source="abc",
-                                            start_pos=0, end_pos=3),
+        self.assertEqual(ast.Identifier(kind=TreeKind.IDENTIFIER, name="abc", source="abc",
+                                        start_pos=0, end_pos=3),
                          JavaParser(LexicalFSM("abc")).type_name())
         with self.assertRaises(JavaSyntaxError):
             JavaParser(LexicalFSM("public")).type_name()
@@ -43,70 +43,70 @@ class LexicalTest(unittest.TestCase):
     def test_literal(self):
         # 整型
         self.assertEqual(
-            ast.IntLiteralTree(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.DEC, value=1, source="1",
-                               start_pos=0, end_pos=1),
+            ast.IntLiteral(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.DEC, value=1, source="1",
+                           start_pos=0, end_pos=1),
             JavaParser(LexicalFSM("1")).literal())
         self.assertEqual(
-            ast.IntLiteralTree(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.OCT, value=8, source="010",
-                               start_pos=0, end_pos=3),
+            ast.IntLiteral(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.OCT, value=8, source="010",
+                           start_pos=0, end_pos=3),
             JavaParser(LexicalFSM("010")).literal())
         self.assertEqual(
-            ast.IntLiteralTree(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.HEX, value=255, source="0xFF",
-                               start_pos=0, end_pos=4),
+            ast.IntLiteral(kind=TreeKind.INT_LITERAL, style=constants.IntegerStyle.HEX, value=255, source="0xFF",
+                           start_pos=0, end_pos=4),
             JavaParser(LexicalFSM("0xFF")).literal())
 
         # 长整型
         self.assertEqual(
-            ast.LongLiteralTree(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.DEC, value=1, source="1L",
-                                start_pos=0, end_pos=2),
+            ast.LongLiteral(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.DEC, value=1, source="1L",
+                            start_pos=0, end_pos=2),
             JavaParser(LexicalFSM("1L")).literal())
         self.assertEqual(
-            ast.LongLiteralTree(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.OCT, value=8, source="010L",
-                                start_pos=0, end_pos=4),
+            ast.LongLiteral(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.OCT, value=8, source="010L",
+                            start_pos=0, end_pos=4),
             JavaParser(LexicalFSM("010L")).literal())
         self.assertEqual(
-            ast.LongLiteralTree(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.HEX, value=255, source="0xFFL",
-                                start_pos=0, end_pos=5),
+            ast.LongLiteral(kind=TreeKind.LONG_LITERAL, style=constants.IntegerStyle.HEX, value=255, source="0xFFL",
+                            start_pos=0, end_pos=5),
             JavaParser(LexicalFSM("0xFFL")).literal())
 
         # 单精度浮点数
-        self.assertEqual(ast.FloatLiteralTree(kind=TreeKind.FLOAT_LITERAL, value=1.0, source="1.0f",
-                                              start_pos=0, end_pos=4),
+        self.assertEqual(ast.FloatLiteral(kind=TreeKind.FLOAT_LITERAL, value=1.0, source="1.0f",
+                                          start_pos=0, end_pos=4),
                          JavaParser(LexicalFSM("1.0f")).literal())
 
         # 双精度浮点数
-        self.assertEqual(ast.DoubleLiteralTree(kind=TreeKind.DOUBLE_LITERAL, value=1.0, source="1.0",
-                                               start_pos=0, end_pos=3),
+        self.assertEqual(ast.DoubleLiteral(kind=TreeKind.DOUBLE_LITERAL, value=1.0, source="1.0",
+                                           start_pos=0, end_pos=3),
                          JavaParser(LexicalFSM("1.0")).literal())
 
         # 布尔值
-        self.assertEqual(ast.TrueLiteralTree(kind=TreeKind.BOOLEAN_LITERAL, source="true", start_pos=0, end_pos=4),
+        self.assertEqual(ast.TrueLiteral(kind=TreeKind.BOOLEAN_LITERAL, source="true", start_pos=0, end_pos=4),
                          JavaParser(LexicalFSM("true")).literal())
-        self.assertEqual(ast.FalseLiteralTree(kind=TreeKind.BOOLEAN_LITERAL, source="false", start_pos=0, end_pos=5),
+        self.assertEqual(ast.FalseLiteral(kind=TreeKind.BOOLEAN_LITERAL, source="false", start_pos=0, end_pos=5),
                          JavaParser(LexicalFSM("false")).literal())
 
         # 字符字面值
-        self.assertEqual(ast.CharacterLiteralTree(kind=TreeKind.CHAR_LITERAL, value="a", source="'a'",
-                                                  start_pos=0, end_pos=3),
+        self.assertEqual(ast.CharacterLiteral(kind=TreeKind.CHAR_LITERAL, value="a", source="'a'",
+                                              start_pos=0, end_pos=3),
                          JavaParser(LexicalFSM("'a'")).literal())
 
         # 字符串字面值
         self.assertEqual(
-            ast.StringLiteralTree(kind=TreeKind.STRING_LITERAL, style=constants.StringStyle.TEXT_BLOCK, value="a",
-                                  source="\"\"\"a\"\"\"", start_pos=0, end_pos=7),
+            ast.StringLiteral(kind=TreeKind.STRING_LITERAL, style=constants.StringStyle.TEXT_BLOCK, value="a",
+                              source="\"\"\"a\"\"\"", start_pos=0, end_pos=7),
             JavaParser(LexicalFSM("\"\"\"a\"\"\"")).literal())
         self.assertEqual(
-            ast.StringLiteralTree(kind=TreeKind.STRING_LITERAL, style=constants.StringStyle.STRING, value="a",
-                                  source="\"a\"", start_pos=0, end_pos=3),
+            ast.StringLiteral(kind=TreeKind.STRING_LITERAL, style=constants.StringStyle.STRING, value="a",
+                              source="\"a\"", start_pos=0, end_pos=3),
             JavaParser(LexicalFSM("\"a\"")).literal())
 
         # 空值字面值
-        self.assertEqual(ast.NullLiteralTree(kind=TreeKind.NULL_LITERAL, source="null", start_pos=0, end_pos=4),
+        self.assertEqual(ast.NullLiteral(kind=TreeKind.NULL_LITERAL, source="null", start_pos=0, end_pos=4),
                          JavaParser(LexicalFSM("null")).literal())
 
     def test_qualident(self):
         res = JavaParser(LexicalFSM("abc.def")).qualident(False)
-        self.assertIsInstance(res, ast.MemberSelectTree)
+        self.assertIsInstance(res, ast.MemberSelect)
         self.assertEqual(TreeKind.MEMBER_SELECT, res.kind)
         self.assertEqual("abc.def", res.source)
         self.assertEqual(0, res.start_pos)

@@ -78,6 +78,8 @@ class TypeKind(enum.Enum):
     INTERSECTION = enum.auto()
     MODULE = enum.auto()  # 【JDK 9+】
 
+    MOCK = enum.auto()
+
     def is_primitive(self) -> bool:
         """返回是否为原生类型"""
         return self in {TypeKind.BOOLEAN, TypeKind.BYTE, TypeKind.SHORT, TypeKind.INT, TypeKind.LONG, TypeKind.CHAR,

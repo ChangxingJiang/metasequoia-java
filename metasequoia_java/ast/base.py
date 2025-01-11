@@ -10,11 +10,12 @@ from metasequoia_java.ast.kind import TreeKind
 
 __all__ = [
     "Tree",  # 抽象语法树节点的抽象基类
-    "ExpressionTree",  # 各类表达式节点的抽象基类
-    "StatementTree",  # 各类语句节点的抽象基类
-    "DirectiveTree",  # 模块中所有指令的超类型【JDK 9+】
-    "PatternTree",  # 【JDK 16+】
-    "CaseLabelTree",  # 【JDK 21+】
+    "Expression",  # 各类表达式节点的抽象基类
+    "Statement",  # 各类语句节点的抽象基类
+    "Directive",  # 模块中所有指令的超类型【JDK 9+】
+    "Pattern",  # 【JDK 16+】
+    "CaseLabel",  # 【JDK 21+】
+    "Type",  # 数据类型节点
 ]
 
 
@@ -54,11 +55,11 @@ class MockTree(Tree):
     """模拟节点"""
 
     def generate(self) -> str:
-        return "MockNode"
+        return "<MockTree>"
 
 
 @dataclasses.dataclass(slots=True)
-class ExpressionTree(Tree, abc.ABC):
+class Expression(Tree, abc.ABC):
     """各类表达式节点的抽象基类
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExpressionTree.java
@@ -66,8 +67,8 @@ class ExpressionTree(Tree, abc.ABC):
     """
 
     @staticmethod
-    def mock() -> "ExpressionTree":
-        return MockExpressionTree(
+    def mock() -> "Expression":
+        return MockExpression(
             kind=TreeKind.MOCK,
             start_pos=None,
             end_pos=None,
@@ -76,15 +77,15 @@ class ExpressionTree(Tree, abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class MockExpressionTree(ExpressionTree):
+class MockExpression(Expression):
     """模拟节点"""
 
     def generate(self) -> str:
-        return "MockExpressionNode"
+        return "<MockExpression>"
 
 
 @dataclasses.dataclass(slots=True)
-class StatementTree(Tree, abc.ABC):
+class Statement(Tree, abc.ABC):
     """各类语句节点的抽象基类
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/StatementTree.java
@@ -92,12 +93,17 @@ class StatementTree(Tree, abc.ABC):
     """
 
     @staticmethod
-    def mock() -> "StatementTree":
-        return MockStatement(start_pos=None, end_pos=None, source=None)
+    def mock() -> "Statement":
+        return MockStatement(
+            kind=TreeKind.MOCK,
+            start_pos=None,
+            end_pos=None,
+            source=None
+        )
 
 
 @dataclasses.dataclass(slots=True)
-class MockStatement(StatementTree):
+class MockStatement(Statement):
     """模拟 Statement 节点"""
 
     def generate(self) -> str:
@@ -105,7 +111,7 @@ class MockStatement(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class DirectiveTree(Tree, abc.ABC):
+class Directive(Tree, abc.ABC):
     """模块中所有指令的超类型【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DirectiveTree.java
@@ -114,7 +120,7 @@ class DirectiveTree(Tree, abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class PatternTree(Tree, abc.ABC):
+class Pattern(Tree, abc.ABC):
     """【JDK 16+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PatternTree.java
@@ -123,9 +129,14 @@ class PatternTree(Tree, abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class CaseLabelTree(Tree, abc.ABC):
+class CaseLabel(Tree, abc.ABC):
     """TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CaseLabelTree.java
     A marker interface for Trees that may be used as CaseTree labels.
     """
+
+
+@dataclasses.dataclass(slots=True)
+class Type(Expression, abc.ABC):
+    """数据类型节点"""

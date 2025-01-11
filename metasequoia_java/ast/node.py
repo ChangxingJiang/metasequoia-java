@@ -2,12 +2,13 @@ import abc
 import dataclasses
 from typing import List, Optional
 
-from metasequoia_java.ast.base import CaseLabelTree
-from metasequoia_java.ast.base import DirectiveTree
-from metasequoia_java.ast.base import ExpressionTree
-from metasequoia_java.ast.base import PatternTree
-from metasequoia_java.ast.base import StatementTree
+from metasequoia_java.ast.base import CaseLabel
+from metasequoia_java.ast.base import Directive
+from metasequoia_java.ast.base import Expression
+from metasequoia_java.ast.base import Pattern
+from metasequoia_java.ast.base import Statement
 from metasequoia_java.ast.base import Tree
+from metasequoia_java.ast.base import Type
 from metasequoia_java.ast.constants import CaseKind
 from metasequoia_java.ast.constants import IntegerStyle
 from metasequoia_java.ast.constants import LambdaBodyKind
@@ -18,90 +19,89 @@ from metasequoia_java.ast.element import Modifier
 from metasequoia_java.ast.element import TypeKind
 from metasequoia_java.ast.generate_utils import Separator, change_int_to_string, generate_enum_list, generate_tree_list
 from metasequoia_java.ast.kind import TreeKind
-from metasequoia_java.tool import NameSpace
 
 __all__ = [
-    "AnnotatedTypeTree",  # 包含注解的类型
-    "AnnotationTree",  # 注解
-    "AnyPatternTree",  # 【JDK 22+】
-    "ArrayAccessTree",  # 访问数组中元素
-    "ArrayTypeTree",  # 数组类型
-    "AssertTree",  # assert 语句
-    "AssignmentTree",  # 赋值表达式
-    "BinaryTree",  # 二元表达式
-    "BindingPatternTree",  # 【JDK 16+】
-    "BlockTree",  # 代码块
-    "BreakTree",  # break 语句
-    "CaseTree",  # switch 语句或表达式中的 case 子句
-    "CatchTree",  # try 语句中的 catch 代码块
-    "ClassTree",  # 类（class）、接口（interface）、枚举类（enum）、记录类（record）或注解类（annotation type）的声明语句
-    "CompilationUnitTree",  # 表示普通编译单元和模块化编译单元的抽象语法树节点
-    "CompoundAssignmentTree",  # 赋值表达式
-    "ConditionalExpressionTree",  # 三目表达式
-    "ConstantCaseLabelTree",  #
-    "ContinueTree",  # continue 语句
-    "DeconstructionPatternTree",  # 【JDK 21+】
-    "DefaultCaseLabelTree",  # 【JDK 21+】
-    "DoWhileLoopTree",  # do while 语句【JDK 21+】
-    "EmptyStatementTree",  # 空语句
-    "EnhancedForLoopTree",  # 增强 for 循环语句
-    "ErroneousTree",
-    "ExportsTree",  # 模块声明语句中的 exports 指令【JDK 9+】
-    "ExpressionStatementTree",  # 表达式语句
-    "ForLoopTree",  # for 循环语句
-    "IdentifierTree",  # 标识符
-    "IfTree",  # if 语句
-    "ImportTree",  # 声明引用
-    "InstanceOfTree",  # instanceof 表达式
-    "IntersectionTypeTree",  # 强制类型转换表达式中的交叉类型
-    "LabeledStatementTree",  # 包含标签的表达式
-    "LambdaExpressionTree",  # lambda 表达式
-    "LiteralTree",  # 字面值
-    "IntLiteralTree",  # 整型字面值（包括十进制、八进制、十六进制）
-    "LongLiteralTree",  # 十进制长整型字面值（包括十进制、八进制、十六进制）
-    "FloatLiteralTree",  # 单精度浮点数字面值
-    "DoubleLiteralTree",  # 双精度浮点数字面值
-    "TrueLiteralTree",  # 布尔值真值字面值
-    "FalseLiteralTree",  # 布尔值假值字面值
-    "CharacterLiteralTree",  # 字符字面值
-    "StringLiteralTree",  # 字符串字面值
-    "NullLiteralTree",  # 空值字面值
-    "MemberReferenceTree",  # 成员引用表达式
-    "MemberSelectTree",  # 成员访问表达式
-    "MethodInvocationTree",  # 方法调用表达式
-    "MethodTree",  # 声明方法或注解类型元素
-    "ModifiersTree",  # 用于声明表达式的修饰符，包括注解
-    "ModuleTree",  # 声明模块【JDK 9+】
-    "NewArrayTree",  # 初始化数组表达式
-    "NewClassTree",  # 实例化类表达式
-    "OpensTree",  # 模块声明中的 opens 指令
-    "PackageTree",  # 声明包【JDK 9+】
-    "ParameterizedTypeTree",  # 包含类型参数的类型表达式
-    "ParenthesizedTree",  # 括号表达式
-    "PatternCaseLabelTree",  # 【JDK 21+】
-    "PrimitiveTypeTree",  # 原生类型
-    "ProvidesTree",  # 模块声明语句的 provides 指令【JDK 9+】
-    "RequiresTree",  # 模块声明语句中的 requires 指令【JDK 9+】
-    "ReturnTree",  # 返回语句
-    "SwitchExpressionTree",  # switch 表达式【JDK 14+】
-    "SwitchTree",  # switch 语句
-    "SynchronizedTree",  # 同步代码块语句
-    "ThrowTree",  # throw 语句
-    "TryTree",  # try 语句
-    "TypeCastTree",  # 强制类型转换表达式
-    "TypeParameterTree",  # 类型参数列表
-    "UnaryTree",  # 一元表达式
-    "UnionTypeTree",  #
-    "UsesTree",  # 模块声明语句中的 uses 指令【JDK 9+】
-    "VariableTree",  # 声明变量
-    "WhileLoopTree",  # while 循环语句
-    "WildcardTree",  # 通配符
-    "YieldTree",  # yield 语句
+    "AnnotatedType",  # 包含注解的类型
+    "Annotation",  # 注解
+    "AnyPattern",  # 【JDK 22+】
+    "ArrayAccess",  # 访问数组中元素
+    "ArrayType",  # 数组类型
+    "Assert",  # assert 语句
+    "Assignment",  # 赋值表达式
+    "Binary",  # 二元表达式
+    "BindingPattern",  # 【JDK 16+】
+    "Block",  # 代码块
+    "Break",  # break 语句
+    "Case",  # switch 语句或表达式中的 case 子句
+    "Catch",  # try 语句中的 catch 代码块
+    "Class",  # 类（class）、接口（interface）、枚举类（enum）、记录类（record）或注解类（annotation type）的声明语句
+    "CompilationUnit",  # 表示普通编译单元和模块化编译单元的抽象语法树节点
+    "CompoundAssignment",  # 赋值表达式
+    "ConditionalExpression",  # 三目表达式
+    "ConstantCaseLabel",  #
+    "Continue",  # continue 语句
+    "DeconstructionPattern",  # 【JDK 21+】
+    "DefaultCaseLabel",  # 【JDK 21+】
+    "DoWhileLoop",  # do while 语句【JDK 21+】
+    "EmptyStatement",  # 空语句
+    "EnhancedForLoop",  # 增强 for 循环语句
+    "Erroneous",
+    "Exports",  # 模块声明语句中的 exports 指令【JDK 9+】
+    "ExpressionStatement",  # 表达式语句
+    "ForLoop",  # for 循环语句
+    "Identifier",  # 标识符
+    "If",  # if 语句
+    "Import",  # 声明引用
+    "InstanceOf",  # instanceof 表达式
+    "IntersectionType",  # 强制类型转换表达式中的交叉类型
+    "LabeledStatement",  # 包含标签的表达式
+    "LambdaExpression",  # lambda 表达式
+    "Literal",  # 字面值
+    "IntLiteral",  # 整型字面值（包括十进制、八进制、十六进制）
+    "LongLiteral",  # 十进制长整型字面值（包括十进制、八进制、十六进制）
+    "FloatLiteral",  # 单精度浮点数字面值
+    "DoubleLiteral",  # 双精度浮点数字面值
+    "TrueLiteral",  # 布尔值真值字面值
+    "FalseLiteral",  # 布尔值假值字面值
+    "CharacterLiteral",  # 字符字面值
+    "StringLiteral",  # 字符串字面值
+    "NullLiteral",  # 空值字面值
+    "MemberReference",  # 成员引用表达式
+    "MemberSelect",  # 成员访问表达式
+    "MethodInvocation",  # 方法调用表达式
+    "Method",  # 声明方法或注解类型元素
+    "Modifiers",  # 用于声明表达式的修饰符，包括注解
+    "Module",  # 声明模块【JDK 9+】
+    "NewArray",  # 初始化数组表达式
+    "NewClass",  # 实例化类表达式
+    "Opens",  # 模块声明中的 opens 指令
+    "Package",  # 声明包【JDK 9+】
+    "ParameterizedType",  # 包含类型参数的类型表达式
+    "Parenthesized",  # 括号表达式
+    "PatternCaseLabel",  # 【JDK 21+】
+    "PrimitiveType",  # 原生类型
+    "Provides",  # 模块声明语句的 provides 指令【JDK 9+】
+    "Requires",  # 模块声明语句中的 requires 指令【JDK 9+】
+    "Return",  # 返回语句
+    "SwitchExpression",  # switch 表达式【JDK 14+】
+    "Switch",  # switch 语句
+    "Synchronized",  # 同步代码块语句
+    "Throw",  # throw 语句
+    "Try",  # try 语句
+    "TypeCast",  # 强制类型转换表达式
+    "TypeParameter",  # 类型参数列表
+    "Unary",  # 一元表达式
+    "UnionType",  #
+    "Uses",  # 模块声明语句中的 uses 指令【JDK 9+】
+    "Variable",  # 声明变量
+    "WhileLoop",  # while 循环语句
+    "Wildcard",  # 通配符
+    "Yield",  # yield 语句
 ]
 
 
 @dataclasses.dataclass(slots=True)
-class DefaultCaseLabelTree(CaseLabelTree):
+class DefaultCaseLabel(CaseLabel):
     """【JDK 21+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DefaultCaseLabelTree.java
@@ -109,8 +109,8 @@ class DefaultCaseLabelTree(CaseLabelTree):
     """
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "DefaultCaseLabelTree":
-        return DefaultCaseLabelTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "DefaultCaseLabel":
+        return DefaultCaseLabel(
             kind=TreeKind.DEFAULT_CASE_LABEL,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -122,7 +122,7 @@ class DefaultCaseLabelTree(CaseLabelTree):
 
 
 @dataclasses.dataclass(slots=True)
-class AnnotationTree(ExpressionTree):
+class Annotation(Expression):
     """注解
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AnnotationTree.java
@@ -134,13 +134,13 @@ class AnnotationTree(ExpressionTree):
     """
 
     annotation_type: Tree = dataclasses.field(kw_only=True)
-    arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    arguments: List[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create_annotation(annotation_type: Tree,
-                          arguments: List[ExpressionTree],
-                          start_pos: int, end_pos: int, source: str) -> "AnnotationTree":
-        return AnnotationTree(
+                          arguments: List[Expression],
+                          start_pos: int, end_pos: int, source: str) -> "Annotation":
+        return Annotation(
             kind=TreeKind.ANNOTATION,
             annotation_type=annotation_type,
             arguments=arguments,
@@ -151,9 +151,9 @@ class AnnotationTree(ExpressionTree):
 
     @staticmethod
     def create_type_annotation(annotation_type: Tree,
-                               arguments: List[ExpressionTree],
-                               start_pos: int, end_pos: int, source: str) -> "AnnotationTree":
-        return AnnotationTree(
+                               arguments: List[Expression],
+                               start_pos: int, end_pos: int, source: str) -> "Annotation":
+        return Annotation(
             kind=TreeKind.TYPE_ANNOTATION,
             annotation_type=annotation_type,
             arguments=arguments,
@@ -169,7 +169,7 @@ class AnnotationTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class AnnotatedTypeTree(ExpressionTree):
+class AnnotatedType(Type):
     """包含注解的类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AnnotatedTypeTree.java
@@ -180,13 +180,13 @@ class AnnotatedTypeTree(ExpressionTree):
     - @annotationType ( arguments ) Date
     """
 
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
-    underlying_type: ExpressionTree = dataclasses.field(kw_only=True)
+    annotations: List[Annotation] = dataclasses.field(kw_only=True)
+    underlying_type: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(annotations: List[AnnotationTree], underlying_type: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "AnnotatedTypeTree":
-        return AnnotatedTypeTree(
+    def create(annotations: List[Annotation], underlying_type: Expression,
+               start_pos: int, end_pos: int, source: str) -> "AnnotatedType":
+        return AnnotatedType(
             kind=TreeKind.ANNOTATION_TYPE,
             annotations=annotations,
             underlying_type=underlying_type,
@@ -200,7 +200,7 @@ class AnnotatedTypeTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class AnyPatternTree(PatternTree):
+class AnyPattern(Pattern):
     """【JDK 22+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AnyPatternTree.java
@@ -212,8 +212,8 @@ class AnyPatternTree(PatternTree):
     """
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "AnyPatternTree":
-        return AnyPatternTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "AnyPattern":
+        return AnyPattern(
             kind=TreeKind.ANY_PATTERN,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -221,8 +221,8 @@ class AnyPatternTree(PatternTree):
         )
 
     @staticmethod
-    def mock() -> "AnyPatternTree":
-        return AnyPatternTree(
+    def mock() -> "AnyPattern":
+        return AnyPattern(
             kind=TreeKind.ANY_PATTERN,
             start_pos=None,
             end_pos=None,
@@ -234,7 +234,7 @@ class AnyPatternTree(PatternTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ArrayAccessTree(ExpressionTree):
+class ArrayAccess(Expression):
     """访问数组中元素
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ArrayAccessTree.java
@@ -244,13 +244,13 @@ class ArrayAccessTree(ExpressionTree):
     - expression[index]
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    index: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    index: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree, index: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ArrayAccessTree":
-        return ArrayAccessTree(
+    def create(expression: Expression, index: Expression,
+               start_pos: int, end_pos: int, source: str) -> "ArrayAccess":
+        return ArrayAccess(
             kind=TreeKind.ARRAY_ACCESS,
             expression=expression,
             index=index,
@@ -264,7 +264,7 @@ class ArrayAccessTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ArrayTypeTree(ExpressionTree):
+class ArrayType(Type):
     """数组类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ArrayTypeTree.java
@@ -274,12 +274,12 @@ class ArrayTypeTree(ExpressionTree):
     - type[]
     """
 
-    expression: ExpressionTree = dataclasses.dataclass(slots=True)
+    expression: Expression = dataclasses.dataclass(slots=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ArrayTypeTree":
-        return ArrayTypeTree(
+    def create(expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "ArrayType":
+        return ArrayType(
             kind=TreeKind.ARRAY_TYPE,
             expression=expression,
             start_pos=start_pos,
@@ -292,7 +292,7 @@ class ArrayTypeTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class AssertTree(StatementTree):
+class Assert(Statement):
     """assert 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AssertTree.java
@@ -303,14 +303,14 @@ class AssertTree(StatementTree):
     - assert condition : detail ;
     """
 
-    assertion: ExpressionTree = dataclasses.field(kw_only=True)
-    message: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    assertion: Expression = dataclasses.field(kw_only=True)
+    message: Optional[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(assertion: ExpressionTree,
-               message: Optional[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "AssertTree":
-        return AssertTree(
+    def create(assertion: Expression,
+               message: Optional[Expression],
+               start_pos: int, end_pos: int, source: str) -> "Assert":
+        return Assert(
             kind=TreeKind.ASSERT,
             assertion=assertion,
             message=message,
@@ -326,7 +326,7 @@ class AssertTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class AssignmentTree(ExpressionTree):
+class Assignment(Expression):
     """赋值表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/AssignmentTree.java
@@ -336,14 +336,14 @@ class AssignmentTree(ExpressionTree):
     - variable = expression
     """
 
-    variable: ExpressionTree = dataclasses.field(kw_only=True)
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    variable: Expression = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(variable: ExpressionTree,
-               expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "AssignmentTree":
-        return AssignmentTree(
+    def create(variable: Expression,
+               expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Assignment":
+        return Assignment(
             kind=TreeKind.ASSIGNMENT,
             variable=variable,
             expression=expression,
@@ -357,7 +357,7 @@ class AssignmentTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class BinaryTree(ExpressionTree):
+class Binary(Expression):
     """二元表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/BinaryTree.java
@@ -368,15 +368,15 @@ class BinaryTree(ExpressionTree):
     - leftOperand operator rightOperand
     """
 
-    left_operand: ExpressionTree = dataclasses.field(kw_only=True)
-    right_operand: ExpressionTree = dataclasses.field(kw_only=True)
+    left_operand: Expression = dataclasses.field(kw_only=True)
+    right_operand: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(start_pos: int, end_pos: int, source: str,
                kind: TreeKind,
-               left_operand: ExpressionTree,
-               right_operand: ExpressionTree) -> "BinaryTree":
-        return BinaryTree(
+               left_operand: Expression,
+               right_operand: Expression) -> "Binary":
+        return Binary(
             kind=kind,
             left_operand=left_operand,
             right_operand=right_operand,
@@ -390,7 +390,7 @@ class BinaryTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ModifiersTree(Tree):
+class Modifiers(Tree):
     """用于声明表达式的修饰符，包括注解
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ModifiersTree.java
@@ -402,15 +402,15 @@ class ModifiersTree(Tree):
     """
 
     flags: List[Modifier] = dataclasses.field(kw_only=True)
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
+    annotations: List[Annotation] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(flags: List[Modifier],
-               annotations: Optional[List[AnnotationTree]],
-               start_pos: int, end_pos: int, source: str) -> "ModifiersTree":
+               annotations: Optional[List[Annotation]],
+               start_pos: int, end_pos: int, source: str) -> "Modifiers":
         if annotations is None:
             annotations = []
-        return ModifiersTree(
+        return Modifiers(
             kind=TreeKind.MODIFIERS,
             flags=flags,
             annotations=annotations,
@@ -420,9 +420,9 @@ class ModifiersTree(Tree):
         )
 
     @staticmethod
-    def create_empty() -> "ModifiersTree":
+    def create_empty() -> "Modifiers":
         """创建没有任何修饰符的 ModifiersTree 节点，且该节点没有实际的位置和代码"""
-        return ModifiersTree(
+        return Modifiers(
             kind=TreeKind.MODIFIERS,
             flags=[],
             annotations=[],
@@ -432,8 +432,8 @@ class ModifiersTree(Tree):
         )
 
     @staticmethod
-    def mock() -> "ModifiersTree":
-        return ModifiersTree(
+    def mock() -> "Modifiers":
+        return Modifiers(
             kind=TreeKind.MODIFIERS,
             flags=[],
             annotations=[],
@@ -455,7 +455,7 @@ class ModifiersTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class VariableTree(StatementTree):
+class Variable(Statement):
     """声明变量
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/VariableTree.java
@@ -466,19 +466,19 @@ class VariableTree(StatementTree):
     - modifiers type qualified-name.this
     """
 
-    modifiers: ModifiersTree = dataclasses.field(kw_only=True)
+    modifiers: Modifiers = dataclasses.field(kw_only=True)
     name: Optional[str] = dataclasses.field(kw_only=True, default=None)
-    name_expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True, default=None)
+    name_expression: Optional[Expression] = dataclasses.field(kw_only=True, default=None)
     variable_type: Tree = dataclasses.field(kw_only=True)
-    initializer: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    initializer: Optional[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create_by_name(modifiers: ModifiersTree,
+    def create_by_name(modifiers: Modifiers,
                        name: Optional[str],
                        variable_type: Tree,
-                       initializer: Optional[ExpressionTree],
-                       start_pos: int, end_pos: int, source: str) -> "VariableTree":
-        return VariableTree(
+                       initializer: Optional[Expression],
+                       start_pos: int, end_pos: int, source: str) -> "Variable":
+        return Variable(
             kind=TreeKind.VARIABLE,
             modifiers=modifiers,
             name=name,
@@ -490,10 +490,10 @@ class VariableTree(StatementTree):
         )
 
     @staticmethod
-    def create_by_name_expression(modifiers: ModifiersTree, name_expression: Optional[ExpressionTree],
+    def create_by_name_expression(modifiers: Modifiers, name_expression: Optional[Expression],
                                   variable_type: Tree,
-                                  start_pos: int, end_pos: int, source: str) -> "VariableTree":
-        return VariableTree(
+                                  start_pos: int, end_pos: int, source: str) -> "Variable":
+        return Variable(
             kind=TreeKind.VARIABLE,
             modifiers=modifiers,
             name_expression=name_expression,
@@ -509,18 +509,18 @@ class VariableTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class BindingPatternTree(PatternTree):
+class BindingPattern(Pattern):
     """【JDK 16+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/BindingPatternTree.java
     A binding pattern tree
     """
 
-    variable: VariableTree = dataclasses.field(kw_only=True)
+    variable: Variable = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(variable: VariableTree, start_pos: int, end_pos: int, source: str) -> "BindingPatternTree":
-        return BindingPatternTree(
+    def create(variable: Variable, start_pos: int, end_pos: int, source: str) -> "BindingPattern":
+        return BindingPattern(
             kind=TreeKind.VARIABLE,
             variable=variable,
             start_pos=start_pos,
@@ -533,7 +533,7 @@ class BindingPatternTree(PatternTree):
 
 
 @dataclasses.dataclass(slots=True)
-class BlockTree(StatementTree):
+class Block(Statement):
     """代码块
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/BlockTree.java
@@ -546,12 +546,12 @@ class BlockTree(StatementTree):
     """
 
     is_static: bool = dataclasses.field(kw_only=True)
-    statements: List[StatementTree] = dataclasses.field(kw_only=True)
+    statements: List[Statement] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(is_static: bool, statements: List[StatementTree], start_pos: int, end_pos: int,
-               source: str) -> "BlockTree":
-        return BlockTree(
+    def create(is_static: bool, statements: List[Statement], start_pos: int, end_pos: int,
+               source: str) -> "Block":
+        return Block(
             kind=TreeKind.BLOCK,
             is_static=is_static,
             statements=statements,
@@ -561,8 +561,8 @@ class BlockTree(StatementTree):
         )
 
     @staticmethod
-    def mock() -> "BlockTree":
-        return BlockTree(
+    def mock() -> "Block":
+        return Block(
             kind=TreeKind.BLOCK,
             is_static=False,
             statements=[],
@@ -577,7 +577,7 @@ class BlockTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class BreakTree(StatementTree):
+class Break(Statement):
     """break 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/BreakTree.java
@@ -592,8 +592,8 @@ class BreakTree(StatementTree):
 
     @staticmethod
     def create(label: Optional[str],
-               start_pos: int, end_pos: int, source: str) -> "BreakTree":
-        return BreakTree(
+               start_pos: int, end_pos: int, source: str) -> "Break":
+        return Break(
             kind=TreeKind.BREAK,
             label=label,
             start_pos=start_pos,
@@ -608,7 +608,7 @@ class BreakTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class CaseTree(Tree):
+class Case(Tree):
     """switch 语句或表达式中的 case 子句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CaseTree.java
@@ -621,18 +621,18 @@ class CaseTree(Tree):
         statements
     """
 
-    expressions: Optional[List[ExpressionTree]] = dataclasses.field(kw_only=True, default=None)  # @Deprecated
-    labels: List[CaseLabelTree] = dataclasses.field(kw_only=True)  # 【JDK 21+】
-    guard: ExpressionTree = dataclasses.field(kw_only=True)  # 【JDK 21+】
-    statements: List[StatementTree] = dataclasses.field(kw_only=True)
+    expressions: Optional[List[Expression]] = dataclasses.field(kw_only=True, default=None)  # @Deprecated
+    labels: List[CaseLabel] = dataclasses.field(kw_only=True)  # 【JDK 21+】
+    guard: Expression = dataclasses.field(kw_only=True)  # 【JDK 21+】
+    statements: List[Statement] = dataclasses.field(kw_only=True)
     body: Optional[Tree] = dataclasses.field(kw_only=True)  # 【JDK 14+】
     case_kind: CaseKind = dataclasses.field(kw_only=True)  # 【JDK 14+】
 
     @staticmethod
     def create_rule(start_pos: int, end_pos: int, source: str,
-                    labels: List[CaseLabelTree], guard: ExpressionTree,
-                    statements: List[StatementTree], body: Optional[Tree]) -> "CaseTree":
-        return CaseTree(
+                    labels: List[CaseLabel], guard: Expression,
+                    statements: List[Statement], body: Optional[Tree]) -> "Case":
+        return Case(
             kind=TreeKind.CASE,
             labels=labels,
             guard=guard,
@@ -646,9 +646,9 @@ class CaseTree(Tree):
 
     @staticmethod
     def create_statement(start_pos: int, end_pos: int, source: str,
-                         labels: List[CaseLabelTree], guard: ExpressionTree,
-                         statements: List[StatementTree], body: Optional[Tree]) -> "CaseTree":
-        return CaseTree(
+                         labels: List[CaseLabel], guard: Expression,
+                         statements: List[Statement], body: Optional[Tree]) -> "Case":
+        return Case(
             kind=TreeKind.CASE,
             labels=labels,
             guard=guard,
@@ -665,7 +665,7 @@ class CaseTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class CatchTree(Tree):
+class Catch(Tree):
     """try 语句中的 catch 代码块
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CatchTree.java
@@ -676,14 +676,14 @@ class CatchTree(Tree):
         block
     """
 
-    parameter: VariableTree = dataclasses.field(kw_only=True)
-    block: BlockTree = dataclasses.field(kw_only=True)
+    parameter: Variable = dataclasses.field(kw_only=True)
+    block: Block = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(parameter: VariableTree,
-               block: BlockTree,
-               start_pos: int, end_pos: int, source: str) -> "CatchTree":
-        return CatchTree(
+    def create(parameter: Variable,
+               block: Block,
+               start_pos: int, end_pos: int, source: str) -> "Catch":
+        return Catch(
             kind=TreeKind.CATCH,
             parameter=parameter,
             block=block,
@@ -697,7 +697,7 @@ class CatchTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class IdentifierTree(ExpressionTree):
+class Identifier(Expression):
     """标识符
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IdentifierTree.java
@@ -709,8 +709,8 @@ class IdentifierTree(ExpressionTree):
     name: str = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(name: str, start_pos: int, end_pos: int, source: str) -> "IdentifierTree":
-        return IdentifierTree(
+    def create(name: str, start_pos: int, end_pos: int, source: str) -> "Identifier":
+        return Identifier(
             kind=TreeKind.IDENTIFIER,
             name=name,
             start_pos=start_pos,
@@ -719,10 +719,10 @@ class IdentifierTree(ExpressionTree):
         )
 
     @staticmethod
-    def mock(name: str) -> "IdentifierTree":
-        return IdentifierTree(
+    def mock() -> "Identifier":
+        return Identifier(
             kind=TreeKind.IDENTIFIER,
-            name=name,
+            name="Mock",
             start_pos=None,
             end_pos=None,
             source=None
@@ -733,7 +733,7 @@ class IdentifierTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class TypeParameterTree(Tree):
+class TypeParameter(Tree):
     """类型参数列表
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/TypeParameterTree.java
@@ -747,12 +747,12 @@ class TypeParameterTree(Tree):
 
     name: str = dataclasses.field(kw_only=True)
     bounds: List[Tree] = dataclasses.field(kw_only=True)
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
+    annotations: List[Annotation] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(name: str, bounds: List[Tree], annotations: List[AnnotationTree],
-               start_pos: int, end_pos: int, source: str) -> "TypeParameterTree":
-        return TypeParameterTree(
+    def create(name: str, bounds: List[Tree], annotations: List[Annotation],
+               start_pos: int, end_pos: int, source: str) -> "TypeParameter":
+        return TypeParameter(
             kind=TreeKind.TYPE_PARAMETER,
             name=name,
             bounds=bounds,
@@ -767,7 +767,7 @@ class TypeParameterTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class ClassTree(StatementTree):
+class Class(Statement):
     """类（class）、接口（interface）、枚举类（enum）、记录类（record）或注解类（annotation type）的声明语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ClassTree.java
@@ -782,24 +782,24 @@ class ClassTree(StatementTree):
     }
     """
 
-    modifiers: ModifiersTree = dataclasses.field(kw_only=True)
+    modifiers: Modifiers = dataclasses.field(kw_only=True)
     name: Optional[str] = dataclasses.field(kw_only=True)  # 如果为匿名类则为 None
-    type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
+    type_parameters: List[TypeParameter] = dataclasses.field(kw_only=True)
     extends_clause: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果没有继承关系则为 None
     implements_clause: List[Tree] = dataclasses.field(kw_only=True)
     permits_clause: Optional[List[Tree]] = dataclasses.field(kw_only=True)  # 【JDK 17+】
     members: List[Tree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(modifiers: ModifiersTree,
+    def create(modifiers: Modifiers,
                name: str,
-               type_parameters: List[TypeParameterTree],
+               type_parameters: List[TypeParameter],
                extends_clause: Optional[Tree],
                implements_clause: List[Tree],
                permits_clause: Optional[List[Tree]],
                members: List[Tree],
-               start_pos: int, end_pos: int, source: str) -> "ClassTree":
-        return ClassTree(
+               start_pos: int, end_pos: int, source: str) -> "Class":
+        return Class(
             kind=TreeKind.CLASS,
             modifiers=modifiers,
             name=name,
@@ -814,10 +814,10 @@ class ClassTree(StatementTree):
         )
 
     @staticmethod
-    def create_anonymous_class(modifiers: ModifiersTree,
+    def create_anonymous_class(modifiers: Modifiers,
                                members: List[Tree],
-                               start_pos: int, end_pos: int, source: str) -> "ClassTree":
-        return ClassTree(
+                               start_pos: int, end_pos: int, source: str) -> "Class":
+        return Class(
             kind=TreeKind.CLASS,
             modifiers=modifiers,
             name=None,
@@ -834,31 +834,24 @@ class ClassTree(StatementTree):
     def generate(self) -> str:
         """TODO"""
 
-    def get_method_by_name(self, method_name: str) -> Optional["MethodTree"]:
+    def get_method_by_name(self, method_name: str) -> Optional["Method"]:
         """根据方法名获取 Method 对象"""
         for member in self.members:
-            if isinstance(member, MethodTree) and member.name == method_name:
+            if isinstance(member, Method) and member.name == method_name:
                 return member
         return None
 
-    def get_variable_list(self) -> List["VariableTree"]:
+    def get_variable_list(self) -> List["Variable"]:
         """获取类属性的列表"""
         variable_list = []
         for member in self.members:
-            if isinstance(member, VariableTree):
+            if isinstance(member, Variable):
                 variable_list.append(member)
         return variable_list
 
-    def get_variable_namespace(self) -> NameSpace:
-        name_space = NameSpace()
-        for variable in self.get_variable_list():
-            variable_name = variable.name
-            class_name = variable.variable_type.generate()
-            name_space.set_variable_info(variable_name, class_name)
-        return name_space
 
 @dataclasses.dataclass(slots=True)
-class ModuleTree(Tree):
+class Module(Tree):
     """声明模块【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ModuleTree.java
@@ -871,18 +864,18 @@ class ModuleTree(Tree):
     }
     """
 
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
+    annotations: List[Annotation] = dataclasses.field(kw_only=True)
     module_kind: ModuleKind = dataclasses.field(kw_only=True)
-    name: ExpressionTree = dataclasses.field(kw_only=True)
-    directives: List[DirectiveTree] = dataclasses.field(kw_only=True)
+    name: Expression = dataclasses.field(kw_only=True)
+    directives: List[Directive] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(annotations: List[AnnotationTree],
+    def create(annotations: List[Annotation],
                module_kind: ModuleKind,
-               name: ExpressionTree,
-               directives: List[DirectiveTree],
-               start_pos: int, end_pos: int, source: str) -> "ModuleTree":
-        return ModuleTree(
+               name: Expression,
+               directives: List[Directive],
+               start_pos: int, end_pos: int, source: str) -> "Module":
+        return Module(
             kind=TreeKind.MODULE,
             annotations=annotations,
             module_kind=module_kind,
@@ -898,21 +891,21 @@ class ModuleTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class PackageTree(Tree):
+class Package(Tree):
     """声明包【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PackageTree.java
     Represents the package declaration.
     """
 
-    annotations: List[AnnotationTree] = dataclasses.field(kw_only=True)
-    package_name: ExpressionTree = dataclasses.field(kw_only=True)
+    annotations: List[Annotation] = dataclasses.field(kw_only=True)
+    package_name: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(annotations: List[AnnotationTree],
-               package_name: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "PackageTree":
-        return PackageTree(
+    def create(annotations: List[Annotation],
+               package_name: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Package":
+        return Package(
             kind=TreeKind.PACKAGE,
             annotations=annotations,
             package_name=package_name,
@@ -926,7 +919,7 @@ class PackageTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class ImportTree(Tree):
+class Import(Tree):
     """引入声明
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ImportTree.java
@@ -945,8 +938,8 @@ class ImportTree(Tree):
     def create(is_static: bool,
                is_module: bool,
                identifier: Tree,
-               start_pos: int, end_pos: int, source: str) -> "ImportTree":
-        return ImportTree(
+               start_pos: int, end_pos: int, source: str) -> "Import":
+        return Import(
             kind=TreeKind.IMPORT,
             is_static=is_static,
             is_module=is_module,
@@ -958,8 +951,8 @@ class ImportTree(Tree):
 
     @staticmethod
     def create_module(identifier: Tree,
-                      start_pos: int, end_pos: int, source: str) -> "ImportTree":
-        return ImportTree(
+                      start_pos: int, end_pos: int, source: str) -> "Import":
+        return Import(
             kind=TreeKind.IMPORT,
             is_static=False,
             is_module=True,
@@ -974,7 +967,7 @@ class ImportTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class CompilationUnitTree(Tree):
+class CompilationUnit(Tree):
     """表示普通编译单元和模块编译单元的抽象语法树节点
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CompilationUnitTree.java
@@ -983,18 +976,18 @@ class CompilationUnitTree(Tree):
     TODO 增加 sourceFile、LineMap 的属性
     """
 
-    module: ModuleTree = dataclasses.field(kw_only=True)  # 【JDK 17+】
-    package: PackageTree = dataclasses.field(kw_only=True)
-    imports: List[ImportTree] = dataclasses.field(kw_only=True)
+    module: Module = dataclasses.field(kw_only=True)  # 【JDK 17+】
+    package: Package = dataclasses.field(kw_only=True)
+    imports: List[Import] = dataclasses.field(kw_only=True)
     type_declarations: List[Tree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(module: ModuleTree,
-               package: PackageTree,
-               imports: List[ImportTree],
+    def create(module: Module,
+               package: Package,
+               imports: List[Import],
                type_declarations: List[Tree],
-               start_pos: int, end_pos: int, source: str) -> "CompilationUnitTree":
-        return CompilationUnitTree(
+               start_pos: int, end_pos: int, source: str) -> "CompilationUnit":
+        return CompilationUnit(
             kind=TreeKind.COMPILATION_UNIT,
             module=module,
             package=package,
@@ -1006,43 +999,34 @@ class CompilationUnitTree(Tree):
         )
 
     @property
-    def package_name(self) -> ExpressionTree:
+    def package_name(self) -> Expression:
         return self.package.package_name
 
     @property
-    def package_annotations(self) -> List[AnnotationTree]:
+    def package_annotations(self) -> List[Annotation]:
         return self.package.annotations
 
     def generate(self) -> str:
         """TODO"""
 
-    def get_public_class(self) -> Optional[ClassTree]:
+    def get_public_class(self) -> Optional[Class]:
         """获取文件中的公有类，如果没有则返回 None"""
         for class_declaration in self.get_class_declaration_list():
             if Modifier.PUBLIC in class_declaration.modifiers.flags:
                 return class_declaration
         return None
 
-    def get_class_declaration_list(self) -> List[ClassTree]:
+    def get_class_declaration_list(self) -> List[Class]:
         """获取文件中的类对象，如果没有则返回空列表"""
         class_declaration_list = []
         for declaration in self.type_declarations:
-            if isinstance(declaration, ClassTree):
+            if isinstance(declaration, Class):
                 class_declaration_list.append(declaration)
         return class_declaration_list
 
-    def get_pure_namespace(self) -> NameSpace:
-        """获取通过 import 生成的文件顶级命名空间，其中不包含 package 中其他类的名称"""
-        name_space = NameSpace()
-        for import_node in self.imports:
-            full_name = import_node.identifier.generate()
-            class_name = full_name[full_name.rindex(".") + 1:] if "." in full_name else full_name
-            name_space.set_type_info(class_name, full_name)
-        return name_space
-
 
 @dataclasses.dataclass(slots=True)
-class CompoundAssignmentTree(ExpressionTree):
+class CompoundAssignment(Expression):
     """赋值表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/CompoundAssignmentTree.java
@@ -1053,15 +1037,15 @@ class CompoundAssignmentTree(ExpressionTree):
     - variable operator expression
     """
 
-    variable: ExpressionTree = dataclasses.field(kw_only=True)
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    variable: Expression = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(kind: TreeKind,
-               variable: ExpressionTree,
-               expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "CompoundAssignmentTree":
-        return CompoundAssignmentTree(
+               variable: Expression,
+               expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "CompoundAssignment":
+        return CompoundAssignment(
             kind=kind,
             variable=variable,
             expression=expression,
@@ -1075,7 +1059,7 @@ class CompoundAssignmentTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ConditionalExpressionTree(ExpressionTree):
+class ConditionalExpression(Expression):
     """三目表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ConditionalExpressionTree.java
@@ -1084,16 +1068,16 @@ class ConditionalExpressionTree(ExpressionTree):
     样例：condition ? trueExpression : falseExpression
     """
 
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
-    true_expression: ExpressionTree = dataclasses.field(kw_only=True)
-    false_expression: ExpressionTree = dataclasses.field(kw_only=True)
+    condition: Expression = dataclasses.field(kw_only=True)
+    true_expression: Expression = dataclasses.field(kw_only=True)
+    false_expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(condition: ExpressionTree,
-               true_expression: ExpressionTree,
-               false_expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ConditionalExpressionTree":
-        return ConditionalExpressionTree(
+    def create(condition: Expression,
+               true_expression: Expression,
+               false_expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "ConditionalExpression":
+        return ConditionalExpression(
             kind=TreeKind.CONDITIONAL_EXPRESSION,
             condition=condition,
             true_expression=true_expression,
@@ -1108,19 +1092,19 @@ class ConditionalExpressionTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ConstantCaseLabelTree(CaseLabelTree):
+class ConstantCaseLabel(CaseLabel):
     """TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ConstantCaseLabelTree.java
     A case label element that refers to a constant expression
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ConstantCaseLabelTree":
-        return ConstantCaseLabelTree(
+    def create(expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "ConstantCaseLabel":
+        return ConstantCaseLabel(
             kind=TreeKind.CONSTANT_CASE_LABEL,
             expression=expression,
             start_pos=start_pos,
@@ -1133,7 +1117,7 @@ class ConstantCaseLabelTree(CaseLabelTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ContinueTree(StatementTree):
+class Continue(Statement):
     """continue 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ContinueTree.java
@@ -1148,8 +1132,8 @@ class ContinueTree(StatementTree):
 
     @staticmethod
     def create(label: Optional[str],
-               start_pos: int, end_pos: int, source: str) -> "ContinueTree":
-        return ContinueTree(
+               start_pos: int, end_pos: int, source: str) -> "Continue":
+        return Continue(
             kind=TreeKind.CONTINUE,
             label=label,
             start_pos=start_pos,
@@ -1164,20 +1148,20 @@ class ContinueTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class DeconstructionPatternTree(PatternTree):
+class DeconstructionPattern(Pattern):
     """【JDK 21+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DeconstructionPatternTree.java#L35
     A deconstruction pattern tree.
     """
 
-    deconstructor: ExpressionTree = dataclasses.field(kw_only=True)
-    nested_patterns: List[PatternTree] = dataclasses.field(kw_only=True)
+    deconstructor: Expression = dataclasses.field(kw_only=True)
+    nested_patterns: List[Pattern] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(deconstructor: ExpressionTree, nested_patterns: List[PatternTree],
-               start_pos: int, end_pos: int, source: str) -> "DeconstructionPatternTree":
-        return DeconstructionPatternTree(
+    def create(deconstructor: Expression, nested_patterns: List[Pattern],
+               start_pos: int, end_pos: int, source: str) -> "DeconstructionPattern":
+        return DeconstructionPattern(
             kind=TreeKind.DECONSTRUCTION_PATTERN,
             deconstructor=deconstructor,
             nested_patterns=nested_patterns,
@@ -1191,7 +1175,7 @@ class DeconstructionPatternTree(PatternTree):
 
 
 @dataclasses.dataclass(slots=True)
-class DoWhileLoopTree(StatementTree):
+class DoWhileLoop(Statement):
     """do while 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/DoWhileLoopTree.java
@@ -1203,14 +1187,14 @@ class DoWhileLoopTree(StatementTree):
     while ( expression );
     """
 
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
-    statement: StatementTree = dataclasses.field(kw_only=True)
+    condition: Expression = dataclasses.field(kw_only=True)
+    statement: Statement = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(condition: ExpressionTree,
-               statement: StatementTree,
-               start_pos: int, end_pos: int, source: str) -> "DoWhileLoopTree":
-        return DoWhileLoopTree(
+    def create(condition: Expression,
+               statement: Statement,
+               start_pos: int, end_pos: int, source: str) -> "DoWhileLoop":
+        return DoWhileLoop(
             kind=TreeKind.DO_WHILE_LOOP,
             condition=condition,
             statement=statement,
@@ -1224,7 +1208,7 @@ class DoWhileLoopTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class EmptyStatementTree(StatementTree):
+class EmptyStatement(Statement):
     """空语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/EmptyStatementTree.java
@@ -1234,8 +1218,8 @@ class EmptyStatementTree(StatementTree):
     """
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "EmptyStatementTree":
-        return EmptyStatementTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "EmptyStatement":
+        return EmptyStatement(
             kind=TreeKind.EMPTY_STATEMENT,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1247,7 +1231,7 @@ class EmptyStatementTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class EnhancedForLoopTree(StatementTree):
+class EnhancedForLoop(Statement):
     """增强 for 循环语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/EnhancedForLoopTree.java
@@ -1258,16 +1242,16 @@ class EnhancedForLoopTree(StatementTree):
         statement
     """
 
-    variable: VariableTree = dataclasses.field(kw_only=True)
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    statement: StatementTree = dataclasses.field(kw_only=True)
+    variable: Variable = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    statement: Statement = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(variable: VariableTree,
-               expression: ExpressionTree,
-               statement: StatementTree,
-               start_pos: int, end_pos: int, source: str) -> "EnhancedForLoopTree":
-        return EnhancedForLoopTree(
+    def create(variable: Variable,
+               expression: Expression,
+               statement: Statement,
+               start_pos: int, end_pos: int, source: str) -> "EnhancedForLoop":
+        return EnhancedForLoop(
             kind=TreeKind.ENHANCED_FOR_LOOP,
             variable=variable,
             expression=expression,
@@ -1283,7 +1267,7 @@ class EnhancedForLoopTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ErroneousTree(ExpressionTree):
+class Erroneous(Expression):
     """格式错误的表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ErroneousTree.java
@@ -1297,7 +1281,7 @@ class ErroneousTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ExportsTree(DirectiveTree):
+class Exports(Directive):
     """模块声明语句中的 exports 指令【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExportsTree.java
@@ -1308,14 +1292,14 @@ class ExportsTree(DirectiveTree):
     - exports package-name to module-name;
     """
 
-    package_name: ExpressionTree = dataclasses.field(kw_only=True)
-    module_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    package_name: Expression = dataclasses.field(kw_only=True)
+    module_names: List[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(package_name: ExpressionTree,
-               module_names: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "ExportsTree":
-        return ExportsTree(
+    def create(package_name: Expression,
+               module_names: List[Expression],
+               start_pos: int, end_pos: int, source: str) -> "Exports":
+        return Exports(
             kind=TreeKind.EXPORTS,
             package_name=package_name,
             module_names=module_names,
@@ -1329,7 +1313,7 @@ class ExportsTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ExpressionStatementTree(StatementTree):
+class ExpressionStatement(Statement):
     """表达式语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ExpressionStatementTree.java
@@ -1338,12 +1322,12 @@ class ExpressionStatementTree(StatementTree):
     样例：expression ;
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ExpressionStatementTree":
-        return ExpressionStatementTree(
+    def create(expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "ExpressionStatement":
+        return ExpressionStatement(
             kind=TreeKind.EXPRESSION_STATEMENT,
             expression=expression,
             start_pos=start_pos,
@@ -1356,7 +1340,7 @@ class ExpressionStatementTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ForLoopTree(StatementTree):
+class ForLoop(Statement):
     """for 循环语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ForLoopTree.java
@@ -1367,18 +1351,18 @@ class ForLoopTree(StatementTree):
         statement
     """
 
-    initializer: List[StatementTree] = dataclasses.field(kw_only=True)
-    condition: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
-    update: List[ExpressionStatementTree] = dataclasses.field(kw_only=True)
-    statement: StatementTree = dataclasses.field(kw_only=True)
+    initializer: List[Statement] = dataclasses.field(kw_only=True)
+    condition: Optional[Expression] = dataclasses.field(kw_only=True)
+    update: List[ExpressionStatement] = dataclasses.field(kw_only=True)
+    statement: Statement = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(initializer: initializer,
-               condition: Optional[ExpressionTree],
-               update: List[ExpressionStatementTree],
-               statement: StatementTree,
-               start_pos: int, end_pos: int, source: str) -> "ForLoopTree":
-        return ForLoopTree(
+               condition: Optional[Expression],
+               update: List[ExpressionStatement],
+               statement: Statement,
+               start_pos: int, end_pos: int, source: str) -> "ForLoop":
+        return ForLoop(
             kind=TreeKind.FOR_LOOP,
             initializer=initializer,
             condition=condition,
@@ -1394,7 +1378,7 @@ class ForLoopTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class IfTree(StatementTree):
+class If(Statement):
     """if 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IfTree.java
@@ -1410,16 +1394,16 @@ class IfTree(StatementTree):
         elseStatement
     """
 
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
-    then_statement: StatementTree = dataclasses.field(kw_only=True)
-    else_statement: Optional[StatementTree] = dataclasses.field(kw_only=True)
+    condition: Expression = dataclasses.field(kw_only=True)
+    then_statement: Statement = dataclasses.field(kw_only=True)
+    else_statement: Optional[Statement] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(condition: ExpressionTree,
-               then_statement: StatementTree,
-               else_statement: Optional[StatementTree],
-               start_pos: int, end_pos: int, source: str) -> "IfTree":
-        return IfTree(
+    def create(condition: Expression,
+               then_statement: Statement,
+               else_statement: Optional[Statement],
+               start_pos: int, end_pos: int, source: str) -> "If":
+        return If(
             kind=TreeKind.IF,
             condition=condition,
             then_statement=then_statement,
@@ -1440,7 +1424,7 @@ class IfTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class InstanceOfTree(ExpressionTree):
+class InstanceOf(Expression):
     """instanceof 表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/InstanceOfTree.java
@@ -1454,17 +1438,17 @@ class InstanceOfTree(ExpressionTree):
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/tree/JCTree.java
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
     instance_type: Tree = dataclasses.field(kw_only=True)
-    pattern: Optional[PatternTree] = dataclasses.field(kw_only=True)  # 【JDK 16+】
+    pattern: Optional[Pattern] = dataclasses.field(kw_only=True)  # 【JDK 16+】
 
     @staticmethod
     def create(start_pos: int, end_pos: int, source: str,
-               expression: ExpressionTree,
+               expression: Expression,
                pattern: Tree
-               ) -> "InstanceOfTree":
-        if isinstance(pattern, PatternTree):
-            if isinstance(pattern, BindingPatternTree):
+               ) -> "InstanceOf":
+        if isinstance(pattern, Pattern):
+            if isinstance(pattern, BindingPattern):
                 instance_type = pattern.variable.variable_type
             else:
                 instance_type = None
@@ -1472,7 +1456,7 @@ class InstanceOfTree(ExpressionTree):
         else:
             instance_type = pattern
             actual_pattern = False
-        return InstanceOfTree(
+        return InstanceOf(
             kind=TreeKind.INTERSECTION_TYPE,
             expression=expression,
             instance_type=instance_type,
@@ -1489,7 +1473,7 @@ class InstanceOfTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class IntersectionTypeTree(Tree):
+class IntersectionType(Tree):
     """强制类型转换表达式中的交叉类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/IntersectionTypeTree.java
@@ -1499,8 +1483,8 @@ class IntersectionTypeTree(Tree):
     bounds: List[Tree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(bounds: List[Tree], start_pos: int, end_pos: int, source: str) -> "IntersectionTypeTree":
-        return IntersectionTypeTree(
+    def create(bounds: List[Tree], start_pos: int, end_pos: int, source: str) -> "IntersectionType":
+        return IntersectionType(
             kind=TreeKind.INTERSECTION_TYPE,
             bounds=bounds,
             start_pos=start_pos,
@@ -1513,7 +1497,7 @@ class IntersectionTypeTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class LabeledStatementTree(StatementTree):
+class LabeledStatement(Statement):
     """包含标签的表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LabeledStatementTree.java
@@ -1523,12 +1507,12 @@ class LabeledStatementTree(StatementTree):
     """
 
     label: str = dataclasses.field(kw_only=True)
-    statement: StatementTree = dataclasses.field(kw_only=True)
+    statement: Statement = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(label: str, statement: StatementTree,
-               start_pos: int, end_pos: int, source: str) -> "LabeledStatementTree":
-        return LabeledStatementTree(
+    def create(label: str, statement: Statement,
+               start_pos: int, end_pos: int, source: str) -> "LabeledStatement":
+        return LabeledStatement(
             kind=TreeKind.LABELED_STATEMENT,
             label=label,
             statement=statement,
@@ -1542,7 +1526,7 @@ class LabeledStatementTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class LambdaExpressionTree(ExpressionTree):
+class LambdaExpression(Expression):
     """lambda 表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LambdaExpressionTree.java
@@ -1554,14 +1538,14 @@ class LambdaExpressionTree(ExpressionTree):
     (x,y)-> { return x + y; }
     """
 
-    parameters: List[VariableTree] = dataclasses.field(kw_only=True)
+    parameters: List[Variable] = dataclasses.field(kw_only=True)
     body: Tree = dataclasses.field(kw_only=True)
     body_kind: LambdaBodyKind = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create_expression(parameters: List[VariableTree], body: Tree, start_pos: int, end_pos: int,
-                          source: str) -> "LambdaExpressionTree":
-        return LambdaExpressionTree(
+    def create_expression(parameters: List[Variable], body: Tree, start_pos: int, end_pos: int,
+                          source: str) -> "LambdaExpression":
+        return LambdaExpression(
             kind=TreeKind.LAMBDA_EXPRESSION,
             parameters=parameters,
             body=body,
@@ -1572,9 +1556,9 @@ class LambdaExpressionTree(ExpressionTree):
         )
 
     @staticmethod
-    def create_statement(parameters: List[VariableTree], body: BlockTree, start_pos: int, end_pos: int,
-                         source: str) -> "LambdaExpressionTree":
-        return LambdaExpressionTree(
+    def create_statement(parameters: List[Variable], body: Block, start_pos: int, end_pos: int,
+                         source: str) -> "LambdaExpression":
+        return LambdaExpression(
             kind=TreeKind.LAMBDA_EXPRESSION,
             parameters=parameters,
             body=body,
@@ -1589,7 +1573,7 @@ class LambdaExpressionTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class LiteralTree(ExpressionTree, abc.ABC):
+class Literal(Expression, abc.ABC):
     """字面值
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/LiteralTree.java
@@ -1605,15 +1589,15 @@ class LiteralTree(ExpressionTree, abc.ABC):
 
 
 @dataclasses.dataclass(slots=True)
-class IntLiteralTree(LiteralTree):
+class IntLiteral(Literal):
     """整型字面值（包括十进制、八进制、十六进制）"""
 
     style: IntegerStyle = dataclasses.field(kw_only=True)
     value: int = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "IntLiteralTree":
-        return IntLiteralTree(
+    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "IntLiteral":
+        return IntLiteral(
             kind=TreeKind.INT_LITERAL,
             style=style,
             value=value,
@@ -1627,15 +1611,15 @@ class IntLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class LongLiteralTree(LiteralTree):
+class LongLiteral(Literal):
     """十进制长整型字面值（包括十进制、八进制、十六进制）"""
 
     style: IntegerStyle = dataclasses.field(kw_only=True)
     value: int = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "LongLiteralTree":
-        return LongLiteralTree(
+    def create(style: IntegerStyle, value: int, start_pos: int, end_pos: int, source: str) -> "LongLiteral":
+        return LongLiteral(
             kind=TreeKind.LONG_LITERAL,
             style=style,
             value=value,
@@ -1649,14 +1633,14 @@ class LongLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class FloatLiteralTree(LiteralTree):
+class FloatLiteral(Literal):
     """单精度浮点数字面值"""
 
     value: float = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(value: float, start_pos: int, end_pos: int, source: str) -> "FloatLiteralTree":
-        return FloatLiteralTree(
+    def create(value: float, start_pos: int, end_pos: int, source: str) -> "FloatLiteral":
+        return FloatLiteral(
             kind=TreeKind.FLOAT_LITERAL,
             value=value,
             start_pos=start_pos,
@@ -1669,14 +1653,14 @@ class FloatLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class DoubleLiteralTree(LiteralTree):
+class DoubleLiteral(Literal):
     """双精度浮点数字面值"""
 
     value: float = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(value: float, start_pos: int, end_pos: int, source: str) -> "DoubleLiteralTree":
-        return DoubleLiteralTree(
+    def create(value: float, start_pos: int, end_pos: int, source: str) -> "DoubleLiteral":
+        return DoubleLiteral(
             kind=TreeKind.DOUBLE_LITERAL,
             value=value,
             start_pos=start_pos,
@@ -1689,12 +1673,12 @@ class DoubleLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class TrueLiteralTree(LiteralTree):
+class TrueLiteral(Literal):
     """布尔值真值字面值"""
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "TrueLiteralTree":
-        return TrueLiteralTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "TrueLiteral":
+        return TrueLiteral(
             kind=TreeKind.BOOLEAN_LITERAL,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1706,12 +1690,12 @@ class TrueLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class FalseLiteralTree(LiteralTree):
+class FalseLiteral(Literal):
     """布尔值假值字面值"""
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "FalseLiteralTree":
-        return FalseLiteralTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "FalseLiteral":
+        return FalseLiteral(
             kind=TreeKind.BOOLEAN_LITERAL,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1723,14 +1707,14 @@ class FalseLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class CharacterLiteralTree(LiteralTree):
+class CharacterLiteral(Literal):
     """字符字面值"""
 
     value: str = dataclasses.field(kw_only=True)  # 不包含单引号的字符串
 
     @staticmethod
-    def create(value: str, start_pos: int, end_pos: int, source: str) -> "CharacterLiteralTree":
-        return CharacterLiteralTree(
+    def create(value: str, start_pos: int, end_pos: int, source: str) -> "CharacterLiteral":
+        return CharacterLiteral(
             kind=TreeKind.CHAR_LITERAL,
             value=value,
             start_pos=start_pos,
@@ -1743,15 +1727,15 @@ class CharacterLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class StringLiteralTree(LiteralTree):
+class StringLiteral(Literal):
     """字符串字面值"""
 
     style: StringStyle = dataclasses.field(kw_only=True)  # 字面值样式
     value: str = dataclasses.field(kw_only=True)  # 不包含双引号的字符串内容
 
     @staticmethod
-    def create_string(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteralTree":
-        return StringLiteralTree(
+    def create_string(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteral":
+        return StringLiteral(
             kind=TreeKind.STRING_LITERAL,
             style=StringStyle.STRING,
             value=value,
@@ -1761,8 +1745,8 @@ class StringLiteralTree(LiteralTree):
         )
 
     @staticmethod
-    def create_text_block(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteralTree":
-        return StringLiteralTree(
+    def create_text_block(value: str, start_pos: int, end_pos: int, source: str) -> "StringLiteral":
+        return StringLiteral(
             kind=TreeKind.STRING_LITERAL,
             style=StringStyle.TEXT_BLOCK,
             value=value,
@@ -1778,12 +1762,12 @@ class StringLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class NullLiteralTree(LiteralTree):
+class NullLiteral(Literal):
     """空值字面值"""
 
     @staticmethod
-    def create(start_pos: int, end_pos: int, source: str) -> "NullLiteralTree":
-        return NullLiteralTree(
+    def create(start_pos: int, end_pos: int, source: str) -> "NullLiteral":
+        return NullLiteral(
             kind=TreeKind.NULL_LITERAL,
             start_pos=start_pos,
             end_pos=end_pos,
@@ -1795,7 +1779,7 @@ class NullLiteralTree(LiteralTree):
 
 
 @dataclasses.dataclass(slots=True)
-class MemberReferenceTree(ExpressionTree):
+class MemberReference(Expression):
     """成员引用表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MemberReferenceTree.java
@@ -1806,16 +1790,16 @@ class MemberReferenceTree(ExpressionTree):
 
     mode: ReferenceMode = dataclasses.field(kw_only=True)
     name: str = dataclasses.field(kw_only=True)
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    type_arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    type_arguments: List[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(mode: ReferenceMode,
                name: str,
-               qualifier_expression: ExpressionTree,
-               type_arguments: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "MemberReferenceTree":
-        return MemberReferenceTree(
+               qualifier_expression: Expression,
+               type_arguments: List[Expression],
+               start_pos: int, end_pos: int, source: str) -> "MemberReference":
+        return MemberReference(
             kind=TreeKind.MEMBER_REFERENCE,
             mode=mode,
             name=name,
@@ -1831,7 +1815,7 @@ class MemberReferenceTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class MemberSelectTree(ExpressionTree):
+class MemberSelect(Expression):
     """成员访问表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MemberSelectTree.java
@@ -1840,13 +1824,13 @@ class MemberSelectTree(ExpressionTree):
     样例：expression . identifier
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    identifier: IdentifierTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    identifier: Identifier = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree, identifier: IdentifierTree,
-               start_pos: int, end_pos: int, source: str) -> "MemberSelectTree":
-        return MemberSelectTree(
+    def create(expression: Expression, identifier: Identifier,
+               start_pos: int, end_pos: int, source: str) -> "MemberSelect":
+        return MemberSelect(
             kind=TreeKind.MEMBER_SELECT,
             expression=expression,
             identifier=identifier,
@@ -1860,7 +1844,7 @@ class MemberSelectTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class MethodInvocationTree(ExpressionTree):
+class MethodInvocation(Expression):
     """方法调用表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MethodInvocationTree.java
@@ -1871,16 +1855,16 @@ class MethodInvocationTree(ExpressionTree):
     - this . typeArguments identifier ( arguments )
     """
 
-    type_arguments: List[Tree] = dataclasses.field(kw_only=True)
-    method_select: ExpressionTree = dataclasses.field(kw_only=True)
-    arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    type_arguments: List[Tree] = dataclasses.field(kw_only=True)  # 泛型
+    method_select: Expression = dataclasses.field(kw_only=True)  # 方法名
+    arguments: List[Expression] = dataclasses.field(kw_only=True)  # 参数
 
     @staticmethod
     def create(type_arguments: List[Tree],
-               method_select: ExpressionTree,
-               arguments: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "MethodInvocationTree":
-        return MethodInvocationTree(
+               method_select: Expression,
+               arguments: List[Expression],
+               start_pos: int, end_pos: int, source: str) -> "MethodInvocation":
+        return MethodInvocation(
             kind=TreeKind.METHOD_INVOCATION,
             type_arguments=type_arguments,
             method_select=method_select,
@@ -1895,7 +1879,7 @@ class MethodInvocationTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class MethodTree(Tree):
+class Method(Tree):
     """声明方法或注解类型元素
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/MethodTree.java
@@ -1910,28 +1894,28 @@ class MethodTree(Tree):
     modifiers type name ( ) default defaultValue
     """
 
-    modifiers: ModifiersTree = dataclasses.field(kw_only=True)
+    modifiers: Modifiers = dataclasses.field(kw_only=True)
     name: str = dataclasses.field(kw_only=True)
     return_type: Tree = dataclasses.field(kw_only=True)
-    type_parameters: List[TypeParameterTree] = dataclasses.field(kw_only=True)
-    receiver_parameter: VariableTree = dataclasses.field(kw_only=True)
-    parameters: List[VariableTree] = dataclasses.field(kw_only=True)
-    throws: List[ExpressionTree] = dataclasses.field(kw_only=True)
-    block: BlockTree = dataclasses.field(kw_only=True)
+    type_parameters: List[TypeParameter] = dataclasses.field(kw_only=True)
+    receiver_parameter: Variable = dataclasses.field(kw_only=True)
+    parameters: List[Variable] = dataclasses.field(kw_only=True)
+    throws: List[Expression] = dataclasses.field(kw_only=True)
+    block: Block = dataclasses.field(kw_only=True)
     default_value: Tree = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(modifiers: ModifiersTree,
+    def create(modifiers: Modifiers,
                name: str,
                return_type: Tree,
-               type_parameters: List[TypeParameterTree],
-               receiver_parameter: Optional[VariableTree],
-               parameters: List[VariableTree],
-               throws: List[ExpressionTree],
-               block: BlockTree,
+               type_parameters: List[TypeParameter],
+               receiver_parameter: Optional[Variable],
+               parameters: List[Variable],
+               throws: List[Expression],
+               block: Block,
                default_value: Tree,
-               start_pos: int, end_pos: int, source: str) -> "MethodTree":
-        return MethodTree(
+               start_pos: int, end_pos: int, source: str) -> "Method":
+        return Method(
             kind=TreeKind.METHOD,
             modifiers=modifiers,
             name=name,
@@ -1952,7 +1936,7 @@ class MethodTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class NewArrayTree(ExpressionTree):
+class NewArray(Expression):
     """初始化数组表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/NewArrayTree.java
@@ -1962,19 +1946,19 @@ class NewArrayTree(ExpressionTree):
     样例 2：new type dimensions [ ] initializers
     """
 
-    array_type: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
-    dimensions: List[ExpressionTree] = dataclasses.field(kw_only=True)
-    initializers: List[ExpressionTree] = dataclasses.field(kw_only=True)
-    annotations: Optional[List[AnnotationTree]] = dataclasses.field(kw_only=True, default=None)
-    dim_annotations: Optional[List[List[AnnotationTree]]] = dataclasses.field(kw_only=True, default=None)
+    array_type: Optional[Expression] = dataclasses.field(kw_only=True)
+    dimensions: List[Expression] = dataclasses.field(kw_only=True)
+    initializers: List[Expression] = dataclasses.field(kw_only=True)
+    annotations: Optional[List[Annotation]] = dataclasses.field(kw_only=True, default=None)
+    dim_annotations: Optional[List[List[Annotation]]] = dataclasses.field(kw_only=True, default=None)
 
     @staticmethod
-    def create(array_type: Optional[ExpressionTree],
-               dimensions: List[ExpressionTree],
-               initializers: List[ExpressionTree],
-               dim_annotations: Optional[List[List[AnnotationTree]]],
-               start_pos: int, end_pos: int, source: str) -> "NewArrayTree":
-        return NewArrayTree(
+    def create(array_type: Optional[Expression],
+               dimensions: List[Expression],
+               initializers: List[Expression],
+               dim_annotations: Optional[List[List[Annotation]]],
+               start_pos: int, end_pos: int, source: str) -> "NewArray":
+        return NewArray(
             kind=TreeKind.NEW_ARRAY,
             array_type=array_type,
             dimensions=dimensions,
@@ -1990,7 +1974,7 @@ class NewArrayTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class NewClassTree(ExpressionTree):
+class NewClass(Expression):
     """实例化类表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/NewClassTree.java
@@ -2010,20 +1994,20 @@ class NewClassTree(ExpressionTree):
     enclosingExpression.new identifier ( arguments )
     """
 
-    enclosing_expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    enclosing_expression: Optional[Expression] = dataclasses.field(kw_only=True)
     type_arguments: List[Tree] = dataclasses.field(kw_only=True)
-    identifier: ExpressionTree = dataclasses.field(kw_only=True)
-    arguments: List[ExpressionTree] = dataclasses.field(kw_only=True)
-    class_body: Optional[ClassTree] = dataclasses.field(kw_only=True)
+    identifier: Expression = dataclasses.field(kw_only=True)
+    arguments: List[Expression] = dataclasses.field(kw_only=True)
+    class_body: Optional[Class] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(enclosing: Optional[ExpressionTree],
+    def create(enclosing: Optional[Expression],
                type_arguments: List[Tree],
-               identifier: ExpressionTree,
-               arguments: List[ExpressionTree],
-               class_body: Optional[ClassTree],
-               start_pos: int, end_pos: int, source: str) -> "NewClassTree":
-        return NewClassTree(
+               identifier: Expression,
+               arguments: List[Expression],
+               class_body: Optional[Class],
+               start_pos: int, end_pos: int, source: str) -> "NewClass":
+        return NewClass(
             kind=TreeKind.NEW_CLASS,
             enclosing_expression=enclosing,
             type_arguments=type_arguments,
@@ -2045,7 +2029,7 @@ class NewClassTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class OpensTree(DirectiveTree):
+class Opens(Directive):
     """模块声明中的 opens 指令
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/OpensTree.java
@@ -2058,14 +2042,14 @@ class OpensTree(DirectiveTree):
     opens package-name to module-name;
     """
 
-    package_name: ExpressionTree = dataclasses.field(kw_only=True)
-    module_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    package_name: Expression = dataclasses.field(kw_only=True)
+    module_names: List[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(package_name: ExpressionTree,
-               module_names: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "OpensTree":
-        return OpensTree(
+    def create(package_name: Expression,
+               module_names: List[Expression],
+               start_pos: int, end_pos: int, source: str) -> "Opens":
+        return Opens(
             kind=TreeKind.OPENS,
             package_name=package_name,
             module_names=module_names,
@@ -2079,7 +2063,7 @@ class OpensTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ParameterizedTypeTree(ExpressionTree):
+class ParameterizedType(Type):
     """包含类型参数的类型表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ParameterizedTypeTree.java
@@ -2094,8 +2078,8 @@ class ParameterizedTypeTree(ExpressionTree):
 
     @staticmethod
     def create(type_name: Tree, type_arguments: List[Tree],
-               start_pos: int, end_pos: int, source: str) -> "ParameterizedTypeTree":
-        return ParameterizedTypeTree(
+               start_pos: int, end_pos: int, source: str) -> "ParameterizedType":
+        return ParameterizedType(
             kind=TreeKind.PARAMETERIZED_TYPE,
             type_name=type_name,
             type_arguments=type_arguments,
@@ -2109,7 +2093,7 @@ class ParameterizedTypeTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ParenthesizedTree(ExpressionTree):
+class Parenthesized(Expression):
     """括号表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ParenthesizedTree.java
@@ -2120,11 +2104,11 @@ class ParenthesizedTree(ExpressionTree):
     ( expression )
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "ParenthesizedTree":
-        return ParenthesizedTree(
+    def create(expression: Expression, start_pos: int, end_pos: int, source: str) -> "Parenthesized":
+        return Parenthesized(
             kind=TreeKind.PARENTHESIZED,
             expression=expression,
             start_pos=start_pos,
@@ -2137,18 +2121,18 @@ class ParenthesizedTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class PatternCaseLabelTree(CaseLabelTree):
+class PatternCaseLabel(CaseLabel):
     """【JDK 21+】TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PatternCaseLabelTree.java
     A case label element that refers to an expression
     """
 
-    pattern: PatternTree = dataclasses.field(kw_only=True)
+    pattern: Pattern = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(pattern: PatternTree, start_pos: int, end_pos: int, source: str) -> "PatternCaseLabelTree":
-        return PatternCaseLabelTree(
+    def create(pattern: Pattern, start_pos: int, end_pos: int, source: str) -> "PatternCaseLabel":
+        return PatternCaseLabel(
             kind=TreeKind.PATTERN_CASE_LABEL,
             pattern=pattern,
             start_pos=start_pos,
@@ -2157,10 +2141,10 @@ class PatternCaseLabelTree(CaseLabelTree):
         )
 
     @staticmethod
-    def mock() -> "PatternCaseLabelTree":
-        return PatternCaseLabelTree(
+    def mock() -> "PatternCaseLabel":
+        return PatternCaseLabel(
             kind=TreeKind.PATTERN_CASE_LABEL,
-            pattern=AnyPatternTree.mock(),
+            pattern=AnyPattern.mock(),
             start_pos=None,
             end_pos=None,
             source=None
@@ -2171,7 +2155,7 @@ class PatternCaseLabelTree(CaseLabelTree):
 
 
 @dataclasses.dataclass(slots=True)
-class PrimitiveTypeTree(ExpressionTree):
+class PrimitiveType(Type):
     """原生类型
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/PrimitiveTypeTree.java
@@ -2184,8 +2168,8 @@ class PrimitiveTypeTree(ExpressionTree):
     type_kind: TypeKind = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(type_kind: TypeKind, start_pos: int, end_pos: int, source: str) -> "PrimitiveTypeTree":
-        return PrimitiveTypeTree(
+    def create(type_kind: TypeKind, start_pos: int, end_pos: int, source: str) -> "PrimitiveType":
+        return PrimitiveType(
             kind=TreeKind.PRIMITIVE_TYPE,
             type_kind=type_kind,
             start_pos=start_pos,
@@ -2194,8 +2178,8 @@ class PrimitiveTypeTree(ExpressionTree):
         )
 
     @staticmethod
-    def create_void(start_pos: int, end_pos: int, source: str) -> "PrimitiveTypeTree":
-        return PrimitiveTypeTree(
+    def create_void(start_pos: int, end_pos: int, source: str) -> "PrimitiveType":
+        return PrimitiveType(
             kind=TreeKind.PRIMITIVE_TYPE,
             type_kind=TypeKind.VOID,
             start_pos=start_pos,
@@ -2204,10 +2188,10 @@ class PrimitiveTypeTree(ExpressionTree):
         )
 
     @staticmethod
-    def mock(type_name: str) -> "PrimitiveTypeTree":
-        return PrimitiveTypeTree(
+    def mock() -> "PrimitiveType":
+        return PrimitiveType(
             kind=TreeKind.PRIMITIVE_TYPE,
-            type_kind=TypeKind[type_name],
+            type_kind=TypeKind.MOCK,
             start_pos=None,
             end_pos=None,
             source=None
@@ -2218,7 +2202,7 @@ class PrimitiveTypeTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ProvidesTree(DirectiveTree):
+class Provides(Directive):
     """模块声明语句的 provides 指令【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ProvidesTree.java
@@ -2228,14 +2212,14 @@ class ProvidesTree(DirectiveTree):
     provides service-name with implementation-name;
     """
 
-    service_name: ExpressionTree = dataclasses.field(kw_only=True)
-    implementation_names: List[ExpressionTree] = dataclasses.field(kw_only=True)
+    service_name: Expression = dataclasses.field(kw_only=True)
+    implementation_names: List[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(service_name: ExpressionTree,
-               implementation_names: List[ExpressionTree],
-               start_pos: int, end_pos: int, source: str) -> "ProvidesTree":
-        return ProvidesTree(
+    def create(service_name: Expression,
+               implementation_names: List[Expression],
+               start_pos: int, end_pos: int, source: str) -> "Provides":
+        return Provides(
             kind=TreeKind.PROVIDES,
             service_name=service_name,
             implementation_names=implementation_names,
@@ -2249,7 +2233,7 @@ class ProvidesTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class RequiresTree(DirectiveTree):
+class Requires(Directive):
     """模块声明语句中的 requires 指令【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/RequiresTree.java
@@ -2267,14 +2251,14 @@ class RequiresTree(DirectiveTree):
 
     is_static: bool = dataclasses.field(kw_only=True)
     is_transitive: bool = dataclasses.field(kw_only=True)
-    module_name: ExpressionTree = dataclasses.field(kw_only=True)
+    module_name: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(is_static: bool,
                is_transitive: bool,
-               module_name: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "RequiresTree":
-        return RequiresTree(
+               module_name: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Requires":
+        return Requires(
             kind=TreeKind.REQUIRES,
             is_static=is_static,
             is_transitive=is_transitive,
@@ -2291,7 +2275,7 @@ class RequiresTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ReturnTree(StatementTree):
+class Return(Statement):
     """返回语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ReturnTree.java
@@ -2304,12 +2288,12 @@ class ReturnTree(StatementTree):
     return expression ;
     """
 
-    expression: Optional[ExpressionTree] = dataclasses.field(kw_only=True)
+    expression: Optional[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ReturnTree":
-        return ReturnTree(
+    def create(expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Return":
+        return Return(
             kind=TreeKind.RETURN,
             expression=expression,
             start_pos=start_pos,
@@ -2324,7 +2308,7 @@ class ReturnTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class SwitchExpressionTree(ExpressionTree):
+class SwitchExpression(Expression):
     """switch 表达式【JDK 14+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SwitchExpressionTree.java
@@ -2336,14 +2320,14 @@ class SwitchExpressionTree(ExpressionTree):
     }
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    cases: List[CaseTree] = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    cases: List[Case] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               cases: List[CaseTree],
-               start_pos: int, end_pos: int, source: str) -> "SwitchExpressionTree":
-        return SwitchExpressionTree(
+    def create(expression: Expression,
+               cases: List[Case],
+               start_pos: int, end_pos: int, source: str) -> "SwitchExpression":
+        return SwitchExpression(
             kind=TreeKind.SWITCH_EXPRESSION,
             expression=expression,
             cases=cases,
@@ -2359,7 +2343,7 @@ class SwitchExpressionTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class SwitchTree(StatementTree):
+class Switch(Statement):
     """switch 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SwitchTree.java
@@ -2371,14 +2355,14 @@ class SwitchTree(StatementTree):
     }
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    cases: List[CaseTree] = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    cases: List[Case] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               cases: List[CaseTree],
-               start_pos: int, end_pos: int, source: str) -> "SwitchTree":
-        return SwitchTree(
+    def create(expression: Expression,
+               cases: List[Case],
+               start_pos: int, end_pos: int, source: str) -> "Switch":
+        return Switch(
             kind=TreeKind.SWITCH,
             expression=expression,
             cases=cases,
@@ -2394,7 +2378,7 @@ class SwitchTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class SynchronizedTree(StatementTree):
+class Synchronized(Statement):
     """同步代码块语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/SynchronizedTree.java
@@ -2405,14 +2389,14 @@ class SynchronizedTree(StatementTree):
         block
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
-    block: BlockTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
+    block: Block = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               block: BlockTree,
-               start_pos: int, end_pos: int, source: str) -> "SynchronizedTree":
-        return SynchronizedTree(
+    def create(expression: Expression,
+               block: Block,
+               start_pos: int, end_pos: int, source: str) -> "Synchronized":
+        return Synchronized(
             kind=TreeKind.SYNCHRONIZED,
             expression=expression,
             block=block,
@@ -2427,7 +2411,7 @@ class SynchronizedTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class ThrowTree(StatementTree):
+class Throw(Statement):
     """throw 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/ThrowTree.java
@@ -2437,12 +2421,12 @@ class ThrowTree(StatementTree):
     throw expression;
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(expression: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "ThrowTree":
-        return ThrowTree(
+    def create(expression: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Throw":
+        return Throw(
             kind=TreeKind.THROW,
             expression=expression,
             start_pos=start_pos,
@@ -2455,7 +2439,7 @@ class ThrowTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class TryTree(StatementTree):
+class Try(Statement):
     """try 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/TryTree.java
@@ -2469,18 +2453,18 @@ class TryTree(StatementTree):
         finallyBlock
     """
 
-    block: BlockTree = dataclasses.field(kw_only=True)
-    catches: List[CatchTree] = dataclasses.field(kw_only=True)
-    finally_block: Optional[BlockTree] = dataclasses.field(kw_only=True)
+    block: Block = dataclasses.field(kw_only=True)
+    catches: List[Catch] = dataclasses.field(kw_only=True)
+    finally_block: Optional[Block] = dataclasses.field(kw_only=True)
     resources: List[Tree] = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(block: BlockTree,
-               catches: List[CatchTree],
-               finally_block: Optional[BlockTree],
+    def create(block: Block,
+               catches: List[Catch],
+               finally_block: Optional[Block],
                resources: List[Tree],
-               start_pos: int, end_pos: int, source: str) -> "TryTree":
-        return TryTree(
+               start_pos: int, end_pos: int, source: str) -> "Try":
+        return Try(
             kind=TreeKind.TRY,
             block=block,
             catches=catches,
@@ -2496,7 +2480,7 @@ class TryTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class TypeCastTree(ExpressionTree):
+class TypeCast(Expression):
     """强制类型转换表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/TypeCastTree.java
@@ -2507,12 +2491,12 @@ class TypeCastTree(ExpressionTree):
     """
 
     cast_type: Tree = dataclasses.field(kw_only=True)
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(cast_type: Tree, expression: ExpressionTree, start_pos: int, end_pos: int,
-               source: str) -> "TypeCastTree":
-        return TypeCastTree(
+    def create(cast_type: Tree, expression: Expression, start_pos: int, end_pos: int,
+               source: str) -> "TypeCast":
+        return TypeCast(
             kind=TreeKind.TYPE_CAST,
             cast_type=cast_type,
             expression=expression,
@@ -2526,7 +2510,7 @@ class TypeCastTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class UnaryTree(ExpressionTree):
+class Unary(Expression):
     """一元表达式
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UnaryTree.java
@@ -2540,11 +2524,11 @@ class UnaryTree(ExpressionTree):
     expression operator
     """
 
-    expression: ExpressionTree = dataclasses.field(kw_only=True)
+    expression: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(kind: TreeKind, expression: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "UnaryTree":
-        return UnaryTree(
+    def create(kind: TreeKind, expression: Expression, start_pos: int, end_pos: int, source: str) -> "Unary":
+        return Unary(
             kind=kind,
             expression=expression,
             start_pos=start_pos,
@@ -2557,7 +2541,7 @@ class UnaryTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class UnionTypeTree(Tree):
+class UnionType(Type):
     """TODO 名称待整理
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UnionTypeTree.java
@@ -2568,8 +2552,8 @@ class UnionTypeTree(Tree):
 
     @staticmethod
     def create(type_alternatives: List[Tree],
-               start_pos: int, end_pos: int, source: str) -> "UnionTypeTree":
-        return UnionTypeTree(
+               start_pos: int, end_pos: int, source: str) -> "UnionType":
+        return UnionType(
             kind=TreeKind.UNION_TYPE,
             type_alternatives=type_alternatives,
             start_pos=start_pos,
@@ -2582,7 +2566,7 @@ class UnionTypeTree(Tree):
 
 
 @dataclasses.dataclass(slots=True)
-class UsesTree(DirectiveTree):
+class Uses(Directive):
     """模块声明语句中的 uses 指令【JDK 9+】
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/UsesTree.java
@@ -2592,12 +2576,12 @@ class UsesTree(DirectiveTree):
     uses service-name;
     """
 
-    service_name: ExpressionTree = dataclasses.field(kw_only=True)
+    service_name: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(service_name: ExpressionTree,
-               start_pos: int, end_pos: int, source: str) -> "UsesTree":
-        return UsesTree(
+    def create(service_name: Expression,
+               start_pos: int, end_pos: int, source: str) -> "Uses":
+        return Uses(
             kind=TreeKind.USES,
             service_name=service_name,
             start_pos=start_pos,
@@ -2610,7 +2594,7 @@ class UsesTree(DirectiveTree):
 
 
 @dataclasses.dataclass(slots=True)
-class WhileLoopTree(StatementTree):
+class WhileLoop(Statement):
     """while 循环语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/WhileLoopTree.java
@@ -2621,14 +2605,14 @@ class WhileLoopTree(StatementTree):
         statement
     """
 
-    condition: ExpressionTree = dataclasses.field(kw_only=True)
-    statement: StatementTree = dataclasses.field(kw_only=True)
+    condition: Expression = dataclasses.field(kw_only=True)
+    statement: Statement = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(condition: ExpressionTree,
-               statement: StatementTree,
-               start_pos: int, end_pos: int, source: str) -> "WhileLoopTree":
-        return WhileLoopTree(
+    def create(condition: Expression,
+               statement: Statement,
+               start_pos: int, end_pos: int, source: str) -> "WhileLoop":
+        return WhileLoop(
             kind=TreeKind.WHILE_LOOP,
             condition=condition,
             statement=statement,
@@ -2643,7 +2627,7 @@ class WhileLoopTree(StatementTree):
 
 
 @dataclasses.dataclass(slots=True)
-class WildcardTree(ExpressionTree):
+class Wildcard(Expression):
     """通配符
 
     与 JDK 中 com.sun.source.tree.WildcardTree 接口的继承关系不一致，是因为 con.sun.tools.javac.tree.JCTree 类继承了 JCExpression，详见：
@@ -2667,8 +2651,8 @@ class WildcardTree(ExpressionTree):
     bound: Optional[Tree] = dataclasses.field(kw_only=True)  # 如果是 "?" 则为 None
 
     @staticmethod
-    def create_extends_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
-        return WildcardTree(
+    def create_extends_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "Wildcard":
+        return Wildcard(
             kind=TreeKind.EXTENDS_WILDCARD,
             bound=bound,
             start_pos=start_pos,
@@ -2677,8 +2661,8 @@ class WildcardTree(ExpressionTree):
         )
 
     @staticmethod
-    def create_super_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "WildcardTree":
-        return WildcardTree(
+    def create_super_wildcard(bound: Tree, start_pos: int, end_pos: int, source: str) -> "Wildcard":
+        return Wildcard(
             kind=TreeKind.SUPER_WILDCARD,
             bound=bound,
             start_pos=start_pos,
@@ -2687,8 +2671,8 @@ class WildcardTree(ExpressionTree):
         )
 
     @staticmethod
-    def create_unbounded_wildcard(start_pos: int, end_pos: int, source: str) -> "WildcardTree":
-        return WildcardTree(
+    def create_unbounded_wildcard(start_pos: int, end_pos: int, source: str) -> "Wildcard":
+        return Wildcard(
             kind=TreeKind.UNBOUNDED_WILDCARD,
             bound=None,
             start_pos=start_pos,
@@ -2705,7 +2689,7 @@ class WildcardTree(ExpressionTree):
 
 
 @dataclasses.dataclass(slots=True)
-class YieldTree(StatementTree):
+class Yield(Statement):
     """yield 语句
 
     https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/source/tree/YieldTree.java
@@ -2715,11 +2699,11 @@ class YieldTree(StatementTree):
     yield expression;
     """
 
-    value: ExpressionTree = dataclasses.field(kw_only=True)
+    value: Expression = dataclasses.field(kw_only=True)
 
     @staticmethod
-    def create(value: ExpressionTree, start_pos: int, end_pos: int, source: str) -> "YieldTree":
-        return YieldTree(
+    def create(value: Expression, start_pos: int, end_pos: int, source: str) -> "Yield":
+        return Yield(
             kind=TreeKind.YIELD,
             value=value,
             start_pos=start_pos,

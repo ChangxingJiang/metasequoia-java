@@ -37,21 +37,21 @@ class LazyProject:
         }
 
         # 绝对名称到所属文件路径的映射
-        self._cache_file_node_to_file_path: Dict[str, ast.CompilationUnitTree] = {}
+        self._cache_file_node_to_file_path: Dict[str, ast.CompilationUnit] = {}
         self._cache_package_name_to_package_path: Dict[str, str] = {}
 
     @property
     def project_path(self) -> str:
         return self._project_path
 
-    def get_file_node_by_file_path(self, file_path: str) -> ast.CompilationUnitTree:
+    def get_file_node_by_file_path(self, file_path: str) -> ast.CompilationUnit:
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
         if file_path not in self._cache_file_node_to_file_path:
             with open(file_path, "r", encoding="UTF-8") as file:
                 self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
         return self._cache_file_node_to_file_path[file_path]
 
-    def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnitTree:
+    def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
         """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
         # 拆分 package 和 class
         package_name, class_name = self.get_package_and_class_name_by_absolute_name(absolute_name)
@@ -108,7 +108,7 @@ class LazyProject:
         file_path_list: List[str] = self.get_file_path_list_by_package_name(package_name)
         class_name_list: List[str] = []
         for file_path in file_path_list:
-            file_node: ast.CompilationUnitTree = self.get_file_node_by_file_path(file_path)
+            file_node: ast.CompilationUnit = self.get_file_node_by_file_path(file_path)
             for class_declaration in file_node.get_class_declaration_list():
                 if ast.Modifier.PRIVATE not in class_declaration.modifiers.flags:
                     class_name_list.append(class_declaration.name)

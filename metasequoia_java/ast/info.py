@@ -5,7 +5,7 @@
 from typing import Optional
 
 from metasequoia_java.ast.base import Tree
-from metasequoia_java.ast.node import AnnotatedTypeTree, ArrayTypeTree, WildcardTree
+from metasequoia_java.ast.node import AnnotatedType, ArrayType, Wildcard
 
 __all__ = [
     "inner_most_type"
@@ -17,11 +17,11 @@ def inner_most_type(type_node: Tree, skip_annotations: bool):
     last_annotated_type: Optional[Tree] = None
     current: Tree = type_node
     while True:
-        if isinstance(current, ArrayTypeTree):
+        if isinstance(current, ArrayType):
             current = current.expression
-        elif isinstance(current, WildcardTree):
+        elif isinstance(current, Wildcard):
             current = current.bound
-        elif isinstance(current, AnnotatedTypeTree):
+        elif isinstance(current, AnnotatedType):
             last_annotated_type = current
             current = current.underlying_type
         else:
