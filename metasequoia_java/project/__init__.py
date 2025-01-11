@@ -1,0 +1,1 @@
+from metasequoia_java.project.lazy_project import LazyProject
