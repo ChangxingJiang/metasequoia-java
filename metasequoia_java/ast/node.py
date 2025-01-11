@@ -462,7 +462,7 @@ class Variable(Statement):
     A tree node for a variable declaration.
 
     样例：
-    - modifiers type name initializer ;
+    - modifiers type name = initializer ;
     - modifiers type qualified-name.this
     """
 

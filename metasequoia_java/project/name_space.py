@@ -36,6 +36,11 @@ class SimpleNameSpace:
         """获取 variable_name 的列表"""
         return list(self._space)
 
+    def __add__(self, other: "SimpleNameSpace") -> "SimpleNameSpace":
+        for variable_name, variable_type in other._space.items():
+            self._space[variable_name] = variable_type
+        return self
+
     def __repr__(self):
         space_text = ", ".join(f"{variable_name}={gst_type.generate()}"
                                for variable_name, gst_type in self._space.items())
@@ -50,11 +55,20 @@ class SimpleNameSpace:
         return simple_name_space
 
     @staticmethod
-    def create_by_method_param(method_node: ast.Method) -> "SimpleNameSpace":
+    def create_by_method_params(method_node: ast.Method) -> "SimpleNameSpace":
         """根据方法的参数构造单层命名空间"""
         simple_name_space = SimpleNameSpace()
         for variable in method_node.parameters:
             simple_name_space.set_name(variable.name, variable.variable_type)
+        return simple_name_space
+
+    @staticmethod
+    def create_by_method_body(method_node: ast.Method) -> "SimpleNameSpace":
+        """根据方法的代码块构造单层命名空间"""
+        simple_name_space = SimpleNameSpace()
+        for statement in method_node.block.statements:
+            if isinstance(statement, ast.Variable):  # 赋值语句
+                simple_name_space.set_name(statement.name, statement.variable_type)
         return simple_name_space
 
 
