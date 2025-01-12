@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Tuple
 
 from metasequoia_java import ast, parse_compilation_unit
+from metasequoia_java.project.import_manager import ImportManager
 
 
 class AnalyzeError(Exception):
@@ -113,6 +114,33 @@ class LazyProject:
                 if ast.Modifier.PRIVATE not in class_declaration.modifiers.flags:
                     class_name_list.append(class_declaration.name)
         return class_name_list
+
+    def create_import_manager_by_file_node(self,
+                                           package_name: str,
+                                           file_node: ast.CompilationUnit
+                                           ) -> "ImportManager":
+        """根据文件的抽象语法树节点构造引用映射管理器
+
+        Parameters
+        ----------
+        package_name : str
+            Java 文件所在包路径
+        file_node : ast.CompilationUnit
+            Java 文件级抽象语法树节点
+        """
+        import_hash = {}
+
+        # 读取 import 语句中的引用映射关系
+        for import_node in file_node.imports:
+            absolute_name = import_node.identifier.generate()
+            name = (absolute_name[absolute_name.rindex(".") + 1:] if "." in absolute_name else absolute_name)
+            import_hash[name] = absolute_name
+
+        # 读取 package 中其他类的引用关系
+        for package_class_name in self.get_class_name_list_by_package_name(package_name):
+            import_hash[package_class_name] = f"{package_name}.{package_class_name}"
+
+        return ImportManager(import_hash)
 
     @staticmethod
     def get_package_and_class_name_by_absolute_name(absolute_name: str) -> Tuple[str, str]:
