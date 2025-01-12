@@ -469,7 +469,7 @@ class Variable(Statement):
     modifiers: Modifiers = dataclasses.field(kw_only=True)
     name: Optional[str] = dataclasses.field(kw_only=True, default=None)
     name_expression: Optional[Expression] = dataclasses.field(kw_only=True, default=None)
-    variable_type: Tree = dataclasses.field(kw_only=True)
+    variable_type: Tree = dataclasses.field(kw_only=True)  # 研究这个类型是否可以变为 Type
     initializer: Optional[Expression] = dataclasses.field(kw_only=True)
 
     @staticmethod
@@ -849,6 +849,13 @@ class Class(Statement):
                 variable_list.append(member)
         return variable_list
 
+    def get_variable_by_name(self, variable_name: str) -> Optional["Variable"]:
+        """获取类属性"""
+        for member in self.members:
+            if isinstance(member, Variable) and member.name == variable_name:
+                return member
+        return None
+
 
 @dataclasses.dataclass(slots=True)
 class Module(Tree):
@@ -1023,6 +1030,13 @@ class CompilationUnit(Tree):
             if isinstance(declaration, Class):
                 class_declaration_list.append(declaration)
         return class_declaration_list
+
+    def get_class_by_name(self, class_name: str) -> Optional[Class]:
+        """根据类名获取类节点"""
+        for declaration in self.type_declarations:
+            if isinstance(declaration, Class) and declaration.name == class_name:
+                return declaration
+        return None
 
 
 @dataclasses.dataclass(slots=True)

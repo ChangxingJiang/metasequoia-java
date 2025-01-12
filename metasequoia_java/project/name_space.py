@@ -18,14 +18,14 @@ class SimpleNameSpace:
     """单层命名空间"""
 
     def __init__(self):
-        self._space: Dict[str, ast.Tree] = {}  # variable_name（变量名）到 gsp_type（通用语法树类型节点）的映射关系
+        self._space: Dict[str, ast.Tree] = {}  # variable_name（变量名）到 variable_type（通用语法树类型节点）的映射关系
 
     def set_name(self, variable_name: str, variable_type: ast.Tree) -> None:
-        """添加 variable_name 到 gsp_type 的映射关系"""
+        """添加 variable_name 到 variable_type 的映射关系"""
         self._space[variable_name] = variable_type
 
     def get_name(self, variable_name: str, default: Optional[ast.Tree] = None) -> ast.Tree:
-        """返回 variable_name 对应的 gsp_type"""
+        """返回 variable_name 对应的 variable_type"""
         return self._space.get(variable_name, default)
 
     def contains(self, variable_name: str) -> bool:
@@ -42,8 +42,8 @@ class SimpleNameSpace:
         return self
 
     def __repr__(self):
-        space_text = ", ".join(f"{variable_name}={gst_type.generate()}"
-                               for variable_name, gst_type in self._space.items())
+        space_text = ", ".join(f"{variable_name}={variable_type.generate()}"
+                               for variable_name, variable_type in self._space.items())
         return f"<NameSpace {space_text}>"
 
     @staticmethod
@@ -93,12 +93,12 @@ class NameSpace:
         """出栈一层命名空间"""
         return self._stack.pop()
 
-    def set_name(self, variable_name: str, gst_type: ast.Tree) -> None:
-        """在栈顶命名空间中添加 variable_name 到 gsp_type 的映射关系"""
-        self._stack[-1].set_name(variable_name, gst_type)
+    def set_name(self, variable_name: str, variable_type: ast.Tree) -> None:
+        """在栈顶命名空间中添加 variable_name 到 variable_type 的映射关系"""
+        self._stack[-1].set_name(variable_name, variable_type)
 
     def get_name(self, variable_name: str, default: Optional[ast.Tree] = None) -> ast.Tree:
-        """返回 variable_name 对应的 gsp_type"""
+        """返回 variable_name 对应的 variable_type"""
         for i in range(self.level - 1, -1, -1):
             if self._stack[i].contains(variable_name):
                 return self._stack[i].get_name(variable_name)

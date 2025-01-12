@@ -19,7 +19,16 @@ class ImportManager:
         self._import_hash[name] = full_name
 
     def get_absolute_name(self, name: str, default: Any = None) -> Optional[str]:
+        """获取完整名称"""
         return self._import_hash.get(name, default)
+
+    def get_package_name(self, name: str, default: Any = None) -> Optional[str]:
+        """获取所属 package 名称"""
+        if name not in self._import_hash:
+            return default
+
+        absolute_name = self._import_hash[name]
+        return absolute_name.replace(f".{name}", "")
 
     def __repr__(self):
         text = ", ".join(f"{key}={value}" for key, value in self._import_hash.items())
