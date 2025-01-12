@@ -1,3 +1,3 @@
 from metasequoia_java.project.import_manager import ImportManager
-from metasequoia_java.project.lazy_project import LazyProject
+from metasequoia_java.project.context.project_context import ProjectContext
 from metasequoia_java.project.name_space import NameSpace, SimpleNameSpace

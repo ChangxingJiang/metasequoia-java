@@ -1,23 +1,20 @@
 """
-懒加载项目级代码目录
+项目级上下文
 """
 
 import os
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional
 
 from metasequoia_java import ast, parse_compilation_unit
-from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.elements import RuntimeMethod
+from metasequoia_java.project.elements_old import RuntimeClass
+from metasequoia_java.project.elements_old import RuntimeMethod
 from metasequoia_java.project.import_manager import ImportManager
 from metasequoia_java.project.name_space import NameSpace
+from metasequoia_java.project.utils import get_package_and_class_name_by_absolute_name
 
 
-class AnalyzeError(Exception):
-    """分析异常"""
-
-
-class LazyProject:
-    """懒加载的项目级代码对象
+class ProjectContext:
+    """项目级上下文
 
     在初始化阶段，获取所有 module 以及 module 中的顶级目录。
 
@@ -57,7 +54,7 @@ class LazyProject:
 
     def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
         """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
-        package_name, class_name = self.get_package_and_class_name_by_absolute_name(absolute_name)
+        package_name, class_name = get_package_and_class_name_by_absolute_name(absolute_name)
         return self.get_file_node_by_package_name_class_name(package_name, class_name)
 
     def get_file_node_by_package_name_class_name(self,
@@ -155,14 +152,6 @@ class LazyProject:
             import_hash[package_class_name] = f"{package_name}.{package_class_name}"
 
         return ImportManager(import_hash)
-
-    @staticmethod
-    def get_package_and_class_name_by_absolute_name(absolute_name: str) -> Tuple[str, str]:
-        """获取 absolute_name（绝对名称）中获取 package_name 和 class_name"""
-        if "." in absolute_name:
-            return absolute_name[:absolute_name.rindex(".")], absolute_name[absolute_name.rindex(".") + 1:]
-        else:
-            return "", absolute_name
 
     def get_method_invocation(self,
                               import_manager: ImportManager,

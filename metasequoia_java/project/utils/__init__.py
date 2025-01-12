@@ -1,0 +1,1 @@
+from metasequoia_java.project.utils.name_utils import get_package_and_class_name_by_absolute_name
