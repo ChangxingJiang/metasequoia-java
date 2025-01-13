@@ -9,6 +9,10 @@ from metasequoia_java.project.context.project_context import ProjectContext
 from metasequoia_java.project.elements import RuntimeType
 from metasequoia_java.project.utils import get_package_and_class_name_by_absolute_name
 
+__all__ = [
+    "FileContext"
+]
+
 
 class FileContext:
     """文件级上下文"""
@@ -40,6 +44,10 @@ class FileContext:
     def get_public_class_declaration(self) -> ast.Class:
         """返回公有类的抽象语法树节点"""
         return self.file_node.get_public_class()
+
+    def get_class_declaration_by_class_name(self, class_name) -> Optional[ast.Class]:
+        """根据 class_name 获取指定类的抽象语法树节点"""
+        return self.file_node.get_class_by_name(class_name)
 
     # ------------------------------ 引用映射管理器 ------------------------------
 
