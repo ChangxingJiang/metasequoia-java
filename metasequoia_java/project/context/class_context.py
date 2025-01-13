@@ -7,7 +7,8 @@ from metasequoia_java.project.context.base_context import ClassContextBase
 from metasequoia_java.project.context.base_context import FileContextBase
 from metasequoia_java.project.context.base_context import ProjectContextBase
 from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.name_space import NameSpace, SimpleNameSpace
+from metasequoia_java.project.utils import NameSpace
+from metasequoia_java.project.utils import SimpleNameSpace
 
 __all__ = [
     "ClassContext"
