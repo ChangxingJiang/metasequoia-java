@@ -1,3 +1,7 @@
+from metasequoia_java.project.context.base_context import ClassContextBase
+from metasequoia_java.project.context.base_context import FileContextBase
+from metasequoia_java.project.context.base_context import MethodContextBase
+from metasequoia_java.project.context.base_context import ProjectContextBase
 from metasequoia_java.project.context.class_context import ClassContext
 from metasequoia_java.project.context.file_context import FileContext
 from metasequoia_java.project.context.method_context import MethodContext

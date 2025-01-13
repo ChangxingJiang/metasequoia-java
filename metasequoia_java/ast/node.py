@@ -1769,6 +1769,9 @@ class StringLiteral(Literal):
             source=source
         )
 
+    def get_string_value(self) -> str:
+        return self.value
+
     def generate(self) -> str:
         if self.style == StringStyle.STRING:
             return f"\"{repr(self.value)}\""
@@ -1889,7 +1892,12 @@ class MethodInvocation(Expression):
         )
 
     def generate(self) -> str:
-        """TODO"""
+        if self.type_arguments:
+            type_arguments = "<" + generate_tree_list(self.type_arguments, sep=Separator.COMMA) + ">"
+        else:
+            type_arguments = ""
+        arguments = generate_tree_list(self.arguments, sep=Separator.COMMA)
+        return f"{self.method_select.generate()}{type_arguments}({arguments})"
 
 
 @dataclasses.dataclass(slots=True)
