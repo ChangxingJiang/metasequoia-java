@@ -45,6 +45,10 @@ class ClassContext:
             class_node=file_context.get_public_class_declaration()
         )
 
+    def get_method_node_by_name(self, method_name: str) -> ast.Method:
+        """根据 method_name 获取方法的抽象语法树节点"""
+        return self.class_node.get_method_by_name(method_name)
+
     # ------------------------------ 命名空间管理器 ------------------------------
 
     def get_simple_name_space(self) -> SimpleNameSpace:
