@@ -65,18 +65,34 @@ class SimpleNameSpace:
     @staticmethod
     def create_by_method_body(method_node: ast.Method) -> "SimpleNameSpace":
         """根据方法的代码块构造单层命名空间"""
-        simple_name_space = SimpleNameSpace()
         if method_node.block is None:
-            return simple_name_space  # 没有代码块的函数
-        for statement in method_node.block.statements:
-            if isinstance(statement, ast.Variable):  # 赋值语句
-                simple_name_space.set_name(statement.name, statement.variable_type)
-        return simple_name_space
+            return SimpleNameSpace()  # 没有代码块的函数
+        return SimpleNameSpace.create_by_statements(method_node.block.statements)
 
     @staticmethod
     def create_by_variable(variable_node: ast.Variable) -> "SimpleNameSpace":
         simple_name_space = SimpleNameSpace()
         simple_name_space.set_name(variable_node.name, variable_node.variable_type)
+        return simple_name_space
+
+    @staticmethod
+    def create_by_statement(statement_node: ast.Statement) -> "SimpleNameSpace":
+        """根据语句的抽象语法树节点构造单层命名空间，语法为 Block 节点则展开下一层，否则不展开"""
+        if isinstance(statement_node, ast.Block):
+            return SimpleNameSpace.create_by_statements(statement_node.statements)
+
+        simple_name_space = SimpleNameSpace()
+        if isinstance(statement_node, ast.Variable):
+            simple_name_space.set_name(statement_node.name, statement_node.variable_type)
+        return simple_name_space
+
+    @staticmethod
+    def create_by_statements(statement_node_list: List[ast.Statement]) -> "SimpleNameSpace":
+        """根据表达式列表构造单层命名空间"""
+        simple_name_space = SimpleNameSpace()
+        for statement_node in statement_node_list:
+            if isinstance(statement_node, ast.Variable):  # 赋值语句
+                simple_name_space.set_name(statement_node.name, statement_node.variable_type)
         return simple_name_space
 
 

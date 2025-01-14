@@ -21,6 +21,7 @@ JAVA_LANG_CLASS_NAME_SET = {
     "Module",
     "ModuleLayer",
     "Number",
+    "Long",
     "Object",
     "Package",
     "Process",

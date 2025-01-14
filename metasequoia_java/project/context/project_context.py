@@ -140,9 +140,8 @@ class ProjectContext(ProjectContextBase):
         file_path_list = []
         for file_name in os.listdir(package_path):
             file_path = os.path.join(package_path, file_name)
-            if os.path.isdir(file_path):  # 递归处理嵌套的包
-                sub_package_name = f"{package_name}.{file_name}"
-                file_path_list.extend(self.get_file_path_list_by_package_name(sub_package_name))
+            if os.path.isdir(file_path):
+                pass  # 不需要处理 package 中的子路径
             else:
                 file_path_list.append(file_path)
         return file_path_list
@@ -189,6 +188,8 @@ class ProjectContext(ProjectContextBase):
 
     def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[ast.Tree]:
         """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
+        if runtime_variable.belong_class is None:
+            return None
         file_context = FileContext.create_by_public_class_absolute_name(
             project_context=self,
             absolute_name=runtime_variable.belong_class.absolute_name
@@ -204,6 +205,8 @@ class ProjectContext(ProjectContextBase):
         # runtime_variable.belong_class 在项目中，获取变量类型
         class_node = file_context.get_class_node_by_class_name(runtime_variable.belong_class.class_name)
         variable_node = class_node.get_variable_by_name(runtime_variable.variable_name)
+        if variable_node is None:
+            return None
         return file_context.get_runtime_class_by_type_node(
             class_node=class_node,
             runtime_class=runtime_variable.belong_class,
@@ -212,6 +215,9 @@ class ProjectContext(ProjectContextBase):
 
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
+        if runtime_method.belong_class is None:
+            return None  # 如果方法所属类获取失败，则返回 None
+
         file_context = FileContext.create_by_public_class_absolute_name(
             project_context=self,
             absolute_name=runtime_method.belong_class.absolute_name
@@ -224,6 +230,8 @@ class ProjectContext(ProjectContextBase):
         # runtime_method.belong_class 在项目中，获取返回值类型
         class_node = file_context.get_class_node_by_class_name(runtime_method.belong_class.class_name)
         method_node = class_node.get_method_by_name(runtime_method.method_name)
+        if method_node is None:
+            return None
         return file_context.get_runtime_class_by_type_node(
             class_node=class_node,
             runtime_class=runtime_method.belong_class,

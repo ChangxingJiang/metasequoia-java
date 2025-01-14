@@ -1469,9 +1469,9 @@ class InstanceOf(Expression):
             actual_pattern = pattern
         else:
             instance_type = pattern
-            actual_pattern = False
+            actual_pattern = None
         return InstanceOf(
-            kind=TreeKind.INTERSECTION_TYPE,
+            kind=TreeKind.INSTANCE_OF,
             expression=expression,
             instance_type=instance_type,
             pattern=actual_pattern,

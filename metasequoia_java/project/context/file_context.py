@@ -84,7 +84,7 @@ class FileContext(FileContextBase):
         import_hash = {}
 
         # 读取 import 语句中的引用映射关系
-        for import_node in self._file_node.imports:
+        for import_node in self.file_node.imports:
             absolute_name = import_node.identifier.generate()
             package_name, class_name = split_last_name_from_absolute_name(absolute_name)
             import_hash[class_name] = RuntimeClass(
@@ -94,9 +94,9 @@ class FileContext(FileContextBase):
             )
 
         # 读取 package 中其他类的引用关系
-        for class_name in self._project_context.get_class_name_list_by_package_name(self._package_name):
+        for class_name in self.project_context.get_class_name_list_by_package_name(self.package_name):
             import_hash[class_name] = RuntimeClass(
-                package_name=self._package_name,
+                package_name=self.package_name,
                 class_name=class_name,
                 type_arguments=[]
             )
@@ -115,9 +115,11 @@ class FileContext(FileContextBase):
 
     def get_import_package_name_by_class_name(self, class_name: str) -> Optional[str]:
         """获取 class_name，获取引用映射中的包名称"""
-        if class_name not in self._import_hash:
-            return None
-        return self._import_hash[class_name].package_name
+        if class_name in self._import_hash:
+            return self._import_hash[class_name].package_name
+        if class_name in JAVA_LANG_CLASS_NAME_SET:
+            return "java.lang"
+        return None
 
     def get_runtime_class_by_type_node(self,
                                        class_node: ast.Class,

@@ -132,7 +132,7 @@ class MethodContext(MethodContextBase):
         if statement_node.kind in {ast.TreeKind.IDENTIFIER, ast.TreeKind.INT_LITERAL, ast.TreeKind.LONG_LITERAL,
                                    ast.TreeKind.FLOAT_LITERAL, ast.TreeKind.DOUBLE_LITERAL, ast.TreeKind.CHAR_LITERAL,
                                    ast.TreeKind.STRING_LITERAL, ast.TreeKind.BOOLEAN_LITERAL,
-                                   ast.TreeKind.NULL_LITERAL, ast.TreeKind.BREAK}:
+                                   ast.TreeKind.NULL_LITERAL}:
             return
 
         # -------------------- 递归元素产出 --------------------
@@ -174,7 +174,7 @@ class MethodContext(MethodContextBase):
             identifier = statement_node.identifier
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
-                method_package_name = self._file_context.get_import_package_name_by_class_name(method_class_name)
+                method_package_name = self.file_context.get_import_package_name_by_class_name(method_class_name)
                 yield RuntimeMethod(
                     belong_class=RuntimeClass(package_name=method_package_name, class_name=method_class_name,
                                               type_arguments=None),
@@ -204,7 +204,18 @@ class MethodContext(MethodContextBase):
             return
 
         # -------------------- 其他递归条件 --------------------
-        if isinstance(statement_node, ast.Variable):
+        if isinstance(statement_node, ast.InstanceOf):
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+            yield from self.get_method_invocation(namespace, statement_node.instance_type)
+            yield from self.get_method_invocation(namespace, statement_node.pattern)
+        elif isinstance(statement_node, ast.TypeCast):
+            yield from self.get_method_invocation(namespace, statement_node.cast_type)
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+        elif isinstance(statement_node, (ast.Break, ast.Continue)):
+            return  # break 语句中和 contain 语句中不会调用其他方法
+        elif isinstance(statement_node, ast.Throw):
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+        elif isinstance(statement_node, ast.Variable):
             yield from self.get_method_invocation(namespace, statement_node.initializer)
         elif isinstance(statement_node, ast.MemberSelect):
             yield from self.get_method_invocation(namespace, statement_node.expression)
@@ -217,8 +228,10 @@ class MethodContext(MethodContextBase):
             yield from self.get_method_invocation(namespace, statement_node.then_statement)
             yield from self.get_method_invocation(namespace, statement_node.else_statement)
         elif isinstance(statement_node, ast.Block):
-            for sub_statement_node in statement_node.statements:
-                yield from self.get_method_invocation(namespace, sub_statement_node)
+            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.statements))
+            for sub_node in statement_node.statements:
+                yield from self.get_method_invocation(namespace, sub_node)
+            namespace.pop_space()
         elif isinstance(statement_node, ast.Parenthesized):
             yield from self.get_method_invocation(namespace, statement_node.expression)
         elif isinstance(statement_node, ast.ArrayAccess):
@@ -241,8 +254,77 @@ class MethodContext(MethodContextBase):
             namespace.pop_space()
         elif isinstance(statement_node, ast.Unary):
             yield from self.get_method_invocation(namespace, statement_node.expression)
+        elif isinstance(statement_node, ast.Try):
+            yield from self.get_method_invocation(namespace, statement_node.block)
+            for sub_node in statement_node.catches:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.finally_block)
+            for sub_node in statement_node.resources:
+                yield from self.get_method_invocation(namespace, sub_node)
+        elif isinstance(statement_node, ast.Catch):
+            yield from self.get_method_invocation(namespace, statement_node.parameter)
+            yield from self.get_method_invocation(namespace, statement_node.block)
+        elif isinstance(statement_node, ast.Switch):
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+            for case_node in statement_node.cases:
+                yield from self.get_method_invocation(namespace, case_node)
+        elif isinstance(statement_node, ast.Case):
+            if statement_node.expressions is not None:
+                for sub_node in statement_node.expressions:
+                    yield from self.get_method_invocation(namespace, sub_node)
+            for sub_node in statement_node.labels:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.guard)
+            for sub_node in statement_node.statements:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.body)
+        elif isinstance(statement_node, ast.PatternCaseLabel):
+            yield from self.get_method_invocation(namespace, statement_node.pattern)
+        elif isinstance(statement_node, ast.ConstantCaseLabel):
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+        elif isinstance(statement_node, ast.DefaultCaseLabel):
+            return  # switch 语句的 default 子句不会调用其他方法
+        elif isinstance(statement_node, ast.ForLoop):
+            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.initializer))
+            for sub_node in statement_node.initializer:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.condition)
+            for sub_node in statement_node.update:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.statement)
+            namespace.pop_space()
+        elif isinstance(statement_node, ast.PrimitiveType):
+            return  # 原生类型中不会调用其他方法
+        elif isinstance(statement_node, ast.LambdaExpression):
+            for sub_node in statement_node.parameters:
+                yield from self.get_method_invocation(namespace, sub_node)
+            yield from self.get_method_invocation(namespace, statement_node.body)
+        elif isinstance(statement_node, ast.WhileLoop):
+            yield from self.get_method_invocation(namespace, statement_node.condition)
+            yield from self.get_method_invocation(namespace, statement_node.statement)
+        elif isinstance(statement_node, ast.NewArray):
+            yield from self.get_method_invocation(namespace, statement_node.array_type)
+            for sub_node in statement_node.dimensions:
+                yield from self.get_method_invocation(namespace, sub_node)
+            for sub_node in statement_node.initializers:
+                yield from self.get_method_invocation(namespace, sub_node)
+            if statement_node.annotations is not None:
+                for sub_node in statement_node.annotations:
+                    yield from self.get_method_invocation(namespace, sub_node)
+            if statement_node.dim_annotations is not None:
+                for node_list in statement_node.dim_annotations:
+                    for sub_node in node_list:
+                        yield from self.get_method_invocation(namespace, sub_node)
+        elif isinstance(statement_node, ast.MemberReference):
+            yield from self.get_method_invocation(namespace, statement_node.expression)
+            for sub_node in statement_node.type_arguments:
+                yield from self.get_method_invocation(namespace, sub_node)
+        elif isinstance(statement_node, ast.CompoundAssignment):
+            yield from self.get_method_invocation(namespace, statement_node.variable)
+            yield from self.get_method_invocation(namespace, statement_node.expression)
         else:
             print(f"get_method_invocation: 未知表达式类型: {statement_node}")
+            yield None
 
     # ------------------------------ 类型获取处理器 ------------------------------
 
@@ -289,6 +371,22 @@ class MethodContext(MethodContextBase):
 
             return self._project_context.get_runtime_class_by_runtime_method_return_type(runtime_method)
 
+        # 括号表达式
+        elif isinstance(expression_node, ast.Parenthesized):
+            return self.get_runtime_class_by_node(namespace, expression_node.expression)
+
+        # 强制类型转换表达式
+        elif isinstance(expression_node, ast.TypeCast):
+            return self.get_runtime_class_by_node(namespace, expression_node.expression)
+
+        # 字符串字面值
+        elif isinstance(expression_node, ast.StringLiteral):
+            return RuntimeClass(
+                package_name="java.lang",
+                class_name="String",
+                type_arguments=[]
+            )
+
         else:
             print(f"get_runtime_class_by_node: 暂不支持的表达式 {expression_node}")
 
@@ -301,15 +399,15 @@ class MethodContext(MethodContextBase):
 
         # 标识符是变量名
         if namespace.has_name(unknown_name):
-            return self._file_context.get_runtime_class_by_type_node(
-                class_node=self._class_context.class_node,
-                runtime_class=self._class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
+            return self.file_context.get_runtime_class_by_type_node(
+                class_node=self.class_context.class_node,
+                runtime_class=self.class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
                 type_node=namespace.get_name(unknown_name)
             )
 
         # 标识符是类名
         return RuntimeClass(
-            package_name=self._file_context.get_import_package_name_by_class_name(unknown_name),
+            package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
             class_name=unknown_name,
             type_arguments=[]
         )

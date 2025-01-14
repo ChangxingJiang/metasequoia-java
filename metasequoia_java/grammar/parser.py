@@ -64,6 +64,9 @@ class JavaParser:
         # 当前源码层级中是否允许出现 sealed 类型
         self.allow_sealed_types: bool = True
 
+        # 是否允许合并累加的字符串
+        self.allow_string_folding: bool = True
+
         # 为节省每次二元操作时分配新的操作数 / 操作符栈的开销，所以采用供应机制
         self.od_stack_supply: List[List[Optional[ast.Expression]]] = []
         self.op_stack_supply: List[List[Optional[Token]]] = []
@@ -897,12 +900,40 @@ class JavaParser:
         assert top == 0
         expression = od_stack[0]
 
-        # TODO 待补充合并字符串的逻辑
+        if expression.kind == TreeKind.PLUS:
+            expression = self.fold_string(expression)
 
         self.od_stack_supply.append(od_stack)
         self.op_stack_supply.append(op_stack)
 
         return expression
+
+    def fold_string(self, node: ast.Expression) -> ast.Expression:
+        """将字符串字面值相加的表达式，合并为单个字符串节点
+
+        1. 如果不是二元加法表达式则直接返回
+        2. 先递归地合并二元加法表达式等式左侧和等式右侧的表达式（如果是字符串字面值相加的话）
+        3. 如果等式左侧和等式右侧均能合并为字符串字面值，则将当前二元加法表达式合并为字符串字面值节点
+
+        [JDK Code] JavacParser.foldStrings(JCExpression tree)
+        """
+        if self.allow_string_folding is False:
+            return node
+        if not isinstance(node, ast.Binary) or node.kind != TreeKind.PLUS:
+            return node  # 如果不是二元加法表达式，则不进行合并
+
+        left_operand = self.fold_string(node.left_operand)
+        right_operand = self.fold_string(node.right_operand)
+
+        if not isinstance(left_operand, ast.StringLiteral) or not isinstance(right_operand, ast.StringLiteral):
+            return node  # 如果二元加法表达式前后不是字符串字面值，则不进行合并
+
+        return ast.StringLiteral.create_string(
+            value=left_operand.value + right_operand.value,
+            start_pos=left_operand.start_pos,
+            end_pos=right_operand.end_pos,
+            source=self.text[left_operand.start_pos: right_operand.end_pos]
+        )
 
     def new_od_stack(self) -> List[Optional[ast.Expression]]:
         """构造操作数的数组

@@ -3,7 +3,7 @@
 """
 
 import enum
-from typing import List
+from typing import List, Optional
 
 from metasequoia_java.ast.base import Tree
 from metasequoia_java.ast.constants import IntegerStyle
@@ -25,13 +25,17 @@ class Separator(enum.Enum):
     AMP = "&"
 
 
-def generate_tree_list(elems: List[Tree], sep: Separator):
+def generate_tree_list(elems: Optional[List[Tree]], sep: Separator) -> str:
     """将抽象语法树节点的列表生成代码"""
+    if elems is None:
+        return ""
     return sep.value.join(elem.generate() for elem in elems)
 
 
-def generate_enum_list(elems: List[enum.Enum], sep: Separator):
+def generate_enum_list(elems: Optional[List[enum.Enum]], sep: Separator) -> str:
     """将枚举值的列表生成代码"""
+    if elems is None:
+        return ""
     return sep.value.join(elem.value for elem in elems)
 
 
