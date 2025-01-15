@@ -35,3 +35,8 @@ class RuntimeClass:
         if self.package_name is None:
             return self.class_name
         return f"{self.package_name}.{self.class_name}"
+
+    def __repr__(self) -> str:
+        return (f"<RuntimeClass "
+                f"package={self.package_name}, "
+                f"class={self.class_name}>")

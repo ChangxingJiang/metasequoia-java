@@ -1,3 +1,4 @@
+from metasequoia_java.common import logger
 from metasequoia_java.entrance import *
 from metasequoia_java.grammar import JavaParser
 from metasequoia_java.grammar import ParserMode

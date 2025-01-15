@@ -2,10 +2,12 @@
 项目级上下文
 """
 
+import functools
 import os
 from typing import Callable, Dict, List, Optional
 
 from metasequoia_java import ast, parse_compilation_unit
+from metasequoia_java.common import LOGGER
 from metasequoia_java.project.context.base_context import ClassContextBase
 from metasequoia_java.project.context.base_context import FileContextBase
 from metasequoia_java.project.context.base_context import MethodContextBase
@@ -40,7 +42,8 @@ class ProjectContext(ProjectContextBase):
                  project_path: str,
                  modules: Dict[str, List[str]],
                  outer_attribute_type: Optional[Dict[str, Callable[[RuntimeVariable], RuntimeClass]]] = None,
-                 outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None):
+                 outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None,
+                 outer_package_class_list: Optional[Dict[str, List[str]]] = None):
         """
 
         Parameters
@@ -53,11 +56,15 @@ class ProjectContext(ProjectContextBase):
             项目外已知属性类型
         outer_method_return_type : Optional[Dict[Tuple[str, str], RuntimeClass]], default = None
             项目外已知函数返回值类型
+        outer_package_class_list : Optional[Dict[str, List[str]]], default = None
+            项目外已知 package 对应的 class_name 列表
         """
         if outer_attribute_type is None:
             outer_attribute_type = {}
         if outer_method_return_type is None:
             outer_method_return_type = {}
+        if outer_package_class_list is None:
+            outer_package_class_list = {}
 
         self._project_path = project_path
         self._modules: Dict[str, str] = {
@@ -66,6 +73,7 @@ class ProjectContext(ProjectContextBase):
         }
         self._outer_attribute_type = outer_attribute_type
         self._outer_method_return_type = outer_method_return_type
+        self._outer_package_class_list = outer_package_class_list
 
         # 绝对名称到所属文件路径的映射
         self._cache_file_node_to_file_path: Dict[str, ast.CompilationUnit] = {}
@@ -76,6 +84,7 @@ class ProjectContext(ProjectContextBase):
         """返回项目根路径"""
         return self._project_path
 
+    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_file_path(self, file_path: str) -> ast.CompilationUnit:
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
         if file_path not in self._cache_file_node_to_file_path:
@@ -83,11 +92,13 @@ class ProjectContext(ProjectContextBase):
                 self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
         return self._cache_file_node_to_file_path[file_path]
 
+    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
         """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
         package_name, class_name = split_last_name_from_absolute_name(absolute_name)
         return self.get_file_node_by_package_name_class_name(package_name, class_name)
 
+    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
                                                  class_name: str
@@ -103,6 +114,7 @@ class ProjectContext(ProjectContextBase):
 
         return self.get_file_node_by_file_path(file_path)
 
+    @functools.lru_cache(maxsize=1024)
     def get_package_path_by_package_name(self, package_name: Optional[str]) -> Optional[str]:
         """根据 package_name（包名称）获取 package_path（包路径）"""
         if package_name is None:
@@ -123,7 +135,7 @@ class ProjectContext(ProjectContextBase):
                 candidate_path_list = new_candidate_path_list
 
             if len(candidate_path_list) > 1:
-                print(f"同一个包包含多个不同路径: {candidate_path_list}")  # 待改为 warning
+                LOGGER.warning(f"package（{package_name}）存在大于等于 1 个可选路径: {candidate_path_list}")
                 return None
             if len(candidate_path_list) == 0:
                 return None
@@ -132,11 +144,12 @@ class ProjectContext(ProjectContextBase):
 
         return self._cache_package_name_to_package_path[package_name]
 
-    def get_file_path_list_by_package_name(self, package_name: str) -> List[str]:
+    @functools.lru_cache(maxsize=1024)
+    def get_file_path_list_by_package_name(self, package_name: str) -> Optional[List[str]]:
         """根据 package_name（包名称）获取其中所有 file_path（文件路径）"""
         package_path = self.get_package_path_by_package_name(package_name)
         if package_path is None:
-            return []
+            return None
         file_path_list = []
         for file_name in os.listdir(package_path):
             file_path = os.path.join(package_path, file_name)
@@ -146,9 +159,19 @@ class ProjectContext(ProjectContextBase):
                 file_path_list.append(file_path)
         return file_path_list
 
-    def get_class_name_list_by_package_name(self, package_name: str) -> List[str]:
+    @functools.lru_cache(maxsize=1024)
+    def get_class_name_list_by_package_name(self, package_name: str) -> Optional[List[str]]:
         """根据 package_name（包名称）获取其中所有模块内可见类的 class_name（类名）的列表"""
-        file_path_list: List[str] = self.get_file_path_list_by_package_name(package_name)
+        file_path_list = self.get_file_path_list_by_package_name(package_name)
+
+        # package_name 不在当前项目中，尝试从项目外知识库中获取
+        if file_path_list is None:
+            res = self.try_get_outer_package_class_name_list(package_name)
+            if res is None:
+                LOGGER.warning(f"在项目外补充信息中，找不到 package_name 对应的 class_name 的列表: {package_name}")
+            return res
+
+        # package_name 在当前项目中
         class_name_list: List[str] = []
         for file_path in file_path_list:
             file_node: ast.CompilationUnit = self.get_file_node_by_file_path(file_path)
@@ -199,13 +222,15 @@ class ProjectContext(ProjectContextBase):
         if file_context is None:
             res = self.try_get_outer_attribute_type(runtime_variable)
             if res is None:
-                print(f"get_type_node_by_runtime_variable: 未知类型的属性 {runtime_variable}")
+                LOGGER.warning(f"在项目外补充信息中，找不到属性类型: "
+                               f"variable={runtime_variable.absolute_name}")
             return res
 
         # runtime_variable.belong_class 在项目中，获取变量类型
         class_node = file_context.get_class_node_by_class_name(runtime_variable.belong_class.class_name)
         variable_node = class_node.get_variable_by_name(runtime_variable.variable_name)
         if variable_node is None:
+            LOGGER.warning(f"获取类属性的抽象语法树节点失败: {runtime_variable}")
             return None
         return file_context.get_runtime_class_by_type_node(
             class_node=class_node,
@@ -225,7 +250,10 @@ class ProjectContext(ProjectContextBase):
 
         # runtime_method.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
         if file_context is None:
-            return self.try_get_outer_method_return_type(runtime_method)
+            res = self.try_get_outer_method_return_type(runtime_method)
+            if res is None:
+                LOGGER.warning(f"在项目外补充信息中，找不到方法返回值类型: {runtime_method}")
+            return res
 
         # runtime_method.belong_class 在项目中，获取返回值类型
         class_node = file_context.get_class_node_by_class_name(runtime_method.belong_class.class_name)
@@ -239,6 +267,7 @@ class ProjectContext(ProjectContextBase):
         )
 
     # ------------------------------ 获取项目外已知类型 ------------------------------
+
     def try_get_outer_attribute_type(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """获取项目外已知类属性类型"""
         if runtime_variable.absolute_name not in self._outer_attribute_type:
@@ -250,3 +279,9 @@ class ProjectContext(ProjectContextBase):
         if runtime_method.absolute_name not in self._outer_method_return_type:
             return None
         return self._outer_method_return_type[runtime_method.absolute_name](runtime_method)
+
+    def try_get_outer_package_class_name_list(self, package_name: str) -> Optional[List[str]]:
+        """获取项目外 package_name 对应的 class_name 的列表"""
+        if package_name not in self._outer_package_class_list:
+            return None
+        return self._outer_package_class_list[package_name]

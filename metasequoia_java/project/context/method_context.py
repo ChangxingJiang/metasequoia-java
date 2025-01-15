@@ -2,9 +2,11 @@
 方法上下文
 """
 
-from typing import Generator, List, Optional
+import dataclasses
+from typing import Generator, List, Optional, Type, Tuple
 
 from metasequoia_java import ast
+from metasequoia_java.common import LOGGER
 from metasequoia_java.project.context.base_context import ClassContextBase
 from metasequoia_java.project.context.base_context import FileContextBase
 from metasequoia_java.project.context.base_context import MethodContextBase
@@ -116,7 +118,7 @@ class MethodContext(MethodContextBase):
     def get_method_invocation(self,
                               namespace: NameSpace,
                               statement_node: ast.Tree
-                              ) -> Generator[RuntimeMethod, None, None]:
+                              ) -> Generator[Tuple[RuntimeMethod, List[ast.Expression]], None, None]:
         """获取当前表达式中调用的方法
 
         适配场景：
@@ -142,23 +144,29 @@ class MethodContext(MethodContextBase):
 
             # name1() -- 调用当前类的其他方法
             if isinstance(method_select, ast.Identifier):
-                yield RuntimeMethod(
+                runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass(
-                        package_name=self._file_context.package_name,
-                        class_name=self._class_context.class_name,
+                        package_name=self.file_context.package_name,
+                        class_name=self.class_context.class_name,
                         type_arguments=None  # TODO 待改为当前类构造时的泛型
                     ),
                     method_name=method_select.name
                 )
+                LOGGER.debug(f"生成调用方法(类型 1): {runtime_method}")
+                yield runtime_method, statement_node.arguments
 
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select, ast.MemberSelect):
                 expression = method_select.expression
                 runtime_class = self.get_runtime_class_by_node(namespace, expression)
-                yield RuntimeMethod(
+                runtime_method = RuntimeMethod(
                     belong_class=runtime_class,
                     method_name=method_select.identifier.name
                 )
+                LOGGER.debug(f"生成调用方法(类型 2): {runtime_method}")
+                yield runtime_method, statement_node.arguments
+
+                # 继续递归寻找调用的方法
                 yield from self.get_method_invocation(namespace, expression)
 
             else:
@@ -175,11 +183,13 @@ class MethodContext(MethodContextBase):
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
                 method_package_name = self.file_context.get_import_package_name_by_class_name(method_class_name)
-                yield RuntimeMethod(
+                runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass(package_name=method_package_name, class_name=method_class_name,
                                               type_arguments=None),
                     method_name=method_class_name
                 )
+                LOGGER.debug(f"生成调用方法(类型 3): {runtime_method}")
+                yield runtime_method, statement_node.arguments
             elif isinstance(identifier, ast.ParameterizedType):
                 identifier_type_name = identifier.type_name
                 assert isinstance(identifier_type_name, ast.Identifier)
@@ -189,11 +199,13 @@ class MethodContext(MethodContextBase):
                     self.get_runtime_class_by_node(namespace, type_argument)
                     for type_argument in identifier.type_arguments
                 ]
-                yield RuntimeMethod(
+                runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass(package_name=method_package_name, class_name=method_class_name,
                                               type_arguments=type_arguments),
                     method_name=method_class_name
                 )
+                LOGGER.debug(f"生成调用方法(类型 4): {runtime_method}")
+                yield runtime_method, statement_node.arguments
             else:
                 print("NewClass 暂不支持的类型: ", identifier)
 
@@ -326,6 +338,26 @@ class MethodContext(MethodContextBase):
             print(f"get_method_invocation: 未知表达式类型: {statement_node}")
             yield None
 
+    def search_node(self,
+                    statement_node: ast.Tree,
+                    search_type: Type,
+                    ) -> Generator[ast.Tree, None, None]:
+        """获取当前表达式中调用的方法中，寻找 search_type 类型的节点"""
+        if statement_node is None:
+            return
+
+        if isinstance(statement_node, search_type):
+            yield statement_node
+
+        for field in dataclasses.fields(statement_node):
+            value = getattr(statement_node, field.name)
+            if isinstance(value, ast.Tree):
+                yield from self.search_node(value, search_type)
+            elif isinstance(value, (list, set, tuple)):
+                for sub_node in value:
+                    if isinstance(sub_node, ast.Tree):
+                        yield from self.search_node(sub_node, search_type)
+
     # ------------------------------ 类型获取处理器 ------------------------------
 
     def get_runtime_class_by_node(self,
@@ -369,7 +401,7 @@ class MethodContext(MethodContextBase):
                 print(f"get_runtime_class_by_node: 未知的类型 {expression_node}")
                 return None
 
-            return self._project_context.get_runtime_class_by_runtime_method_return_type(runtime_method)
+            return self.project_context.get_runtime_class_by_runtime_method_return_type(runtime_method)
 
         # 括号表达式
         elif isinstance(expression_node, ast.Parenthesized):

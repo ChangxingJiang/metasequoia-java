@@ -3,7 +3,7 @@
 """
 
 import abc
-from typing import Dict, Generator, List, Optional
+from typing import Dict, Generator, List, Optional, Type
 
 from metasequoia_java import ast
 from metasequoia_java.project.elements import RuntimeClass
@@ -94,6 +94,10 @@ class ProjectContextBase(abc.ABC):
     @abc.abstractmethod
     def try_get_outer_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """获取项目外已知方法返回值类型"""
+
+    @abc.abstractmethod
+    def try_get_outer_package_class_name_list(self, package_name: str) -> Optional[List[str]]:
+        """获取项目外 package_name 对应的 class_name 的列表"""
 
 
 class FileContextBase(abc.ABC):
@@ -253,6 +257,13 @@ class MethodContextBase(abc.ABC):
                               statement_node: ast.Tree
                               ) -> Generator[RuntimeMethod, None, None]:
         """获取当前表达式中调用的方法"""
+
+    @abc.abstractmethod
+    def search_node(self,
+                    statement_node: ast.Tree,
+                    search_type: Type,
+                    ) -> Generator[ast.Tree, None, None]:
+        """获取当前表达式中调用的方法中，寻找 search_type 类型的节点"""
 
     @abc.abstractmethod
     def get_runtime_class_by_node(self,

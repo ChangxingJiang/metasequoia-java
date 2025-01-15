@@ -23,3 +23,11 @@ class RuntimeVariable:
     @property
     def absolute_name(self) -> str:
         return f"{self.belong_class.absolute_name}.{self.variable_name}"
+
+    def __repr__(self) -> str:
+        if self.belong_class is None:
+            return f"<RuntimeVariable package=None, class=None, variable={self.variable_name}>"
+        return (f"<RuntimeVariable "
+                f"package={self.belong_class.package_name}, "
+                f"class={self.belong_class.class_name}, "
+                f"variable={self.variable_name}>")

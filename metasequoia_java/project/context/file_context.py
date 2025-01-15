@@ -5,6 +5,7 @@
 from typing import Dict, Optional
 
 from metasequoia_java import ast
+from metasequoia_java.common import LOGGER
 from metasequoia_java.project.constants import JAVA_LANG_CLASS_NAME_SET
 from metasequoia_java.project.context.base_context import FileContextBase
 from metasequoia_java.project.context.base_context import ProjectContextBase
@@ -87,19 +88,36 @@ class FileContext(FileContextBase):
         for import_node in self.file_node.imports:
             absolute_name = import_node.identifier.generate()
             package_name, class_name = split_last_name_from_absolute_name(absolute_name)
-            import_hash[class_name] = RuntimeClass(
-                package_name=package_name,
-                class_name=class_name,
-                type_arguments=[]
-            )
+
+            if class_name != "*":
+                import_hash[class_name] = RuntimeClass(
+                    package_name=package_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                )
+            else:  # 引用通配符的情况
+                class_name_list = self.project_context.get_class_name_list_by_package_name(package_name)
+                if class_name_list is None:
+                    LOGGER.warning(f"无法通过 package_name 获取其中包含的 class_name 列表: {package_name}")
+                else:
+                    for class_name in class_name_list:
+                        import_hash[class_name] = RuntimeClass(
+                            package_name=package_name,
+                            class_name=class_name,
+                            type_arguments=[]
+                        )
 
         # 读取 package 中其他类的引用关系
-        for class_name in self.project_context.get_class_name_list_by_package_name(self.package_name):
-            import_hash[class_name] = RuntimeClass(
-                package_name=self.package_name,
-                class_name=class_name,
-                type_arguments=[]
-            )
+        class_name_list = self.project_context.get_class_name_list_by_package_name(self.package_name)
+        if class_name_list is None:
+            LOGGER.warning(f"无法通过 package_name 获取其中包含的 class_name 列表: {self.package_name}")
+        else:
+            for class_name in class_name_list:
+                import_hash[class_name] = RuntimeClass(
+                    package_name=self.package_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                )
 
         return import_hash
 
@@ -157,7 +175,10 @@ class FileContext(FileContextBase):
                 else:
                     print("未知泛型参数节点:", type_argument)
 
-            print("无法判断类型，返回未知类型: ", type_node)
+            LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
+                           f"type_node={type_node}, "
+                           f"position={self.package_name}.{self.public_class_name}")
+
             return RuntimeClass(
                 package_name=None,
                 class_name=type_node.generate(),

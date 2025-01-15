@@ -25,3 +25,11 @@ class RuntimeMethod:
         if self.belong_class is None:
             return self.method_name
         return f"{self.belong_class.absolute_name}.{self.method_name}"
+
+    def __repr__(self) -> str:
+        if self.belong_class is None:
+            return f"<RuntimeMethod package=None, class=None, method={self.method_name}>"
+        return (f"<RuntimeMethod "
+                f"package={self.belong_class.package_name}, "
+                f"class={self.belong_class.class_name}, "
+                f"method={self.method_name}>")
