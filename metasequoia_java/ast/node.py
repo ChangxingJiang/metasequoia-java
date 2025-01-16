@@ -834,6 +834,15 @@ class Class(Statement):
     def generate(self) -> str:
         """TODO"""
 
+
+    def get_method_list(self) -> List["Method"]:
+        """根据方法名获取 Method 对象"""
+        method_list = []
+        for member in self.members:
+            if isinstance(member, Method):
+                method_list.append(member)
+        return method_list
+
     def get_method_by_name(self, method_name: str) -> Optional["Method"]:
         """根据方法名获取 Method 对象"""
         for member in self.members:
@@ -1808,7 +1817,7 @@ class MemberReference(Expression):
     mode: ReferenceMode = dataclasses.field(kw_only=True)
     name: str = dataclasses.field(kw_only=True)
     expression: Expression = dataclasses.field(kw_only=True)
-    type_arguments: List[Expression] = dataclasses.field(kw_only=True)
+    type_arguments: Optional[List[Expression]] = dataclasses.field(kw_only=True)
 
     @staticmethod
     def create(mode: ReferenceMode,

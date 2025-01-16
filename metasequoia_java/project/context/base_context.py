@@ -42,6 +42,14 @@ class ProjectContextBase(abc.ABC):
     def get_class_name_list_by_package_name(self, package_name: str) -> List[str]:
         """根据 package_name（包名称）获取其中所有模块内可见类的 class_name（类名）的列表"""
 
+    @abc.abstractmethod
+    def get_static_variable_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
+        """根据 runtimeClass 对象获取该对象中静态变量名称的列表"""
+
+    @abc.abstractmethod
+    def get_static_method_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
+        """根据 runtimeClass 对象获取该对象中静态方法名称的列表"""
+
     # ------------------------------ file 层级处理方法 ------------------------------
 
     @abc.abstractmethod
@@ -123,6 +131,21 @@ class FileContextBase(abc.ABC):
     def file_node(self) -> ast.CompilationUnit:
         """返回文件的抽象语法树节点"""
 
+    @property
+    @abc.abstractmethod
+    def import_class_hash(self) -> Dict[str, RuntimeClass]:
+        """返回类引用映射"""
+
+    @property
+    @abc.abstractmethod
+    def import_variable_hash(self) -> Dict[str, RuntimeVariable]:
+        """返回静态属性引用映射"""
+
+    @property
+    @abc.abstractmethod
+    def import_method_hash(self) -> Dict[str, RuntimeMethod]:
+        """返回静态方法引用映射"""
+
     # ------------------------------ class 层级处理方法 ------------------------------
 
     @abc.abstractmethod
@@ -136,7 +159,7 @@ class FileContextBase(abc.ABC):
     # ------------------------------ 项目映射管理器 ------------------------------
 
     @abc.abstractmethod
-    def create_import_hash(self) -> Dict[str, RuntimeClass]:
+    def _init_import_hash(self) -> Dict[str, RuntimeClass]:
         """构造文件中包含的引用逻辑"""
 
     @abc.abstractmethod

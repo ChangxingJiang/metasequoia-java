@@ -97,8 +97,8 @@ class MethodContext(MethodContextBase):
     def get_runtime_method(self) -> RuntimeMethod:
         """返回当前方法上下文对应的 RuntimeMethod 对象"""
         return RuntimeMethod(
-            belong_class=self._class_context.get_runtime_class(),
-            method_name=self._method_name
+            belong_class=self.class_context.get_runtime_class(),
+            method_name=self.method_name
         )
 
     # ------------------------------ 命名空间管理器 ------------------------------
@@ -142,18 +142,23 @@ class MethodContext(MethodContextBase):
 
             method_select = statement_node.method_select
 
-            # name1() -- 调用当前类的其他方法
             if isinstance(method_select, ast.Identifier):
-                runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(
-                        package_name=self.file_context.package_name,
-                        class_name=self.class_context.class_name,
-                        type_arguments=None  # TODO 待改为当前类构造时的泛型
-                    ),
-                    method_name=method_select.name
-                )
-                LOGGER.debug(f"生成调用方法(类型 1): {runtime_method}")
-                yield runtime_method, statement_node.arguments
+                method_name = method_select.name
+                if method_name in self.file_context.import_method_hash:
+                    # 调用 import 导入的静态方法
+                    yield self.file_context.import_method_hash[method_name], statement_node.arguments
+                else:
+                    # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
+                    runtime_method = RuntimeMethod(
+                        belong_class=RuntimeClass(
+                            package_name=self.file_context.package_name,
+                            class_name=self.class_context.class_name,
+                            type_arguments=None  # TODO 待改为当前类构造时的泛型
+                        ),
+                        method_name=method_name
+                    )
+                    LOGGER.debug(f"生成调用方法(类型 1): {runtime_method}")
+                    yield runtime_method, statement_node.arguments
 
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select, ast.MemberSelect):
@@ -329,8 +334,9 @@ class MethodContext(MethodContextBase):
                         yield from self.get_method_invocation(namespace, sub_node)
         elif isinstance(statement_node, ast.MemberReference):
             yield from self.get_method_invocation(namespace, statement_node.expression)
-            for sub_node in statement_node.type_arguments:
-                yield from self.get_method_invocation(namespace, sub_node)
+            if statement_node.type_arguments is not None:
+                for sub_node in statement_node.type_arguments:
+                    yield from self.get_method_invocation(namespace, sub_node)
         elif isinstance(statement_node, ast.CompoundAssignment):
             yield from self.get_method_invocation(namespace, statement_node.variable)
             yield from self.get_method_invocation(namespace, statement_node.expression)
@@ -418,6 +424,14 @@ class MethodContext(MethodContextBase):
                 class_name="String",
                 type_arguments=[]
             )
+
+        # NewClass 节点
+        elif isinstance(expression_node, ast.NewClass):
+            return self.get_runtime_class_by_node(namespace, expression_node.identifier)
+
+        # ArrayAccess 节点
+        elif isinstance(expression_node, ast.ArrayAccess):
+            LOGGER.warning(f"get_runtime_class_by_node 暂不支持 ArrayAccess 表达式: {expression_node}")
 
         else:
             print(f"get_runtime_class_by_node: 暂不支持的表达式 {expression_node}")

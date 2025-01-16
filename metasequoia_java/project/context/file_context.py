@@ -10,6 +10,8 @@ from metasequoia_java.project.constants import JAVA_LANG_CLASS_NAME_SET
 from metasequoia_java.project.context.base_context import FileContextBase
 from metasequoia_java.project.context.base_context import ProjectContextBase
 from metasequoia_java.project.elements import RuntimeClass
+from metasequoia_java.project.elements import RuntimeMethod
+from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
 __all__ = [
@@ -30,7 +32,10 @@ class FileContext(FileContextBase):
         self._public_class_name = public_class_name
         self._file_node = file_node
 
-        self._import_hash: Dict[str, RuntimeClass] = self.create_import_hash()
+        self._import_class_hash: Dict[str, RuntimeClass] = {}
+        self._import_variable_hash: Dict[str, RuntimeVariable] = {}
+        self._import_method_hash: Dict[str, RuntimeMethod] = {}
+        self._init_import_hash()
 
     @staticmethod
     def create_by_public_class_absolute_name(project_context: ProjectContextBase,
@@ -68,6 +73,21 @@ class FileContext(FileContextBase):
         """返回文件的抽象语法树节点"""
         return self._file_node
 
+    @property
+    def import_class_hash(self) -> Dict[str, RuntimeClass]:
+        """返回类引用映射"""
+        return self._import_class_hash
+
+    @property
+    def import_variable_hash(self) -> Dict[str, RuntimeVariable]:
+        """返回静态属性引用映射"""
+        return self._import_variable_hash
+
+    @property
+    def import_method_hash(self) -> Dict[str, RuntimeMethod]:
+        """返回静态方法引用映射"""
+        return self._import_method_hash
+
     # ------------------------------ class 层级处理方法 ------------------------------
 
     def get_public_class_declaration(self) -> ast.Class:
@@ -80,32 +100,98 @@ class FileContext(FileContextBase):
 
     # ------------------------------ 引用映射管理器 ------------------------------
 
-    def create_import_hash(self) -> Dict[str, RuntimeClass]:
-        """构造文件中包含的引用逻辑"""
-        import_hash = {}
+    def _init_import_hash(self) -> None:
+        """构造文件中包含的引用逻辑
 
-        # 读取 import 语句中的引用映射关系
+        在 Java 中，导入的优先级从高到低如下：
+        1. 精确导入：import package.ClassName;
+        2. 通配符导入：import package.*;
+        3. 静态精确导入：import static package.ClassName.staticMember;
+        4. 静态通配符导入：import static package.ClassName.*;
+        5. package 中的其他类
+        """
+        # 精确导入：import package.ClassName;
         for import_node in self.file_node.imports:
-            absolute_name = import_node.identifier.generate()
-            package_name, class_name = split_last_name_from_absolute_name(absolute_name)
+            if import_node.is_static is True:
+                continue
+            package_name, class_name = split_last_name_from_absolute_name(import_node.identifier.generate())
+            if class_name == "*":
+                continue
+            self._import_class_hash[class_name] = RuntimeClass(
+                package_name=package_name,
+                class_name=class_name,
+                type_arguments=[]
+            )
 
+        # 通配符导入：import package.*;
+        for import_node in self.file_node.imports:
+            if import_node.is_static is True:
+                continue
+            package_name, class_name = split_last_name_from_absolute_name(import_node.identifier.generate())
             if class_name != "*":
-                import_hash[class_name] = RuntimeClass(
-                    package_name=package_name,
-                    class_name=class_name,
-                    type_arguments=[]
-                )
-            else:  # 引用通配符的情况
-                class_name_list = self.project_context.get_class_name_list_by_package_name(package_name)
-                if class_name_list is None:
-                    LOGGER.warning(f"无法通过 package_name 获取其中包含的 class_name 列表: {package_name}")
-                else:
-                    for class_name in class_name_list:
-                        import_hash[class_name] = RuntimeClass(
-                            package_name=package_name,
-                            class_name=class_name,
-                            type_arguments=[]
-                        )
+                continue
+            class_name_list = self.project_context.get_class_name_list_by_package_name(package_name)
+            if class_name_list is None:
+                LOGGER.warning(f"无法通过 package_name 获取其中包含的 class_name 列表: {package_name}")
+                continue
+            for class_name in class_name_list:
+                if class_name not in self._import_class_hash:
+                    self._import_class_hash[class_name] = RuntimeClass(
+                        package_name=package_name,
+                        class_name=class_name,
+                        type_arguments=[]
+                    )
+
+        # 静态精确导入：import static package.ClassName.staticMember;
+        for import_node in self.file_node.imports:
+            if import_node.is_static is False:
+                continue
+            class_name, unknown_name = split_last_name_from_absolute_name(import_node.identifier.generate())
+            if unknown_name == "*":
+                continue
+            package_name, class_name = split_last_name_from_absolute_name(class_name)
+
+            # TODO 向 method 和 variable 中分别插入一条，待增加优先解析类的方法
+            self._import_method_hash[unknown_name] = RuntimeMethod(
+                belong_class=RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[]),
+                method_name=unknown_name
+            )
+            self._import_variable_hash[unknown_name] = RuntimeVariable(
+                belong_class=RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[]),
+                variable_name=unknown_name
+            )
+
+        # 静态通配符导入：import static package.ClassName.*;
+        for import_node in self.file_node.imports:
+            if import_node.is_static is False:
+                continue
+            class_name, method_name = split_last_name_from_absolute_name(import_node.identifier.generate())
+            if method_name != "*":
+                continue
+            package_name, class_name = split_last_name_from_absolute_name(class_name)
+            runtime_class = RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[])
+
+            # 获取静态属性
+            variable_name_list = self.project_context.get_static_variable_name_list_by_runtime_class(runtime_class)
+            if variable_name_list is None:
+                LOGGER.warning(f"无法通过 runtime_class 获取其中包含静态 variable_name 列表: {runtime_class}")
+            else:
+                for variable_name in variable_name_list:
+                    self._import_variable_hash[method_name] = RuntimeVariable(
+                        belong_class=runtime_class,
+                        variable_name=variable_name
+                    )
+
+            # 获取静态方法
+            method_name_list = self.project_context.get_static_method_name_list_by_runtime_class(runtime_class)
+            if method_name_list is None:
+                LOGGER.warning(f"无法通过 runtime_class 获取其中包含静态 method_name 列表: {runtime_class}")
+            else:
+                for method_name in method_name_list:
+                    self._import_method_hash[method_name] = RuntimeMethod(
+                        belong_class=runtime_class,
+                        method_name=method_name
+                    )
 
         # 读取 package 中其他类的引用关系
         class_name_list = self.project_context.get_class_name_list_by_package_name(self.package_name)
@@ -113,28 +199,28 @@ class FileContext(FileContextBase):
             LOGGER.warning(f"无法通过 package_name 获取其中包含的 class_name 列表: {self.package_name}")
         else:
             for class_name in class_name_list:
-                import_hash[class_name] = RuntimeClass(
-                    package_name=self.package_name,
-                    class_name=class_name,
-                    type_arguments=[]
-                )
-
-        return import_hash
+                # 检查是否有更高优先级的引用
+                if class_name not in self._import_class_hash:
+                    self._import_class_hash[class_name] = RuntimeClass(
+                        package_name=self.package_name,
+                        class_name=class_name,
+                        type_arguments=[]
+                    )
 
     def import_contains_class_name(self, class_name: str) -> bool:
         """返回引用映射中是否包含类型"""
-        return class_name in self._import_hash
+        return class_name in self._import_class_hash
 
     def get_import_absolute_name_by_class_name(self, class_name: str) -> Optional[str]:
         """根据 class_name，获取引用映射中的完整名称"""
-        if class_name not in self._import_hash:
+        if class_name not in self._import_class_hash:
             return None
-        return self._import_hash[class_name].absolute_name
+        return self._import_class_hash[class_name].absolute_name
 
     def get_import_package_name_by_class_name(self, class_name: str) -> Optional[str]:
         """获取 class_name，获取引用映射中的包名称"""
-        if class_name in self._import_hash:
-            return self._import_hash[class_name].package_name
+        if class_name in self._import_class_hash:
+            return self._import_class_hash[class_name].package_name
         if class_name in JAVA_LANG_CLASS_NAME_SET:
             return "java.lang"
         return None

@@ -180,6 +180,28 @@ class ProjectContext(ProjectContextBase):
                     class_name_list.append(class_declaration.name)
         return class_name_list
 
+    def get_static_variable_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
+        """根据 runtimeClass 对象获取该对象中静态变量名称的列表"""
+        class_context = self.create_class_context_by_class_absolute_name(runtime_class.absolute_name)
+        if class_context is None:
+            return None
+        variable_name_list = []
+        for variable_node in class_context.class_node.get_variable_list():
+            if ast.Modifier.STATIC in variable_node.modifiers.flags:
+                variable_name_list.append(variable_node.name)
+        return variable_name_list
+
+    def get_static_method_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
+        """根据 runtimeClass 对象获取该对象中静态方法名称的列表"""
+        class_context = self.create_class_context_by_class_absolute_name(runtime_class.absolute_name)
+        if class_context is None:
+            return None
+        method_name_list = []
+        for method_node in class_context.class_node.get_method_list():
+            if ast.Modifier.STATIC in method_node.modifiers.flags:
+                method_name_list.append(method_node.name)
+        return method_name_list
+
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
     def create_file_context_by_class_absolute_name(self, class_absolute_name: str) -> Optional[FileContextBase]:
