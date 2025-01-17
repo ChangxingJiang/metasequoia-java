@@ -264,6 +264,16 @@ class FileContext(FileContextBase):
                     else:
                         print("未知泛型参数节点:", type_argument)
 
+            # 当前文件中的其他类
+            class_name_list = self.file_node.get_class_name_list()
+            if class_name in class_name_list:
+                # TODO 考虑不是公有类的情况
+                return RuntimeClass(
+                    package_name=self.package_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                )
+
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")

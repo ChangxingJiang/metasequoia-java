@@ -1032,6 +1032,14 @@ class CompilationUnit(Tree):
     def generate(self) -> str:
         """TODO"""
 
+    def get_class_name_list(self) -> List[str]:
+        """获取 file 中包含的类名的列表"""
+        class_name_list = []
+        for declaration in self.type_declarations:
+            if isinstance(declaration, Class):
+                class_name_list.append(declaration.name)
+        return class_name_list
+
     def get_public_class(self) -> Optional[Class]:
         """获取文件中的公有类，如果没有则返回 None"""
         for class_declaration in self.get_class_declaration_list():
