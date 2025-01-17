@@ -53,10 +53,11 @@ def parse_properties(properties_path: str) -> Dict[str, str]:
                 continue
 
             # 将配置项切分为键和值
-            split = PATTERN_EQUAL.split(actual_line)
-            if len(split) != 2:
+            match = PATTERN_EQUAL.search(actual_line)
+            if not match:
                 raise PropertiesSyntaxError(f"不满足 properties 格式: {actual_line}")
-            key, value = split
+            key = actual_line[:match.span()[0]]
+            value = actual_line[match.span()[1]:]
 
             # 将配置项写入结果
             if key in result:
