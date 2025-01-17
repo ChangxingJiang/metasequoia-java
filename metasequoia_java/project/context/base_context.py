@@ -3,7 +3,7 @@
 """
 
 import abc
-from typing import Dict, Generator, List, Optional, Type
+from typing import Dict, Generator, List, Optional, Tuple, Type
 
 from metasequoia_java import ast
 from metasequoia_java.project.elements import RuntimeClass
@@ -207,8 +207,16 @@ class ClassContextBase(abc.ABC):
     # ------------------------------ method 和 variable 层级处理方法 ------------------------------
 
     @abc.abstractmethod
-    def get_method_node_by_name(self, method_name: str) -> ast.Method:
+    def get_method_node_by_name(self, method_name: str) -> Optional[Tuple["ClassContextBase", ast.Method]]:
         """根据 method_name 获取方法的抽象语法树节点"""
+
+    @abc.abstractmethod
+    def get_variable_node_by_name(self, variable_name: str) -> Optional[Tuple["ClassContextBase", ast.Variable]]:
+        """根据 variable_name 获取类变量的抽象语法树节点"""
+
+    @abc.abstractmethod
+    def get_extends_and_implements(self) -> List[RuntimeClass]:
+        """获取继承和实现接口的类的 RuntimeClass 对象的列表"""
 
     @abc.abstractmethod
     def get_runtime_class(self) -> RuntimeClass:

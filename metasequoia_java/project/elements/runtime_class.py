@@ -37,6 +37,12 @@ class RuntimeClass:
         return f"{self.package_name}.{self.class_name}"
 
     def __repr__(self) -> str:
-        return (f"<RuntimeClass "
-                f"package={self.package_name}, "
-                f"class={self.class_name}>")
+        if self.type_arguments is None:
+            return (f"<RuntimeClass "
+                    f"package={self.package_name}, "
+                    f"class={self.class_name}>")
+        else:
+            return (f"<RuntimeClass "
+                    f"package={self.package_name}, "
+                    f"class={self.class_name}, "
+                    f"type_arguments={self.type_arguments}>")

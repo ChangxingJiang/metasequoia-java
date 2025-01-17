@@ -61,7 +61,7 @@ def parse_properties(properties_path: str) -> Dict[str, str]:
             # 将配置项写入结果
             if key in result:
                 raise PropertiesSyntaxError(f"存在重复的配置项: {key}")
-            result[key] = value
+            result[key.strip()] = value.strip()
 
             # 将正在处理中的行置空
             actual_line = None

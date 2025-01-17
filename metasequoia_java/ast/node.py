@@ -834,6 +834,13 @@ class Class(Statement):
     def generate(self) -> str:
         """TODO"""
 
+    def get_extends_and_implements(self) -> List[Tree]:
+        """获取继承的类和实现的接口的列表"""
+        result = []
+        if self.extends_clause is not None:
+            result.append(self.extends_clause)
+        result.extend(self.implements_clause)
+        return result
 
     def get_method_list(self) -> List["Method"]:
         """根据方法名获取 Method 对象"""
@@ -844,7 +851,7 @@ class Class(Statement):
         return method_list
 
     def get_method_by_name(self, method_name: str) -> Optional["Method"]:
-        """根据方法名获取 Method 对象"""
+        """根据方法名获取当前 Class 对象中的 Method 对象"""
         for member in self.members:
             if isinstance(member, Method) and member.name == method_name:
                 return member

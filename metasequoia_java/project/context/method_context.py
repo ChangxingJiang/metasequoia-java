@@ -3,7 +3,7 @@
 """
 
 import dataclasses
-from typing import Generator, List, Optional, Type, Tuple
+from typing import Generator, List, Optional, Tuple, Type
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
@@ -49,8 +49,8 @@ class MethodContext(MethodContextBase):
         if method_name == class_context.class_name:
             method_name = "init"
 
-        method_node = class_context.get_method_node_by_name(method_name)
-        if method_node is None:
+        method_info = class_context.get_method_node_by_name(method_name)
+        if method_info is None:
             print(f"找不到方法: {class_context.get_runtime_class().absolute_name}.{method_name}")
             return None
 
@@ -59,7 +59,7 @@ class MethodContext(MethodContextBase):
             file_context=class_context.file_context,
             class_context=class_context,
             method_name=method_name,
-            method_node=method_node
+            method_node=method_info[1]
         )
 
     @property
@@ -292,9 +292,11 @@ class MethodContext(MethodContextBase):
             for sub_node in statement_node.labels:
                 yield from self.get_method_invocation(namespace, sub_node)
             yield from self.get_method_invocation(namespace, statement_node.guard)
+            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.statements))
             for sub_node in statement_node.statements:
                 yield from self.get_method_invocation(namespace, sub_node)
             yield from self.get_method_invocation(namespace, statement_node.body)
+            namespace.pop_space()
         elif isinstance(statement_node, ast.PatternCaseLabel):
             yield from self.get_method_invocation(namespace, statement_node.pattern)
         elif isinstance(statement_node, ast.ConstantCaseLabel):
@@ -431,7 +433,9 @@ class MethodContext(MethodContextBase):
 
         # ArrayAccess 节点
         elif isinstance(expression_node, ast.ArrayAccess):
-            LOGGER.warning(f"get_runtime_class_by_node 暂不支持 ArrayAccess 表达式: {expression_node}")
+            variable_name_node = expression_node.expression
+            variable_type = self.get_runtime_class_by_node(namespace, variable_name_node)
+            return variable_type
 
         else:
             print(f"get_runtime_class_by_node: 暂不支持的表达式 {expression_node}")
@@ -443,7 +447,10 @@ class MethodContext(MethodContextBase):
         """根据当前方法中的 Identifier 节点中构造 RuntimeClass 对象"""
         unknown_name = identifier_node.name
 
-        # 标识符是变量名
+        if unknown_name == "this":
+            return self.class_context.get_runtime_class()
+
+        # 尝试将标识符作为变量名处理
         if namespace.has_name(unknown_name):
             return self.file_context.get_runtime_class_by_type_node(
                 class_node=self.class_context.class_node,
@@ -451,9 +458,29 @@ class MethodContext(MethodContextBase):
                 type_node=namespace.get_name(unknown_name)
             )
 
-        # 标识符是类名
+        # 尝试将标识符作为类名解析
+        package_name = self.file_context.get_import_package_name_by_class_name(unknown_name)
+        if package_name is not None:
+            return RuntimeClass(
+                package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
+                class_name=unknown_name,
+                type_arguments=[]
+            )
+
+        # 尝试将标识符作为类属性解析（寻找父类中的属性） TODO 与命名空间存在重复，待优化
+        variable_info = self.class_context.get_variable_node_by_name(unknown_name)
+        if variable_info is not None:
+            class_context, variable_node = variable_info
+            return class_context.file_context.get_runtime_class_by_type_node(
+                class_node=class_context.class_node,
+                runtime_class=class_context.get_runtime_class(),
+                type_node=variable_node.variable_type
+            )
+
+        # 无法解析的场景，将其作为类名处理
+        LOGGER.error(f"使用了未知的标识符: {unknown_name}, position={self.get_runtime_method()}")
         return RuntimeClass(
-            package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
+            package_name=None,
             class_name=unknown_name,
             type_arguments=[]
         )

@@ -43,7 +43,8 @@ class ProjectContext(ProjectContextBase):
                  modules: Dict[str, List[str]],
                  outer_attribute_type: Optional[Dict[str, Callable[[RuntimeVariable], RuntimeClass]]] = None,
                  outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None,
-                 outer_package_class_list: Optional[Dict[str, List[str]]] = None):
+                 outer_package_class_list: Optional[Dict[str, List[str]]] = None,
+                 outer_java_file: Optional[Dict[str, str]] = None):
         """
 
         Parameters
@@ -58,6 +59,8 @@ class ProjectContext(ProjectContextBase):
             项目外已知函数返回值类型
         outer_package_class_list : Optional[Dict[str, List[str]]], default = None
             项目外已知 package 对应的 class_name 列表
+        outer_java_file : outer_file: Optional[Dict[str, str]], default = None
+            项目外已知 package_name.class_name 对应的 Java 文件源码
         """
         if outer_attribute_type is None:
             outer_attribute_type = {}
@@ -65,6 +68,8 @@ class ProjectContext(ProjectContextBase):
             outer_method_return_type = {}
         if outer_package_class_list is None:
             outer_package_class_list = {}
+        if outer_java_file is None:
+            outer_java_file = {}
 
         self._project_path = project_path
         self._modules: Dict[str, str] = {
@@ -74,6 +79,9 @@ class ProjectContext(ProjectContextBase):
         self._outer_attribute_type = outer_attribute_type
         self._outer_method_return_type = outer_method_return_type
         self._outer_package_class_list = outer_package_class_list
+        self._outer_java_file = {}
+        for class_absolute_name, java_file in outer_java_file.items():
+            self._outer_java_file[f"outer:{class_absolute_name}.java"] = java_file
 
         # 绝对名称到所属文件路径的映射
         self._cache_file_node_to_file_path: Dict[str, ast.CompilationUnit] = {}
@@ -88,8 +96,12 @@ class ProjectContext(ProjectContextBase):
     def get_file_node_by_file_path(self, file_path: str) -> ast.CompilationUnit:
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
         if file_path not in self._cache_file_node_to_file_path:
-            with open(file_path, "r", encoding="UTF-8") as file:
-                self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
+            if not file_path.startswith("outer:"):
+                # 从文件系统中读取 Java 文件
+                with open(file_path, "r", encoding="UTF-8") as file:
+                    self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
+            else:
+                self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(self._outer_java_file[file_path])
         return self._cache_file_node_to_file_path[file_path]
 
     @functools.lru_cache(maxsize=1024)
@@ -106,12 +118,14 @@ class ProjectContext(ProjectContextBase):
         """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
         # 根据 package_name（包名称）获取 package_path（包路径）
         package_path = self.get_package_path_by_package_name(package_name)
-        if package_path is None:
-            return None
-
-        # 获取类路径
-        file_path = os.path.join(package_path, f"{class_name}.java")
-
+        if package_path is not None:
+            # 通过文件系统读取 Java 代码文件
+            file_path = os.path.join(package_path, f"{class_name}.java")
+        else:
+            # 通过项目外信息补充
+            file_path = f"outer:{package_name}.{class_name}.java"
+            if file_path not in self._outer_java_file:
+                return None
         return self.get_file_node_by_file_path(file_path)
 
     @functools.lru_cache(maxsize=1024)
@@ -249,14 +263,15 @@ class ProjectContext(ProjectContextBase):
             return res
 
         # runtime_variable.belong_class 在项目中，获取变量类型
-        class_node = file_context.get_class_node_by_class_name(runtime_variable.belong_class.class_name)
-        variable_node = class_node.get_variable_by_name(runtime_variable.variable_name)
-        if variable_node is None:
+        class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class)
+        variable_info = class_context.get_variable_node_by_name(runtime_variable.variable_name)
+        if variable_info is None:
             LOGGER.warning(f"获取类属性的抽象语法树节点失败: {runtime_variable}")
             return None
-        return file_context.get_runtime_class_by_type_node(
-            class_node=class_node,
-            runtime_class=runtime_variable.belong_class,
+        variable_class_context, variable_node = variable_info
+        return variable_class_context.file_context.get_runtime_class_by_type_node(
+            class_node=variable_class_context.class_node,
+            runtime_class=variable_class_context.get_runtime_class(),
             type_node=variable_node.variable_type
         )
 

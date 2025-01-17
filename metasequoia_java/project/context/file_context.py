@@ -232,6 +232,8 @@ class FileContext(FileContextBase):
         """
         根据抽象语法树节点 class_node 中（运行中为 runtime_class），表示类型的抽象语法树节点 type_node，构造该类型对应的 runtime_class
         对象
+
+        TODO 参数待优化
         """
         if isinstance(type_node, ast.Identifier):
             class_name = type_node.name
@@ -254,15 +256,16 @@ class FileContext(FileContextBase):
                 )
 
             # 没有引用关系，可能是泛型
-            for idx, type_argument in enumerate(class_node.type_parameters):
-                if isinstance(type_argument, ast.TypeParameter):
-                    if type_argument.name == class_name:
-                        return runtime_class.type_arguments[idx]
-                else:
-                    print("未知泛型参数节点:", type_argument)
+            if runtime_class.type_arguments is not None:
+                for idx, type_argument in enumerate(class_node.type_parameters):
+                    if isinstance(type_argument, ast.TypeParameter):
+                        if type_argument.name == class_name:
+                            return runtime_class.type_arguments[idx]
+                    else:
+                        print("未知泛型参数节点:", type_argument)
 
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
-                           f"type_node={type_node}, "
+                           f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")
 
             return RuntimeClass(
@@ -293,6 +296,15 @@ class FileContext(FileContextBase):
                 package_name=package_name,
                 class_name=class_name,
                 type_arguments=type_arguments
+            )
+
+        # 将 Java 数组模拟为 java.lang.Array[xxx]
+        if isinstance(type_node, ast.ArrayType):
+            runtime_class = self.get_runtime_class_by_type_node(class_node, runtime_class, type_node.expression)
+            return RuntimeClass(
+                package_name="java.lang",
+                class_name="Array",
+                type_arguments=[runtime_class]
             )
 
         print(f"get_runtime_class_by_type_node: 暂不支持的表达式 {type_node}")
