@@ -274,6 +274,15 @@ class FileContext(FileContextBase):
                     type_arguments=[]
                 )
 
+            # 查找当前类中的子类
+            sub_class_name_list = class_node.get_sub_class_name_list()
+            if class_name in sub_class_name_list:
+                return RuntimeClass(
+                    package_name=self.package_name,
+                    class_name=f"{class_node.name}.{class_name}",
+                    type_arguments=[]
+                )
+
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")

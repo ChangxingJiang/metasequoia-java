@@ -872,6 +872,14 @@ class Class(Statement):
                 return member
         return None
 
+    def get_sub_class_name_list(self) -> List[str]:
+        """获取子类的列表"""
+        class_name_list = []
+        for declaration in self.members:
+            if isinstance(declaration, Class):
+                class_name_list.append(declaration.name)
+        return class_name_list
+
 
 @dataclasses.dataclass(slots=True)
 class Module(Tree):
