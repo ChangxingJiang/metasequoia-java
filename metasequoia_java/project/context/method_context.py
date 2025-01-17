@@ -433,9 +433,19 @@ class MethodContext(MethodContextBase):
 
         # ArrayAccess 节点
         elif isinstance(expression_node, ast.ArrayAccess):
-            variable_name_node = expression_node.expression
-            variable_type = self.get_runtime_class_by_node(namespace, variable_name_node)
+            variable_type = self.get_runtime_class_by_node(namespace, expression_node.expression)
             return variable_type
+
+        # ParameterizedType 节点
+        elif isinstance(expression_node, ast.ParameterizedType):
+            variable_type = self.get_runtime_class_by_node(namespace, expression_node.type_name)
+            variable_arguments = [self.get_runtime_class_by_node(namespace, argument)
+                                  for argument in expression_node.type_arguments]
+            return RuntimeClass(
+                package_name=variable_type.package_name,
+                class_name=variable_type.class_name,
+                type_arguments=variable_arguments
+            )
 
         else:
             print(f"get_runtime_class_by_node: 暂不支持的表达式 {expression_node}")
