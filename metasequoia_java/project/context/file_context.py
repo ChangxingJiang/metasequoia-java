@@ -123,12 +123,29 @@ class FileContext(FileContextBase):
         """构造文件中包含的引用逻辑
 
         在 Java 中，导入的优先级从高到低如下：
-        1. 精确导入：import package.ClassName;
-        2. 通配符导入：import package.*;
-        3. 静态精确导入：import static package.ClassName.staticMember;
-        4. 静态通配符导入：import static package.ClassName.*;
-        5. package 中的其他类
+        1. 当前文件中的类
+        2. 精确导入：import package.ClassName;
+        3. 通配符导入：import package.*;
+        4. 静态精确导入：import static package.ClassName.staticMember;
+        5. 静态通配符导入：import static package.ClassName.*;
+        6. package 中的其他类
         """
+        for class_name in self.file_node.get_class_and_sub_class_name_list():
+            runtime_class = RuntimeClass.create(
+                package_name=self.package_name,
+                public_class_name=self.public_class_name,
+                class_name=class_name,
+                type_arguments=None
+            )
+
+            # 将当前文件中的 ClassName 和 ClassName.SubClassName 添加到引用映射管理器中
+            self._import_class_hash[class_name] = runtime_class
+
+            # 将当前文件中的 SubClassName 添加到引用映射管理器中
+            if "." in class_name:
+                sub_class_name = class_name[class_name.rindex(".") + 1:]
+                self._import_class_hash[sub_class_name] = runtime_class
+
         # 精确导入：import package.ClassName;
         for import_node in self.file_node.imports:
             if import_node.is_static is True:
@@ -136,12 +153,13 @@ class FileContext(FileContextBase):
             package_name, class_name = split_last_name_from_absolute_name(import_node.identifier.generate())
             if class_name == "*":
                 continue
-            self._import_class_hash[class_name] = RuntimeClass.create(
-                package_name=package_name,
-                public_class_name=class_name,
-                class_name=class_name,
-                type_arguments=[]
-            )
+            if class_name not in self._import_class_hash:
+                self._import_class_hash[class_name] = RuntimeClass.create(
+                    package_name=package_name,
+                    public_class_name=class_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                )
 
         # 通配符导入：import package.*;
         for import_node in self.file_node.imports:
@@ -248,6 +266,10 @@ class FileContext(FileContextBase):
         """返回引用映射中是否包含类型"""
         return class_name in self._import_class_hash
 
+    def get_runtime_class_by_class_name(self, class_name: str) -> Optional[RuntimeClass]:
+        """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
+        return self._import_class_hash.get(class_name)
+
     def get_import_absolute_name_by_class_name(self, class_name: str) -> Optional[str]:
         """根据 class_name，获取引用映射中的完整名称"""
         if class_name not in self._import_class_hash:
@@ -274,7 +296,6 @@ class FileContext(FileContextBase):
         """
         if isinstance(type_node, ast.Identifier):
             class_name = type_node.name
-            package_name = self.get_import_package_name_by_class_name(class_name)
 
             # 类型节点为当前类：
             # 之所以与 class_node.name 比较，而不是 runtime_class.class_name 比较，是因为 class_node 可能是子类，此时
@@ -283,13 +304,8 @@ class FileContext(FileContextBase):
                 return runtime_class
 
             # 引用的类
-            if package_name is not None:
-                return RuntimeClass.create(
-                    package_name=package_name,
-                    public_class_name=class_name,
-                    class_name=class_name,
-                    type_arguments=[]
-                )
+            if result := self.get_runtime_class_by_class_name(class_name):
+                return result
 
             # java.lang 模块中的类
             if class_name in JAVA_LANG_CLASS_NAME_SET:
@@ -330,11 +346,6 @@ class FileContext(FileContextBase):
                     type_arguments=[]
                 )
 
-            print(f"无法根据抽象语法树节点获取类型: "
-                  f"class_name={class_name}, "
-                  f"position={self.package_name}.{self.public_class_name}, "
-                  f"class_node.name={class_node.name}, "
-                  f"runtime_class={runtime_class}")
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")

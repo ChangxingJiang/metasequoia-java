@@ -1050,18 +1050,39 @@ class CompilationUnit(Tree):
 
     def get_public_class(self) -> Optional[Class]:
         """获取文件中的公有类，如果没有则返回 None"""
-        for class_declaration in self.get_class_declaration_list():
+        for class_declaration in self.get_class_node_list():
             if Modifier.PUBLIC in class_declaration.modifiers.flags:
                 return class_declaration
         return None
 
-    def get_class_declaration_list(self) -> List[Class]:
+    def get_class_node_list(self) -> List[Class]:
         """获取文件中的类对象，如果没有则返回空列表"""
-        class_declaration_list = []
+        class_node_list = []
         for declaration in self.type_declarations:
             if isinstance(declaration, Class):
-                class_declaration_list.append(declaration)
-        return class_declaration_list
+                class_node_list.append(declaration)
+        return class_node_list
+
+    def get_class_and_sub_class_name_list(self,
+                                          member_list: Optional[List[Tree]] = None,
+                                          inherit: Optional[str] = None
+                                          ) -> List[str]:
+        """获取文件中的所有类（包含子类）的类名的列表，如果没有则返回空列表"""
+        if member_list is None:
+            member_list = self.type_declarations
+
+        class_name_list = []
+        for member in member_list:
+            if isinstance(member, Class):
+                class_name = f"{inherit}.{member.name}" if inherit is not None else member.name
+                class_name_list.append(class_name)
+
+                # 递归处理子类
+                class_name_list.extend(self.get_class_and_sub_class_name_list(
+                    member_list=member.members,
+                    inherit=class_name
+                ))
+        return class_name_list
 
     def get_class_by_name(self, class_name: str) -> Optional[Class]:
         """根据类名获取类的抽象语法树节点"""

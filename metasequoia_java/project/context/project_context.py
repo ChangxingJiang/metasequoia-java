@@ -197,7 +197,7 @@ class ProjectContext(ProjectContextBase):
         class_name_list: List[str] = []
         for file_path in file_path_list:
             file_node: ast.CompilationUnit = self.get_file_node_by_file_path(file_path)
-            for class_declaration in file_node.get_class_declaration_list():
+            for class_declaration in file_node.get_class_node_list():
                 if ast.Modifier.PRIVATE not in class_declaration.modifiers.flags:
                     class_name_list.append(class_declaration.name)
         return class_name_list

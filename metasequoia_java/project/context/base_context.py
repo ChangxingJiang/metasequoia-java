@@ -74,7 +74,8 @@ class ProjectContextBase(abc.ABC):
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
     @abc.abstractmethod
-    def create_file_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> Optional["FileContextBase"]:
+    def create_file_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> Optional[
+        "FileContextBase"]:
         """根据 RuntimeClass 对象，构造类所在的文件的 FileContext 对象，如果不在当前项目中则返回 None"""
 
     @abc.abstractmethod
@@ -159,16 +160,16 @@ class FileContextBase(abc.ABC):
     # ------------------------------ 项目映射管理器 ------------------------------
 
     @abc.abstractmethod
-    def _init_import_hash(self) -> Dict[str, RuntimeClass]:
-        """构造文件中包含的引用逻辑"""
+    def get_runtime_class_by_class_name(self, class_name: str) -> Optional[RuntimeClass]:
+        """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
     def get_import_absolute_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """根据 class_name，获取引用映射中的完整名称"""
+        """根据 class_name，获取引用映射中的完整名称 TODO 待考虑替换为 get_runtime_class_by_class_name"""
 
     @abc.abstractmethod
     def get_import_package_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """获取 class_name，获取引用映射中的包名称"""
+        """获取 class_name，获取引用映射中的包名称 TODO 待考虑替换为 get_runtime_class_by_class_name"""
 
     @abc.abstractmethod
     def get_runtime_class_by_type_node(self,

@@ -188,14 +188,9 @@ class MethodContext(MethodContextBase):
             identifier = statement_node.identifier
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
-                method_package_name = self.file_context.get_import_package_name_by_class_name(method_class_name)
+                method_runtime_class = self.file_context.get_runtime_class_by_class_name(method_class_name)
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass.create(
-                        package_name=method_package_name,
-                        public_class_name=method_class_name,
-                        class_name=method_class_name,
-                        type_arguments=None
-                    ),
+                    belong_class=method_runtime_class,
                     method_name=method_class_name
                 )
                 LOGGER.debug(f"生成调用方法(类型 3): {runtime_method}")
@@ -204,16 +199,16 @@ class MethodContext(MethodContextBase):
                 identifier_type_name = identifier.type_name
                 assert isinstance(identifier_type_name, ast.Identifier)
                 method_class_name = identifier_type_name.name
-                method_package_name = self._file_context.get_import_package_name_by_class_name(method_class_name)
+                method_runtime_class = self.file_context.get_runtime_class_by_class_name(method_class_name)
                 type_arguments = [
                     self.get_runtime_class_by_node(namespace, type_argument)
                     for type_argument in identifier.type_arguments
                 ]
                 runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass.create(
-                        package_name=method_package_name,
-                        public_class_name=method_class_name,
-                        class_name=method_class_name,
+                        package_name=method_runtime_class.package_name,
+                        public_class_name=method_runtime_class.public_class_name,
+                        class_name=method_runtime_class.class_name,
                         type_arguments=type_arguments
                     ),
                     method_name=method_class_name
@@ -281,12 +276,14 @@ class MethodContext(MethodContextBase):
         elif isinstance(statement_node, ast.Unary):
             yield from self.get_method_invocation(namespace, statement_node.expression)
         elif isinstance(statement_node, ast.Try):
+            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.resources))
             yield from self.get_method_invocation(namespace, statement_node.block)
             for sub_node in statement_node.catches:
                 yield from self.get_method_invocation(namespace, sub_node)
             yield from self.get_method_invocation(namespace, statement_node.finally_block)
             for sub_node in statement_node.resources:
                 yield from self.get_method_invocation(namespace, sub_node)
+            namespace.pop_space()
         elif isinstance(statement_node, ast.Catch):
             yield from self.get_method_invocation(namespace, statement_node.parameter)
             yield from self.get_method_invocation(namespace, statement_node.block)
@@ -398,9 +395,9 @@ class MethodContext(MethodContextBase):
             if isinstance(method_select_node, ast.Identifier):
                 runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass.create(
-                        package_name=self._file_context.package_name,
-                        public_class_name=self._class_context.class_name,
-                        class_name=self._class_context.class_name,
+                        package_name=self.file_context.package_name,
+                        public_class_name=self.file_context.public_class_name,
+                        class_name=self.class_context.class_name,
                         type_arguments=None  # TODO 待改为当前类构造时的泛型
                     ),
                     method_name=method_select_node.name
@@ -481,14 +478,9 @@ class MethodContext(MethodContextBase):
             )
 
         # 尝试将标识符作为类名解析
-        package_name = self.file_context.get_import_package_name_by_class_name(unknown_name)
-        if package_name is not None:
-            return RuntimeClass.create(
-                package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
-                public_class_name=unknown_name,
-                class_name=unknown_name,
-                type_arguments=[]
-            )
+        runtime_class = self.file_context.get_runtime_class_by_class_name(unknown_name)
+        if runtime_class is not None:
+            return runtime_class
 
         # 尝试将标识符作为类属性解析（寻找父类中的属性） TODO 与命名空间存在重复，待优化
         variable_info = self.class_context.get_variable_node_by_name(unknown_name)

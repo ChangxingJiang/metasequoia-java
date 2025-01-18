@@ -87,7 +87,7 @@ class SimpleNameSpace:
         return simple_name_space
 
     @staticmethod
-    def create_by_statements(statement_node_list: List[ast.Statement]) -> "SimpleNameSpace":
+    def create_by_statements(statement_node_list: List[ast.Tree]) -> "SimpleNameSpace":
         """根据表达式列表构造单层命名空间"""
         simple_name_space = SimpleNameSpace()
         for statement_node in statement_node_list:
