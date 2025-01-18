@@ -74,16 +74,12 @@ class ProjectContextBase(abc.ABC):
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
     @abc.abstractmethod
-    def create_file_context_by_class_absolute_name(self, class_absolute_name: str) -> "FileContextBase":
-        """根据公有类的绝对引用名称，构造 FileContext 对象"""
+    def create_file_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> Optional["FileContextBase"]:
+        """根据 RuntimeClass 对象，构造类所在的文件的 FileContext 对象，如果不在当前项目中则返回 None"""
 
     @abc.abstractmethod
-    def create_class_context_by_class_absolute_name(self, class_absolute_name: str) -> "ClassContextBase":
-        """根据公有类的绝对引用名称，构造 ClassContext 对象"""
-
-    @abc.abstractmethod
-    def create_class_context_by_runtime_class(self, runtime_class: RuntimeClass) -> "ClassContextBase":
-        """根据 runtimeClass 对象，构造 ClassContext 对象"""
+    def create_class_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> "ClassContextBase":
+        """根据 runtimeClass 对象，构造类的 ClassContext 对象，如果不在当前项目中则返回 None"""
 
     @abc.abstractmethod
     def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> "MethodContextBase":

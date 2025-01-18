@@ -1064,11 +1064,26 @@ class CompilationUnit(Tree):
         return class_declaration_list
 
     def get_class_by_name(self, class_name: str) -> Optional[Class]:
-        """根据类名获取类节点"""
+        """根据类名获取类的抽象语法树节点"""
         for declaration in self.type_declarations:
             if isinstance(declaration, Class) and declaration.name == class_name:
                 return declaration
         return None
+
+    def get_sub_class_by_name(self, class_name: str) -> Optional[Class]:
+        """根据子类名获取类的抽象语法树节点"""
+        now_level_list = self.type_declarations
+        class_node: Optional[Class] = None
+        for now_level_class_name in class_name.split("."):
+            class_node = None
+            for declaration in now_level_list:
+                if isinstance(declaration, Class) and declaration.name == now_level_class_name:
+                    class_node = declaration
+                    now_level_list = declaration.members
+                    break
+            if class_node is False:
+                return None
+        return class_node
 
 
 @dataclasses.dataclass(slots=True)

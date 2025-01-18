@@ -226,20 +226,19 @@ class ProjectContext(ProjectContextBase):
 
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
-    def create_file_context_by_class_absolute_name(self, class_absolute_name: str) -> Optional[FileContextBase]:
-        """根据公有类的绝对引用名称，构造 FileContext 对象，如果不在当前项目中则返回 None"""
-        return FileContext.create_by_public_class_absolute_name(self, class_absolute_name)
-
-    def create_class_context_by_class_absolute_name(self, class_absolute_name: str) -> Optional[ClassContextBase]:
-        """根据公有类的绝对引用名称，构造 ClassContext 对象，如果不在当前项目中则返回 None"""
-        file_context = FileContext.create_by_public_class_absolute_name(self, class_absolute_name)
-        if file_context is None:
+    def create_file_context_by_runtime_class(self,
+                                             runtime_class: Optional[RuntimeClass]
+                                             ) -> Optional[FileContextBase]:
+        """根据 RuntimeClass 对象，构造类所在的文件的 FileContext 对象，如果不在当前项目中则返回 None"""
+        if runtime_class is None:
             return None
-        return ClassContext.create_by_public_class(file_context)
+        return FileContext.create_by_runtime_class(self, runtime_class)
 
-    def create_class_context_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[ClassContextBase]:
-        """根据 runtimeClass 对象，构造 ClassContext 对象，如果不在当前项目中则返回 None"""
-        file_context = FileContext.create_by_runtime_class(self, runtime_class)
+    def create_class_context_by_runtime_class(self,
+                                              runtime_class: Optional[RuntimeClass]
+                                              ) -> Optional[ClassContextBase]:
+        """根据 runtimeClass 对象，构造类的 ClassContext 对象，如果不在当前项目中则返回 None"""
+        file_context = self.create_file_context_by_runtime_class(runtime_class)
         if file_context is None:
             return None
         return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
@@ -283,13 +282,7 @@ class ProjectContext(ProjectContextBase):
 
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
-        if runtime_method.belong_class is None:
-            return None  # 如果方法所属类获取失败，则返回 None
-
-        file_context = FileContext.create_by_public_class_absolute_name(
-            project_context=self,
-            absolute_name=runtime_method.belong_class.absolute_name
-        )
+        file_context = self.create_file_context_by_runtime_class(runtime_method.belong_class)
 
         # runtime_method.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
         if file_context is None:

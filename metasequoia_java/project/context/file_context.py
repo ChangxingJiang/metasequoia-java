@@ -111,9 +111,11 @@ class FileContext(FileContextBase):
         """返回公有类的抽象语法树节点"""
         return self._file_node.get_public_class()
 
-    def get_class_node_by_class_name(self, class_name) -> Optional[ast.Class]:
-        """根据 class_name 获取指定类的抽象语法树节点"""
-        return self._file_node.get_class_by_name(class_name)
+    def get_class_node_by_class_name(self, class_name: str) -> Optional[ast.Class]:
+        """根据 class_name 获取指定类的抽象语法树节点，如果获取不到则返回 None"""
+        if "." in class_name:
+            return self.file_node.get_sub_class_by_name(class_name)  # 根据子类名获取类的抽象语法树节点
+        return self.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
 
     # ------------------------------ 引用映射管理器 ------------------------------
 
@@ -274,6 +276,12 @@ class FileContext(FileContextBase):
             class_name = type_node.name
             package_name = self.get_import_package_name_by_class_name(class_name)
 
+            # 类型节点为当前类：
+            # 之所以与 class_node.name 比较，而不是 runtime_class.class_name 比较，是因为 class_node 可能是子类，此时
+            # runtime_class.class_name 为 ClassName.SubClassName
+            if class_name == class_node.name:
+                return runtime_class
+
             # 引用的类
             if package_name is not None:
                 return RuntimeClass.create(
@@ -322,6 +330,11 @@ class FileContext(FileContextBase):
                     type_arguments=[]
                 )
 
+            print(f"无法根据抽象语法树节点获取类型: "
+                  f"class_name={class_name}, "
+                  f"position={self.package_name}.{self.public_class_name}, "
+                  f"class_node.name={class_node.name}, "
+                  f"runtime_class={runtime_class}")
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")
