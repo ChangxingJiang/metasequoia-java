@@ -111,6 +111,14 @@ class ProjectContext(ProjectContextBase):
         return self.get_file_node_by_package_name_class_name(package_name, class_name)
 
     @functools.lru_cache(maxsize=1024)
+    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass) -> ast.CompilationUnit:
+        """根据 RuntimeClass 对象构造类所在文件的抽象语法树节点"""
+        return self.get_file_node_by_package_name_class_name(
+            package_name=runtime_class.package_name,
+            class_name=runtime_class.public_class_name
+        )
+
+    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
                                                  class_name: str
@@ -196,7 +204,7 @@ class ProjectContext(ProjectContextBase):
 
     def get_static_variable_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
         """根据 runtimeClass 对象获取该对象中静态变量名称的列表"""
-        class_context = self.create_class_context_by_class_absolute_name(runtime_class.absolute_name)
+        class_context = self.create_class_context_by_runtime_class(runtime_class)
         if class_context is None:
             return None
         variable_name_list = []
@@ -207,7 +215,7 @@ class ProjectContext(ProjectContextBase):
 
     def get_static_method_name_list_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[List[str]]:
         """根据 runtimeClass 对象获取该对象中静态方法名称的列表"""
-        class_context = self.create_class_context_by_class_absolute_name(runtime_class.absolute_name)
+        class_context = self.create_class_context_by_runtime_class(runtime_class)
         if class_context is None:
             return None
         method_name_list = []
@@ -231,12 +239,10 @@ class ProjectContext(ProjectContextBase):
 
     def create_class_context_by_runtime_class(self, runtime_class: RuntimeClass) -> Optional[ClassContextBase]:
         """根据 runtimeClass 对象，构造 ClassContext 对象，如果不在当前项目中则返回 None"""
-        if runtime_class is None:
-            return None
-        file_context = FileContext.create_by_public_class_absolute_name(self, runtime_class.absolute_name)
+        file_context = FileContext.create_by_runtime_class(self, runtime_class)
         if file_context is None:
             return None
-        return ClassContext.create_by_public_class(file_context)
+        return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
 
     def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> Optional[MethodContextBase]:
         """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""

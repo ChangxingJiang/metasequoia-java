@@ -150,7 +150,7 @@ class MethodContext(MethodContextBase):
                 else:
                     # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
                     runtime_method = RuntimeMethod(
-                        belong_class=RuntimeClass(
+                        belong_class=RuntimeClass.create(
                             package_name=self.file_context.package_name,
                             public_class_name=self.class_context.class_name,
                             class_name=self.class_context.class_name,
@@ -190,7 +190,7 @@ class MethodContext(MethodContextBase):
                 method_class_name = identifier.name
                 method_package_name = self.file_context.get_import_package_name_by_class_name(method_class_name)
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(
+                    belong_class=RuntimeClass.create(
                         package_name=method_package_name,
                         public_class_name=method_class_name,
                         class_name=method_class_name,
@@ -210,7 +210,7 @@ class MethodContext(MethodContextBase):
                     for type_argument in identifier.type_arguments
                 ]
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(
+                    belong_class=RuntimeClass.create(
                         package_name=method_package_name,
                         public_class_name=method_class_name,
                         class_name=method_class_name,
@@ -397,7 +397,7 @@ class MethodContext(MethodContextBase):
             # name1() -- 调用当前类的其他方法
             if isinstance(method_select_node, ast.Identifier):
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(
+                    belong_class=RuntimeClass.create(
                         package_name=self._file_context.package_name,
                         public_class_name=self._class_context.class_name,
                         class_name=self._class_context.class_name,
@@ -431,7 +431,7 @@ class MethodContext(MethodContextBase):
 
         # 字符串字面值
         elif isinstance(expression_node, ast.StringLiteral):
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name="java.lang",
                 public_class_name="String",
                 class_name="String",
@@ -452,7 +452,7 @@ class MethodContext(MethodContextBase):
             variable_type = self.get_runtime_class_by_node(namespace, expression_node.type_name)
             variable_arguments = [self.get_runtime_class_by_node(namespace, argument)
                                   for argument in expression_node.type_arguments]
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name=variable_type.package_name,
                 public_class_name=variable_type.class_name,
                 class_name=variable_type.class_name,
@@ -483,7 +483,7 @@ class MethodContext(MethodContextBase):
         # 尝试将标识符作为类名解析
         package_name = self.file_context.get_import_package_name_by_class_name(unknown_name)
         if package_name is not None:
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
                 public_class_name=unknown_name,
                 class_name=unknown_name,
@@ -502,7 +502,7 @@ class MethodContext(MethodContextBase):
 
         # 无法解析的场景，将其作为类名处理
         LOGGER.error(f"使用了未知的标识符: {unknown_name}, position={self.get_runtime_method()}")
-        return RuntimeClass(
+        return RuntimeClass.create(
             package_name=None,
             public_class_name=unknown_name,
             class_name=unknown_name,

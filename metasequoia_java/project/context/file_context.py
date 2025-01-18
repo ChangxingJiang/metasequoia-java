@@ -38,6 +38,23 @@ class FileContext(FileContextBase):
         self._init_import_hash()
 
     @staticmethod
+    def create_by_runtime_class(project_context: ProjectContextBase,
+                                runtime_class: Optional[RuntimeClass]
+                                ) -> Optional["FileContext"]:
+        """使用公有类或飞公有类的 RuntimeClass 构造 FileContext 对象"""
+        if runtime_class is None:
+            return None
+        file_node: ast.CompilationUnit = project_context.get_file_node_by_runtime_class(runtime_class)
+        if file_node is None:
+            return None
+        return FileContext(
+            project_context=project_context,
+            package_name=runtime_class.package_name,
+            public_class_name=runtime_class.public_class_name,
+            file_node=file_node
+        )
+
+    @staticmethod
     def create_by_public_class_absolute_name(project_context: ProjectContextBase,
                                              absolute_name: str
                                              ) -> Optional["FileContext"]:
@@ -117,7 +134,7 @@ class FileContext(FileContextBase):
             package_name, class_name = split_last_name_from_absolute_name(import_node.identifier.generate())
             if class_name == "*":
                 continue
-            self._import_class_hash[class_name] = RuntimeClass(
+            self._import_class_hash[class_name] = RuntimeClass.create(
                 package_name=package_name,
                 public_class_name=class_name,
                 class_name=class_name,
@@ -137,7 +154,7 @@ class FileContext(FileContextBase):
                 continue
             for class_name in class_name_list:
                 if class_name not in self._import_class_hash:
-                    self._import_class_hash[class_name] = RuntimeClass(
+                    self._import_class_hash[class_name] = RuntimeClass.create(
                         package_name=package_name,
                         public_class_name=class_name,
                         class_name=class_name,
@@ -155,7 +172,7 @@ class FileContext(FileContextBase):
 
             # TODO 向 method 和 variable 中分别插入一条，待增加优先解析类的方法
             self._import_method_hash[unknown_name] = RuntimeMethod(
-                belong_class=RuntimeClass(
+                belong_class=RuntimeClass.create(
                     package_name=package_name,
                     public_class_name=class_name,
                     class_name=class_name,
@@ -164,7 +181,7 @@ class FileContext(FileContextBase):
                 method_name=unknown_name
             )
             self._import_variable_hash[unknown_name] = RuntimeVariable(
-                belong_class=RuntimeClass(
+                belong_class=RuntimeClass.create(
                     package_name=package_name,
                     public_class_name=class_name,
                     class_name=class_name,
@@ -181,7 +198,7 @@ class FileContext(FileContextBase):
             if method_name != "*":
                 continue
             package_name, class_name = split_last_name_from_absolute_name(class_name)
-            runtime_class = RuntimeClass(
+            runtime_class = RuntimeClass.create(
                 package_name=package_name,
                 public_class_name=class_name,
                 class_name=class_name,
@@ -218,7 +235,7 @@ class FileContext(FileContextBase):
             for class_name in class_name_list:
                 # 检查是否有更高优先级的引用
                 if class_name not in self._import_class_hash:
-                    self._import_class_hash[class_name] = RuntimeClass(
+                    self._import_class_hash[class_name] = RuntimeClass.create(
                         package_name=self.package_name,
                         public_class_name=class_name,
                         class_name=class_name,
@@ -259,7 +276,7 @@ class FileContext(FileContextBase):
 
             # 引用的类
             if package_name is not None:
-                return RuntimeClass(
+                return RuntimeClass.create(
                     package_name=package_name,
                     public_class_name=class_name,
                     class_name=class_name,
@@ -268,7 +285,7 @@ class FileContext(FileContextBase):
 
             # java.lang 模块中的类
             if class_name in JAVA_LANG_CLASS_NAME_SET:
-                return RuntimeClass(
+                return RuntimeClass.create(
                     package_name="java.lang",
                     public_class_name=class_name,
                     class_name=class_name,
@@ -288,7 +305,7 @@ class FileContext(FileContextBase):
             class_name_list = self.file_node.get_class_name_list()
             if class_name in class_name_list:
                 # TODO 考虑不是公有类的情况
-                return RuntimeClass(
+                return RuntimeClass.create(
                     package_name=self.package_name,
                     public_class_name=class_name,
                     class_name=class_name,
@@ -298,7 +315,7 @@ class FileContext(FileContextBase):
             # 查找当前类中的子类
             sub_class_name_list = class_node.get_sub_class_name_list()
             if class_name in sub_class_name_list:
-                return RuntimeClass(
+                return RuntimeClass.create(
                     package_name=self.package_name,
                     public_class_name=class_node.name,
                     class_name=f"{class_node.name}.{class_name}",
@@ -309,7 +326,7 @@ class FileContext(FileContextBase):
                            f"class_name={class_name}, "
                            f"position={self.package_name}.{self.public_class_name}")
 
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name=None,
                 public_class_name=type_node.generate(),
                 class_name=type_node.generate(),
@@ -334,7 +351,7 @@ class FileContext(FileContextBase):
                 self.get_runtime_class_by_type_node(class_node, runtime_class, argument)
                 for argument in type_node.type_arguments
             ]
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name=package_name,
                 public_class_name=class_name,
                 class_name=class_name,
@@ -344,7 +361,7 @@ class FileContext(FileContextBase):
         # 将 Java 数组模拟为 java.lang.Array[xxx]
         if isinstance(type_node, ast.ArrayType):
             runtime_class = self.get_runtime_class_by_type_node(class_node, runtime_class, type_node.expression)
-            return RuntimeClass(
+            return RuntimeClass.create(
                 package_name="java.lang",
                 public_class_name="Array",
                 class_name="Array",

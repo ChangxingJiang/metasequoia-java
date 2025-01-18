@@ -3,7 +3,7 @@
 """
 
 import dataclasses
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from metasequoia_java.project.utils.name_utils import split_last_name_from_absolute_name
 
@@ -12,20 +12,32 @@ __all__ = [
 ]
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class RuntimeClass:
     """运行中的类型（类）"""
 
     package_name: Optional[str] = dataclasses.field(kw_only=True)
     public_class_name: str = dataclasses.field(kw_only=True)
     class_name: str = dataclasses.field(kw_only=True)
-    type_arguments: Optional[List["RuntimeClass"]] = dataclasses.field(kw_only=True)  # 泛型（如果未知则为 None）
+    type_arguments: Optional[Tuple["RuntimeClass"]] = dataclasses.field(kw_only=True)  # 泛型（如果未知则为 None）
+
+    @staticmethod
+    def create(package_name: Optional[str],
+               public_class_name: str,
+               class_name: str,
+               type_arguments: Optional[List["RuntimeClass"]]) -> "RuntimeClass":
+        return RuntimeClass(
+            package_name=package_name,
+            public_class_name=public_class_name,
+            class_name=class_name,
+            type_arguments=tuple(type_arguments) if type_arguments is not None else None
+        )
 
     @staticmethod
     def create_by_public_class_absolute_name(absolute_name: str) -> "RuntimeClass":
         """根据公有类的绝对引用名称构造 RuntimeClass 对象"""
         package_name, class_name = split_last_name_from_absolute_name(absolute_name)
-        return RuntimeClass(
+        return RuntimeClass.create(
             package_name=package_name,
             public_class_name=class_name,
             class_name=class_name,
