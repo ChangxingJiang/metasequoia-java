@@ -119,6 +119,7 @@ class FileContext(FileContextBase):
                 continue
             self._import_class_hash[class_name] = RuntimeClass(
                 package_name=package_name,
+                public_class_name=class_name,
                 class_name=class_name,
                 type_arguments=[]
             )
@@ -138,6 +139,7 @@ class FileContext(FileContextBase):
                 if class_name not in self._import_class_hash:
                     self._import_class_hash[class_name] = RuntimeClass(
                         package_name=package_name,
+                        public_class_name=class_name,
                         class_name=class_name,
                         type_arguments=[]
                     )
@@ -153,11 +155,21 @@ class FileContext(FileContextBase):
 
             # TODO 向 method 和 variable 中分别插入一条，待增加优先解析类的方法
             self._import_method_hash[unknown_name] = RuntimeMethod(
-                belong_class=RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[]),
+                belong_class=RuntimeClass(
+                    package_name=package_name,
+                    public_class_name=class_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                ),
                 method_name=unknown_name
             )
             self._import_variable_hash[unknown_name] = RuntimeVariable(
-                belong_class=RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[]),
+                belong_class=RuntimeClass(
+                    package_name=package_name,
+                    public_class_name=class_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                ),
                 variable_name=unknown_name
             )
 
@@ -169,7 +181,12 @@ class FileContext(FileContextBase):
             if method_name != "*":
                 continue
             package_name, class_name = split_last_name_from_absolute_name(class_name)
-            runtime_class = RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[])
+            runtime_class = RuntimeClass(
+                package_name=package_name,
+                public_class_name=class_name,
+                class_name=class_name,
+                type_arguments=[]
+            )
 
             # 获取静态属性
             variable_name_list = self.project_context.get_static_variable_name_list_by_runtime_class(runtime_class)
@@ -203,6 +220,7 @@ class FileContext(FileContextBase):
                 if class_name not in self._import_class_hash:
                     self._import_class_hash[class_name] = RuntimeClass(
                         package_name=self.package_name,
+                        public_class_name=class_name,
                         class_name=class_name,
                         type_arguments=[]
                     )
@@ -243,6 +261,7 @@ class FileContext(FileContextBase):
             if package_name is not None:
                 return RuntimeClass(
                     package_name=package_name,
+                    public_class_name=class_name,
                     class_name=class_name,
                     type_arguments=[]
                 )
@@ -251,6 +270,7 @@ class FileContext(FileContextBase):
             if class_name in JAVA_LANG_CLASS_NAME_SET:
                 return RuntimeClass(
                     package_name="java.lang",
+                    public_class_name=class_name,
                     class_name=class_name,
                     type_arguments=[]
                 )
@@ -270,6 +290,7 @@ class FileContext(FileContextBase):
                 # TODO 考虑不是公有类的情况
                 return RuntimeClass(
                     package_name=self.package_name,
+                    public_class_name=class_name,
                     class_name=class_name,
                     type_arguments=[]
                 )
@@ -279,6 +300,7 @@ class FileContext(FileContextBase):
             if class_name in sub_class_name_list:
                 return RuntimeClass(
                     package_name=self.package_name,
+                    public_class_name=class_node.name,
                     class_name=f"{class_node.name}.{class_name}",
                     type_arguments=[]
                 )
@@ -289,6 +311,7 @@ class FileContext(FileContextBase):
 
             return RuntimeClass(
                 package_name=None,
+                public_class_name=type_node.generate(),
                 class_name=type_node.generate(),
                 type_arguments=None
             )
@@ -313,6 +336,7 @@ class FileContext(FileContextBase):
             ]
             return RuntimeClass(
                 package_name=package_name,
+                public_class_name=class_name,
                 class_name=class_name,
                 type_arguments=type_arguments
             )
@@ -322,6 +346,7 @@ class FileContext(FileContextBase):
             runtime_class = self.get_runtime_class_by_type_node(class_node, runtime_class, type_node.expression)
             return RuntimeClass(
                 package_name="java.lang",
+                public_class_name="Array",
                 class_name="Array",
                 type_arguments=[runtime_class]
             )

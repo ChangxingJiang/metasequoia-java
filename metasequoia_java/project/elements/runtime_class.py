@@ -17,14 +17,17 @@ class RuntimeClass:
     """运行中的类型（类）"""
 
     package_name: Optional[str] = dataclasses.field(kw_only=True)
+    public_class_name: str = dataclasses.field(kw_only=True)
     class_name: str = dataclasses.field(kw_only=True)
     type_arguments: Optional[List["RuntimeClass"]] = dataclasses.field(kw_only=True)  # 泛型（如果未知则为 None）
 
     @staticmethod
-    def create_by_absolute_name(absolute_name: str):
+    def create_by_public_class_absolute_name(absolute_name: str) -> "RuntimeClass":
+        """根据公有类的绝对引用名称构造 RuntimeClass 对象"""
         package_name, class_name = split_last_name_from_absolute_name(absolute_name)
         return RuntimeClass(
             package_name=package_name,
+            public_class_name=class_name,
             class_name=class_name,
             type_arguments=None
         )

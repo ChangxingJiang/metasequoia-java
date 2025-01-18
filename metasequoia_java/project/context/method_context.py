@@ -152,6 +152,7 @@ class MethodContext(MethodContextBase):
                     runtime_method = RuntimeMethod(
                         belong_class=RuntimeClass(
                             package_name=self.file_context.package_name,
+                            public_class_name=self.class_context.class_name,
                             class_name=self.class_context.class_name,
                             type_arguments=None  # TODO 待改为当前类构造时的泛型
                         ),
@@ -189,8 +190,12 @@ class MethodContext(MethodContextBase):
                 method_class_name = identifier.name
                 method_package_name = self.file_context.get_import_package_name_by_class_name(method_class_name)
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(package_name=method_package_name, class_name=method_class_name,
-                                              type_arguments=None),
+                    belong_class=RuntimeClass(
+                        package_name=method_package_name,
+                        public_class_name=method_class_name,
+                        class_name=method_class_name,
+                        type_arguments=None
+                    ),
                     method_name=method_class_name
                 )
                 LOGGER.debug(f"生成调用方法(类型 3): {runtime_method}")
@@ -205,8 +210,12 @@ class MethodContext(MethodContextBase):
                     for type_argument in identifier.type_arguments
                 ]
                 runtime_method = RuntimeMethod(
-                    belong_class=RuntimeClass(package_name=method_package_name, class_name=method_class_name,
-                                              type_arguments=type_arguments),
+                    belong_class=RuntimeClass(
+                        package_name=method_package_name,
+                        public_class_name=method_class_name,
+                        class_name=method_class_name,
+                        type_arguments=type_arguments
+                    ),
                     method_name=method_class_name
                 )
                 LOGGER.debug(f"生成调用方法(类型 4): {runtime_method}")
@@ -390,6 +399,7 @@ class MethodContext(MethodContextBase):
                 runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass(
                         package_name=self._file_context.package_name,
+                        public_class_name=self._class_context.class_name,
                         class_name=self._class_context.class_name,
                         type_arguments=None  # TODO 待改为当前类构造时的泛型
                     ),
@@ -423,6 +433,7 @@ class MethodContext(MethodContextBase):
         elif isinstance(expression_node, ast.StringLiteral):
             return RuntimeClass(
                 package_name="java.lang",
+                public_class_name="String",
                 class_name="String",
                 type_arguments=[]
             )
@@ -443,6 +454,7 @@ class MethodContext(MethodContextBase):
                                   for argument in expression_node.type_arguments]
             return RuntimeClass(
                 package_name=variable_type.package_name,
+                public_class_name=variable_type.class_name,
                 class_name=variable_type.class_name,
                 type_arguments=variable_arguments
             )
@@ -473,6 +485,7 @@ class MethodContext(MethodContextBase):
         if package_name is not None:
             return RuntimeClass(
                 package_name=self.file_context.get_import_package_name_by_class_name(unknown_name),
+                public_class_name=unknown_name,
                 class_name=unknown_name,
                 type_arguments=[]
             )
@@ -491,6 +504,7 @@ class MethodContext(MethodContextBase):
         LOGGER.error(f"使用了未知的标识符: {unknown_name}, position={self.get_runtime_method()}")
         return RuntimeClass(
             package_name=None,
+            public_class_name=unknown_name,
             class_name=unknown_name,
             type_arguments=[]
         )

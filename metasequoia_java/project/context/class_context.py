@@ -133,13 +133,19 @@ class ClassContext(ClassContextBase):
             if package_name is None:
                 LOGGER.warning(f"找不到继承类所属的包: class_name={class_name}")
 
-            result.append(RuntimeClass(package_name=package_name, class_name=class_name, type_arguments=[]))
+            result.append(RuntimeClass(
+                package_name=package_name,
+                public_class_name=class_name,
+                class_name=class_name,
+                type_arguments=[]
+            ))
         return result
 
     def get_runtime_class(self) -> RuntimeClass:
         """构造当前类上下文对应的 RuntimeClass 对象"""
         return RuntimeClass(
             package_name=self.file_context.package_name,
+            public_class_name=self.file_context.public_class_name,
             class_name=self.class_name,
             type_arguments=None
         )
