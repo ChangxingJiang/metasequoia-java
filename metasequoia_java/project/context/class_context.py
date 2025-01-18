@@ -129,7 +129,10 @@ class ClassContext(ClassContextBase):
                 LOGGER.warning(f"无法处理的类名类型: {type_node}")
                 continue
 
-            package_name = self.file_context.get_import_package_name_by_class_name(class_name)
+            runtime_class = self.file_context.get_runtime_class_by_class_name(class_name)
+            if runtime_class is None:
+                LOGGER.warning(f"找不到继承类: class_name={class_name}")
+            package_name = runtime_class.package_name
             if package_name is None:
                 LOGGER.warning(f"找不到继承类所属的包: class_name={class_name}")
 

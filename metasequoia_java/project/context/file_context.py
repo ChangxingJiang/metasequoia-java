@@ -281,18 +281,6 @@ class FileContext(FileContextBase):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
         return self._import_class_hash.get(class_name)
 
-    def get_import_absolute_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """根据 class_name，获取引用映射中的完整名称"""
-        if class_name not in self._import_class_hash:
-            return None
-        return self._import_class_hash[class_name].absolute_name
-
-    def get_import_package_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """获取 class_name，获取引用映射中的包名称"""
-        if class_name in self._import_class_hash:
-            return self._import_class_hash[class_name].package_name
-        return None
-
     def get_runtime_class_by_type_node(self,
                                        class_node: ast.Class,
                                        runtime_class: RuntimeClass,
@@ -361,7 +349,9 @@ class FileContext(FileContextBase):
             class_name = type_node.type_name.generate()
             if "." not in class_name:
                 # "类名"
-                package_name = self.get_import_package_name_by_class_name(class_name)
+                package_name = None
+                if sub_runtime_class := self.get_runtime_class_by_class_name(class_name):
+                    package_name = sub_runtime_class.package_name
             else:
                 # "包名.类名"
                 package_name = class_name[:class_name.rindex(".")]
@@ -369,7 +359,9 @@ class FileContext(FileContextBase):
                 if self.import_contains_class_name(package_name):
                     # "主类名.子类名"
                     main_class_name = package_name  # 主类名
-                    package_name = self.get_import_package_name_by_class_name(main_class_name)
+                    package_name = None
+                    if sub_runtime_class := self.get_runtime_class_by_class_name(main_class_name):
+                        package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [
                 self.get_runtime_class_by_type_node(class_node, runtime_class, argument)

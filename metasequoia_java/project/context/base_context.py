@@ -164,14 +164,6 @@ class FileContextBase(abc.ABC):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
-    def get_import_absolute_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """根据 class_name，获取引用映射中的完整名称 TODO 待考虑替换为 get_runtime_class_by_class_name"""
-
-    @abc.abstractmethod
-    def get_import_package_name_by_class_name(self, class_name: str) -> Optional[str]:
-        """获取 class_name，获取引用映射中的包名称 TODO 待考虑替换为 get_runtime_class_by_class_name"""
-
-    @abc.abstractmethod
     def get_runtime_class_by_type_node(self,
                                        class_node: ast.Class,
                                        runtime_class: RuntimeClass,
