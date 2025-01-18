@@ -2038,7 +2038,7 @@ class NewArray(Expression):
 
     array_type: Optional[Expression] = dataclasses.field(kw_only=True)
     dimensions: List[Expression] = dataclasses.field(kw_only=True)
-    initializers: List[Expression] = dataclasses.field(kw_only=True)
+    initializers: Optional[List[Expression]] = dataclasses.field(kw_only=True)
     annotations: Optional[List[Annotation]] = dataclasses.field(kw_only=True, default=None)
     dim_annotations: Optional[List[List[Annotation]]] = dataclasses.field(kw_only=True, default=None)
 

@@ -51,7 +51,12 @@ class MethodContext(MethodContextBase):
 
         method_info = class_context.get_method_node_by_name(method_name)
         if method_info is None:
-            print(f"找不到方法: {class_context.get_runtime_class().absolute_name}.{method_name}")
+            # TODO 待考虑将类处理逻辑合并到其他位置
+            class_name = class_context.class_name
+            if "." in class_name:
+                class_name = class_name[class_name.rindex(".") + 1:]
+            if class_name != method_name:  # 未声明的默认构造方法不需要处理
+                LOGGER.warning(f"找不到方法 {class_context.get_runtime_class().absolute_name}.{method_name}")
             return None
 
         return MethodContext(
@@ -331,8 +336,9 @@ class MethodContext(MethodContextBase):
             yield from self.get_method_invocation(namespace, statement_node.array_type)
             for sub_node in statement_node.dimensions:
                 yield from self.get_method_invocation(namespace, sub_node)
-            for sub_node in statement_node.initializers:
-                yield from self.get_method_invocation(namespace, sub_node)
+            if statement_node.initializers is not None:
+                for sub_node in statement_node.initializers:
+                    yield from self.get_method_invocation(namespace, sub_node)
             if statement_node.annotations is not None:
                 for sub_node in statement_node.annotations:
                     yield from self.get_method_invocation(namespace, sub_node)
@@ -348,6 +354,8 @@ class MethodContext(MethodContextBase):
         elif isinstance(statement_node, ast.CompoundAssignment):
             yield from self.get_method_invocation(namespace, statement_node.variable)
             yield from self.get_method_invocation(namespace, statement_node.expression)
+        elif isinstance(statement_node, ast.EmptyStatement):
+            return  # 跳过空表达式
         else:
             print(f"get_method_invocation: 未知表达式类型: {statement_node}")
             yield None

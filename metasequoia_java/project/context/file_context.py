@@ -129,6 +129,7 @@ class FileContext(FileContextBase):
         4. 静态精确导入：import static package.ClassName.staticMember;
         5. 静态通配符导入：import static package.ClassName.*;
         6. package 中的其他类
+        7. java.lang 中的类
         """
         for class_name in self.file_node.get_class_and_sub_class_name_list():
             runtime_class = RuntimeClass.create(
@@ -261,6 +262,16 @@ class FileContext(FileContextBase):
                         class_name=class_name,
                         type_arguments=[]
                     )
+
+        # 加载 java.lang 中的类
+        for class_name in JAVA_LANG_CLASS_NAME_SET:
+            if class_name not in self._import_class_hash:
+                self._import_class_hash[class_name] = RuntimeClass.create(
+                    package_name="java.lang",
+                    public_class_name=class_name,
+                    class_name=class_name,
+                    type_arguments=[]
+                )
 
     def import_contains_class_name(self, class_name: str) -> bool:
         """返回引用映射中是否包含类型"""

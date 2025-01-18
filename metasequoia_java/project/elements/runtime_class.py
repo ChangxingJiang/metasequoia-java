@@ -51,6 +51,13 @@ class RuntimeClass:
             return self.class_name
         return f"{self.package_name}.{self.class_name}"
 
+    @property
+    def sub_class_name(self) -> Optional[str]:
+        """获取子类名称，如果不是子类则返回 None"""
+        if "." not in self.class_name:
+            return None
+        return self.class_name[self.class_name.rindex(".") + 1:]
+
     def __repr__(self) -> str:
         if self.type_arguments is None:
             return (f"<RuntimeClass "
