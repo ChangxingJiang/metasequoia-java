@@ -291,8 +291,6 @@ class FileContext(FileContextBase):
         """获取 class_name，获取引用映射中的包名称"""
         if class_name in self._import_class_hash:
             return self._import_class_hash[class_name].package_name
-        if class_name in JAVA_LANG_CLASS_NAME_SET:
-            return "java.lang"
         return None
 
     def get_runtime_class_by_type_node(self,
@@ -317,15 +315,6 @@ class FileContext(FileContextBase):
             # 引用的类
             if result := self.get_runtime_class_by_class_name(class_name):
                 return result
-
-            # java.lang 模块中的类
-            if class_name in JAVA_LANG_CLASS_NAME_SET:
-                return RuntimeClass.create(
-                    package_name="java.lang",
-                    public_class_name=class_name,
-                    class_name=class_name,
-                    type_arguments=[]
-                )
 
             # 没有引用关系，可能是泛型
             if runtime_class.type_arguments is not None:
