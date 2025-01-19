@@ -282,6 +282,7 @@ class FileContext(FileContextBase):
         if identifier_name in self._import_class_hash:
             return self._import_class_hash[identifier_name]
         LOGGER.error(f"使用了未知的标识符: {identifier_name}, position={self.package_name}.{self.public_class_name}")
+        raise
         return None
 
     def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:
@@ -313,35 +314,6 @@ class FileContext(FileContextBase):
                 public_class_name=type_node.generate(),
                 class_name=type_node.generate(),
                 type_arguments=None
-            )
-
-        if isinstance(type_node, ast.ParameterizedType):
-            class_name = type_node.type_name.generate()
-            if "." not in class_name:
-                # "类名"
-                package_name = None
-                if sub_runtime_class := self.infer_runtime_class_by_identifier_name(class_name):
-                    package_name = sub_runtime_class.package_name
-            else:
-                # "包名.类名"
-                package_name = class_name[:class_name.rindex(".")]
-                class_name = class_name[class_name.rindex(".") + 1:]
-                if self.import_contains_class_name(package_name):
-                    # "主类名.子类名"
-                    main_class_name = package_name  # 主类名
-                    package_name = None
-                    if sub_runtime_class := self.infer_runtime_class_by_identifier_name(main_class_name):
-                        package_name = sub_runtime_class.package_name
-                    class_name = f"{main_class_name}.{class_name}"
-            type_arguments = [
-                self.infer_runtime_class_by_node(argument)
-                for argument in type_node.type_arguments
-            ]
-            return RuntimeClass.create(
-                package_name=package_name,
-                public_class_name=class_name,
-                class_name=class_name,
-                type_arguments=type_arguments
             )
 
         # 将 Java 数组模拟为 java.lang.Array[xxx]

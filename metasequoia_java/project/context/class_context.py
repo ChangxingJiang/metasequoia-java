@@ -169,9 +169,37 @@ class ClassContext(ClassContextBase):
                                     runtime_class: RuntimeClass,
                                     type_node: ast.Tree) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
-
         if isinstance(type_node, ast.Identifier):
             return self.infer_runtime_class_by_identifier_name(runtime_class, type_node.name)
+
+        if isinstance(type_node, ast.ParameterizedType):
+            class_name = type_node.type_name.generate()
+            if "." not in class_name:
+                # "类名"
+                package_name = None
+                if sub_runtime_class := self.infer_runtime_class_by_identifier_name(runtime_class, class_name):
+                    package_name = sub_runtime_class.package_name
+            else:  # TODO 待优化处理逻辑
+                # "包名.类名"
+                package_name = class_name[:class_name.rindex(".")]
+                class_name = class_name[class_name.rindex(".") + 1:]
+                if self.file_context.import_contains_class_name(package_name):
+                    # "主类名.子类名"
+                    main_class_name = package_name  # 主类名
+                    package_name = None
+                    if sub_runtime_class := self.infer_runtime_class_by_identifier_name(runtime_class, main_class_name):
+                        package_name = sub_runtime_class.package_name
+                    class_name = f"{main_class_name}.{class_name}"
+            type_arguments = [
+                self.infer_runtime_class_by_node(runtime_class, argument)
+                for argument in type_node.type_arguments
+            ]
+            return RuntimeClass.create(
+                package_name=package_name,
+                public_class_name=class_name,
+                class_name=class_name,
+                type_arguments=type_arguments
+            )
 
         return self.file_context.infer_runtime_class_by_node(type_node)
 

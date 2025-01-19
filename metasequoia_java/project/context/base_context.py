@@ -160,6 +160,10 @@ class FileContextBase(abc.ABC):
     # ------------------------------ 元素类型推断 ------------------------------
 
     @abc.abstractmethod
+    def import_contains_class_name(self, class_name: str) -> bool:
+        """返回引用映射中是否包含类型"""
+
+    @abc.abstractmethod
     def infer_runtime_class_by_identifier_name(self, class_name: str) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
@@ -286,6 +290,7 @@ class MethodContextBase(abc.ABC):
 
     @abc.abstractmethod
     def get_method_invocation(self,
+                              runtime_method: RuntimeMethod,
                               namespace: NameSpace,
                               statement_node: ast.Tree
                               ) -> Generator[RuntimeMethod, None, None]:
@@ -302,6 +307,7 @@ class MethodContextBase(abc.ABC):
 
     @abc.abstractmethod
     def infer_runtime_class_by_node(self,
+                                    runtime_method: RuntimeMethod,
                                     namespace: NameSpace,
                                     type_node: ast.Tree
                                     ) -> Optional[RuntimeClass]:
@@ -309,6 +315,7 @@ class MethodContextBase(abc.ABC):
 
     @abc.abstractmethod
     def infer_runtime_class_by_identifier_name(self,
+                                               runtime_method: RuntimeMethod,
                                                namespace: NameSpace,
                                                identifier_name: str
                                                ) -> RuntimeClass:
