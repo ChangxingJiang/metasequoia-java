@@ -228,13 +228,16 @@ class ClassContextBase(abc.ABC):
     @abc.abstractmethod
     def infer_runtime_class_by_node(self,
                                     runtime_class: RuntimeClass,
-                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+                                    type_node: ast.Tree,
+                                    is_not_variable: bool = False
+                                    ) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
 
     @abc.abstractmethod
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_class: RuntimeClass,
-                                               identifier_name: str
+                                               identifier_name: str,
+                                               is_not_variable: bool = False
                                                ) -> RuntimeClass:
         """推断出现在当前类中标识符名称的类型"""
 

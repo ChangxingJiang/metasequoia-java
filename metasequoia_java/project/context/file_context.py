@@ -37,6 +37,9 @@ class FileContext(FileContextBase):
         self._import_method_hash: Dict[str, RuntimeMethod] = {}
         self._init_import_hash()
 
+    def __repr__(self) -> str:
+        return f"<FileContext package_name={self.package_name}, public_class_name={self.public_class_name}>"
+
     @staticmethod
     def create_by_runtime_class(project_context: ProjectContextBase,
                                 runtime_class: Optional[RuntimeClass]
@@ -109,7 +112,7 @@ class FileContext(FileContextBase):
 
     def get_public_class_declaration(self) -> ast.Class:
         """返回公有类的抽象语法树节点"""
-        return self._file_node.get_public_class()
+        return self.file_node.get_public_class()
 
     def get_class_node_by_class_name(self, class_name: str) -> Optional[ast.Class]:
         """根据 class_name 获取指定类的抽象语法树节点，如果获取不到则返回 None"""
@@ -282,7 +285,6 @@ class FileContext(FileContextBase):
         if identifier_name in self._import_class_hash:
             return self._import_class_hash[identifier_name]
         LOGGER.error(f"使用了未知的标识符: {identifier_name}, position={self.package_name}.{self.public_class_name}")
-        raise
         return None
 
     def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:

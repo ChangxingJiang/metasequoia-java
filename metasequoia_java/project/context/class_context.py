@@ -35,7 +35,9 @@ class ClassContext(ClassContextBase):
         self._simple_name_space = SimpleNameSpace.create_by_class(class_node)
 
     @staticmethod
-    def create_by_class_name(file_context: FileContextBase, class_name: str) -> "ClassContext":
+    def create_by_class_name(file_context: FileContextBase, class_name: str) -> Optional["ClassContext"]:
+        if file_context is None:
+            return None
         return ClassContext(
             project_context=file_context.project_context,
             file_context=file_context,
@@ -44,12 +46,17 @@ class ClassContext(ClassContextBase):
         )
 
     @staticmethod
-    def create_by_public_class(file_context: FileContextBase) -> "ClassContext":
+    def create_by_public_class(file_context: FileContextBase) -> Optional["ClassContext"]:
+        if file_context is None:
+            return None
+        class_node = file_context.get_public_class_declaration()
+        if class_node is None:
+            return None
         return ClassContext(
             project_context=file_context.project_context,
             file_context=file_context,
             class_name=file_context.public_class_name,
-            class_node=file_context.get_public_class_declaration()
+            class_node=class_node
         )
 
     @property
@@ -167,10 +174,11 @@ class ClassContext(ClassContextBase):
 
     def infer_runtime_class_by_node(self,
                                     runtime_class: RuntimeClass,
-                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+                                    type_node: ast.Tree,
+                                    is_not_variable: bool = False) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
         if isinstance(type_node, ast.Identifier):
-            return self.infer_runtime_class_by_identifier_name(runtime_class, type_node.name)
+            return self.infer_runtime_class_by_identifier_name(runtime_class, type_node.name, is_not_variable=True)
 
         if isinstance(type_node, ast.ParameterizedType):
             class_name = type_node.type_name.generate()
@@ -191,7 +199,7 @@ class ClassContext(ClassContextBase):
                         package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [
-                self.infer_runtime_class_by_node(runtime_class, argument)
+                self.infer_runtime_class_by_node(runtime_class, argument, is_not_variable=is_not_variable)
                 for argument in type_node.type_arguments
             ]
             return RuntimeClass.create(
@@ -205,15 +213,31 @@ class ClassContext(ClassContextBase):
 
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_class: RuntimeClass,
-                                               identifier_name: str
+                                               identifier_name: str,
+                                               is_not_variable: bool = False
                                                ) -> RuntimeClass:
-        """推断出现在当前类中标识符名称的类型"""
+        """推断出现在当前类中标识符名称的类型
+
+        Parameters
+        ----------
+        runtime_class : RuntimeClass
+            运行中类对象
+        identifier_name : str
+            标识符名称
+        is_not_variable : bool
+            当前标识符是否一定不是变量
+            之所以需要这个参数，是因为当类属性的变量名和类型相同时，如果没有这个参数会导致无限递归
+
+        Returns
+        -------
+
+        """
 
         # 【场景】类的类型参数
         # - 抽象语法树节点为标识符类型（`Identifier`）
         # - 类的类型参数不为空
         # - 标识符的值与类的泛型的值相同
-        if runtime_class.type_arguments is not None:
+        if runtime_class is not None and runtime_class.type_arguments is not None:
             for idx, type_argument in enumerate(self.class_node.type_parameters):
                 if isinstance(type_argument, ast.TypeParameter):
                     if type_argument.name == identifier_name:
@@ -224,12 +248,14 @@ class ClassContext(ClassContextBase):
         # 【场景】类变量
         # - 标识符类型（`Identifier`）节点
         # - 标识符的值为类（或继承的父类、实现的接口）中的变量名称
-        variable_info = self.get_variable_node_by_name(identifier_name)
-        if variable_info is not None:
-            class_context, variable_node = variable_info
-            return class_context.infer_runtime_class_by_node(
-                runtime_class=class_context.get_runtime_class(),
-                type_node=variable_node.variable_type
-            )
+        if is_not_variable is False:
+            variable_info = self.get_variable_node_by_name(identifier_name)
+            if variable_info is not None:
+                class_context, variable_node = variable_info
+                return class_context.infer_runtime_class_by_node(
+                    runtime_class=class_context.get_runtime_class(),
+                    type_node=variable_node.variable_type,
+                    is_not_variable=True
+                )
 
         return self.file_context.infer_runtime_class_by_identifier_name(identifier_name)

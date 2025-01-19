@@ -44,8 +44,10 @@ class MethodContext(MethodContextBase):
         self._name_space.add_space(self._simple_name_space)
 
     @staticmethod
-    def create_by_method_name(class_context: ClassContextBase, method_name: str) -> Optional["MethodContext"]:
+    def create_by_method_name(class_context: Optional[ClassContextBase], method_name: str) -> Optional["MethodContext"]:
         # 如果方法名和类名一样，则说明方法为初始化方法，将方法名改为 init
+        if class_context is None:
+            return None
         if method_name == class_context.class_name:
             method_name = "init"
 
@@ -158,7 +160,7 @@ class MethodContext(MethodContextBase):
                     runtime_method = RuntimeMethod(
                         belong_class=RuntimeClass.create(
                             package_name=self.file_context.package_name,
-                            public_class_name=self.class_context.class_name,
+                            public_class_name=self.file_context.public_class_name,
                             class_name=self.class_context.class_name,
                             type_arguments=None  # TODO 待改为当前类构造时的泛型
                         ),
