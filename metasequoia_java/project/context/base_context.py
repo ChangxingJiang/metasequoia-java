@@ -91,6 +91,13 @@ class ProjectContextBase(abc.ABC):
         """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
 
     @abc.abstractmethod
+    def get_runtime_class_by_runtime_method_param(self,
+                                                  runtime_method: RuntimeMethod,
+                                                  param_idx: int
+                                                  ) -> Optional[RuntimeClass]:
+        """根据 RuntimeMethod 对象，返回其中第 param_idx 个参数的类型"""
+
+    @abc.abstractmethod
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
 
@@ -99,6 +106,10 @@ class ProjectContextBase(abc.ABC):
     @abc.abstractmethod
     def try_get_outer_attribute_type(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """获取项目外已知类属性类型"""
+
+    @abc.abstractmethod
+    def try_get_outer_method_param_type(self, runtime_method: RuntimeMethod, param_idx: int) -> Optional[RuntimeClass]:
+        """获取项目外已知方法参数类型"""
 
     @abc.abstractmethod
     def try_get_outer_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
@@ -295,8 +306,9 @@ class MethodContextBase(abc.ABC):
     def get_method_invocation(self,
                               runtime_method: RuntimeMethod,
                               namespace: NameSpace,
-                              statement_node: ast.Tree
-                              ) -> Generator[RuntimeMethod, None, None]:
+                              statement_node: ast.Tree,
+                              outer_runtime_method: Optional[RuntimeMethod] = None
+                              ) -> Generator[Tuple[RuntimeMethod, List[ast.Expression]], None, None]:
         """获取当前表达式中调用的方法"""
 
     @abc.abstractmethod

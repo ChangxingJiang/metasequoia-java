@@ -4,7 +4,7 @@
 
 import functools
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from metasequoia_java import ast, parse_compilation_unit
 from metasequoia_java.common import LOGGER
@@ -38,13 +38,15 @@ class ProjectContext(ProjectContextBase):
     如果方法中直接访问文件系统，则文件名前缀为 _load，否则方法名前缀为 _get
     """
 
-    def __init__(self,
-                 project_path: str,
-                 modules: Dict[str, List[str]],
-                 outer_attribute_type: Optional[Dict[str, Callable[[RuntimeVariable], RuntimeClass]]] = None,
-                 outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None,
-                 outer_package_class_list: Optional[Dict[str, List[str]]] = None,
-                 outer_java_file: Optional[Dict[str, str]] = None):
+    def __init__(
+            self,
+            project_path: str,
+            modules: Dict[str, List[str]],
+            outer_attribute_type: Optional[Dict[str, Callable[[RuntimeVariable], RuntimeClass]]] = None,
+            outer_method_param_type: Optional[Dict[Tuple[str, int], Callable[[RuntimeMethod], RuntimeClass]]] = None,
+            outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None,
+            outer_package_class_list: Optional[Dict[str, List[str]]] = None,
+            outer_java_file: Optional[Dict[str, str]] = None):
         """
 
         Parameters
@@ -55,8 +57,11 @@ class ProjectContext(ProjectContextBase):
             项目中 module 路径地址
         outer_attribute_type : Optional[Dict[Tuple[str, str], RuntimeClass]], default = None
             项目外已知属性类型
+        outer_method_param_type : Optional[Dict[Tuple[str, int], Callable[[RuntimeMethod], RuntimeClass]]],
+                                  default = None
+            项目外已知方法参数类型
         outer_method_return_type : Optional[Dict[Tuple[str, str], RuntimeClass]], default = None
-            项目外已知函数返回值类型
+            项目外已知方法返回值类型
         outer_package_class_list : Optional[Dict[str, List[str]]], default = None
             项目外已知 package 对应的 class_name 列表
         outer_java_file : outer_file: Optional[Dict[str, str]], default = None
@@ -64,6 +69,8 @@ class ProjectContext(ProjectContextBase):
         """
         if outer_attribute_type is None:
             outer_attribute_type = {}
+        if outer_method_param_type is None:
+            outer_method_param_type = {}
         if outer_method_return_type is None:
             outer_method_return_type = {}
         if outer_package_class_list is None:
@@ -77,6 +84,7 @@ class ProjectContext(ProjectContextBase):
             for module_name, module_source_list in modules.items()
         }
         self._outer_attribute_type = outer_attribute_type
+        self._outer_method_param_type = outer_method_param_type
         self._outer_method_return_type = outer_method_return_type
         self._outer_package_class_list = outer_package_class_list
         self._outer_java_file = {}
@@ -279,6 +287,26 @@ class ProjectContext(ProjectContextBase):
             type_node=variable_node.variable_type
         )
 
+    def get_runtime_class_by_runtime_method_param(self,
+                                                  runtime_method: RuntimeMethod,
+                                                  param_idx: int
+                                                  ) -> Optional[RuntimeClass]:
+        """根据 RuntimeMethod 对象，返回其中第 param_idx 个参数的类型"""
+        method_context = self.create_method_context_by_runtime_method(runtime_method)
+        if method_context is None:
+            res = self.try_get_outer_method_param_type(runtime_method, param_idx)
+            if res is None:
+                LOGGER.warning(f"在项目外补充信息中，找不到方法参数类型: {runtime_method}, {param_idx}")
+            return res
+
+        parameters = method_context.method_node.parameters
+
+        if len(parameters) <= param_idx:
+            LOGGER.warning(f"方法 {method_context} 没有第 {param_idx} 个参数")
+            return None
+
+        return method_context.infer_runtime_class_by_node(parameters[param_idx])
+
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
         class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
@@ -306,6 +334,12 @@ class ProjectContext(ProjectContextBase):
         if runtime_variable.absolute_name not in self._outer_attribute_type:
             return None
         return self._outer_attribute_type[runtime_variable.absolute_name](runtime_variable)
+
+    def try_get_outer_method_param_type(self, runtime_method: RuntimeMethod, param_idx: int) -> Optional[RuntimeClass]:
+        """获取项目外已知方法参数类型"""
+        if (runtime_method.absolute_name, param_idx) not in self._outer_method_param_type:
+            return None
+        return self._outer_method_param_type[(runtime_method.absolute_name, param_idx)](runtime_method)
 
     def try_get_outer_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """获取项目外已知方法返回值类型"""

@@ -125,7 +125,9 @@ class MethodContext(MethodContextBase):
     def get_method_invocation(self,
                               runtime_method: RuntimeMethod,
                               namespace: NameSpace,
-                              statement_node: ast.Tree
+                              statement_node: ast.Tree,
+                              outer_runtime_method: Optional[RuntimeMethod] = None,
+                              outer_method_param_idx: Optional[int] = None
                               ) -> Generator[Tuple[RuntimeMethod, List[ast.Expression]], None, None]:
         """获取当前表达式中调用的方法
 
@@ -134,6 +136,17 @@ class MethodContext(MethodContextBase):
         `name1.name2()`
         `name1.name2.name3()`：依赖泛型解析器，获取 `name2` 的类型
         `name1().name2()` 或 `name1.name2().name3()`：依赖泛型管理器，获取 `name1()` 的类型
+
+        Parameters
+        ----------
+        runtime_method : RuntimeMethod
+            当前方法所在的方法上下文管理器
+        namespace : NameSpace
+            当前方法所在位置的命名空间
+        statement_node : ast.Tree
+            待分析的抽象语法树节点
+        outer_runtime_method : Optional[RuntimeClass], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的 RuntimeMethod 对象，用于实现 lambda 语句的类型推断
         """
         # -------------------- 递归结束条件 --------------------
         if statement_node is None:
@@ -153,11 +166,12 @@ class MethodContext(MethodContextBase):
             if isinstance(method_select, ast.Identifier):
                 method_name = method_select.name
                 if method_name in self.file_context.import_method_hash:
+                    res_runtime_method = self.file_context.import_method_hash[method_name]
                     # 调用 import 导入的静态方法
-                    yield self.file_context.import_method_hash[method_name], statement_node.arguments
+                    yield res_runtime_method, statement_node.arguments
                 else:
                     # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
-                    runtime_method = RuntimeMethod(
+                    res_runtime_method = RuntimeMethod(
                         belong_class=RuntimeClass.create(
                             package_name=self.file_context.package_name,
                             public_class_name=self.file_context.public_class_name,
@@ -166,29 +180,32 @@ class MethodContext(MethodContextBase):
                         ),
                         method_name=method_name
                     )
-                    LOGGER.debug(f"生成调用方法(类型 1): {runtime_method}")
-                    yield runtime_method, statement_node.arguments
+                    LOGGER.debug(f"生成调用方法(类型 1): {res_runtime_method}")
+                    yield res_runtime_method, statement_node.arguments
 
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select, ast.MemberSelect):
                 expression = method_select.expression
                 runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, expression)
-                runtime_method = RuntimeMethod(
+                res_runtime_method = RuntimeMethod(
                     belong_class=runtime_class,
                     method_name=method_select.identifier.name
                 )
-                LOGGER.debug(f"生成调用方法(类型 2): {runtime_method}")
-                yield runtime_method, statement_node.arguments
+                LOGGER.debug(f"生成调用方法(类型 2): {res_runtime_method}")
+                yield res_runtime_method, statement_node.arguments
 
                 # 继续递归寻找调用的方法
                 yield from self.get_method_invocation(runtime_method, namespace, expression)
 
             else:
+                res_runtime_method = None
                 print(f"get_method_invocation, 暂不支持的表达式类型: {statement_node}")
 
             # 递归处理方法参数
-            for argument in statement_node.arguments:
-                yield from self.get_method_invocation(runtime_method, namespace, argument)
+            for idx, argument in enumerate(statement_node.arguments):
+                yield from self.get_method_invocation(runtime_method, namespace, argument,
+                                                      outer_runtime_method=res_runtime_method,
+                                                      outer_method_param_idx=idx)
 
             return
 
@@ -197,12 +214,12 @@ class MethodContext(MethodContextBase):
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
                 method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
-                runtime_method = RuntimeMethod(
+                res_runtime_method = RuntimeMethod(
                     belong_class=method_runtime_class,
                     method_name=method_class_name
                 )
-                LOGGER.debug(f"生成调用方法(类型 3): {runtime_method}")
-                yield runtime_method, statement_node.arguments
+                LOGGER.debug(f"生成调用方法(类型 3): {res_runtime_method}")
+                yield res_runtime_method, statement_node.arguments
             elif isinstance(identifier, ast.ParameterizedType):
                 identifier_type_name = identifier.type_name
                 assert isinstance(identifier_type_name, ast.Identifier)
@@ -212,7 +229,7 @@ class MethodContext(MethodContextBase):
                     self.infer_runtime_class_by_node(runtime_method, namespace, type_argument)
                     for type_argument in identifier.type_arguments
                 ]
-                runtime_method = RuntimeMethod(
+                res_runtime_method = RuntimeMethod(
                     belong_class=RuntimeClass.create(
                         package_name=method_runtime_class.package_name,
                         public_class_name=method_runtime_class.public_class_name,
@@ -221,14 +238,17 @@ class MethodContext(MethodContextBase):
                     ),
                     method_name=method_class_name
                 )
-                LOGGER.debug(f"生成调用方法(类型 4): {runtime_method}")
-                yield runtime_method, statement_node.arguments
+                LOGGER.debug(f"生成调用方法(类型 4): {res_runtime_method}")
+                yield res_runtime_method, statement_node.arguments
             else:
+                res_runtime_method = None
                 print("NewClass 暂不支持的类型: ", identifier)
 
             # 递归处理方法参数
-            for argument in statement_node.arguments:
-                yield from self.get_method_invocation(runtime_method, namespace, argument)
+            for idx, argument in enumerate(statement_node.arguments):
+                yield from self.get_method_invocation(runtime_method, namespace, argument,
+                                                      outer_runtime_method=res_runtime_method,
+                                                      outer_method_param_idx=idx)
 
             return
 
@@ -331,6 +351,8 @@ class MethodContext(MethodContextBase):
             return  # 原生类型中不会调用其他方法
         elif isinstance(statement_node, ast.LambdaExpression):
             simple_name_space = SimpleNameSpace()
+            # print("外层:", len(statement_node.parameters), "-----", outer_runtime_method, outer_method_param_idx)
+            # print("类型:", self.project_context.get_runtime_class_by_runtime_method_param(outer_runtime_method, outer_method_param_idx))
             for sub_idx, sub_node in enumerate(statement_node.parameters):
                 # 执行类型的 lambda 表达式
                 if sub_node.variable_type is not None:
