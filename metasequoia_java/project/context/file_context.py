@@ -123,7 +123,7 @@ class FileContext(FileContextBase):
         """构造文件中包含的引用逻辑
 
         在 Java 中，导入的优先级从高到低如下：
-        1. 当前文件中的类
+        1. 当前文件中的类（包含子类）
         2. 精确导入：import package.ClassName;
         3. 通配符导入：import package.*;
         4. 静态精确导入：import static package.ClassName.staticMember;
@@ -281,10 +281,10 @@ class FileContext(FileContextBase):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
         return self._import_class_hash.get(class_name)
 
-    def get_runtime_class_by_type_node(self,
-                                       class_node: ast.Class,
-                                       runtime_class: RuntimeClass,
-                                       type_node: ast.Tree) -> Optional[RuntimeClass]:
+    def get_runtime_class_by_node(self,
+                                  class_node: ast.Class,
+                                  runtime_class: RuntimeClass,
+                                  type_node: ast.Tree) -> Optional[RuntimeClass]:
         """
         根据抽象语法树节点 class_node 中（运行中为 runtime_class），表示类型的抽象语法树节点 type_node，构造该类型对应的 runtime_class
         对象
@@ -294,13 +294,14 @@ class FileContext(FileContextBase):
         if isinstance(type_node, ast.Identifier):
             class_name = type_node.name
 
-            # 类型节点为当前类：
-            # 之所以与 class_node.name 比较，而不是 runtime_class.class_name 比较，是因为 class_node 可能是子类，此时
-            # runtime_class.class_name 为 ClassName.SubClassName
-            if class_name == class_node.name:
-                return runtime_class
-
-            # 引用的类
+            # 根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象
+            # 1. 当前文件中的类（包含公有类、非公有类和子类）
+            # 2. 精确导入：import package.ClassName;
+            # 3. 通配符导入：import package.*;
+            # 4. 静态精确导入：import static package.ClassName.staticMember;
+            # 5. 静态通配符导入：import static package.ClassName.*;
+            # 6. package 中的其他类
+            # 7. java.lang 中的类
             if result := self.get_runtime_class_by_class_name(class_name):
                 return result
 
@@ -312,27 +313,6 @@ class FileContext(FileContextBase):
                             return runtime_class.type_arguments[idx]
                     else:
                         print("未知泛型参数节点:", type_argument)
-
-            # 当前文件中的其他类
-            class_name_list = self.file_node.get_class_name_list()
-            if class_name in class_name_list:
-                # TODO 考虑不是公有类的情况
-                return RuntimeClass.create(
-                    package_name=self.package_name,
-                    public_class_name=class_name,
-                    class_name=class_name,
-                    type_arguments=[]
-                )
-
-            # 查找当前类中的子类
-            sub_class_name_list = class_node.get_sub_class_name_list()
-            if class_name in sub_class_name_list:
-                return RuntimeClass.create(
-                    package_name=self.package_name,
-                    public_class_name=class_node.name,
-                    class_name=f"{class_node.name}.{class_name}",
-                    type_arguments=[]
-                )
 
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
@@ -364,7 +344,7 @@ class FileContext(FileContextBase):
                         package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [
-                self.get_runtime_class_by_type_node(class_node, runtime_class, argument)
+                self.get_runtime_class_by_node(class_node, runtime_class, argument)
                 for argument in type_node.type_arguments
             ]
             return RuntimeClass.create(
@@ -376,7 +356,7 @@ class FileContext(FileContextBase):
 
         # 将 Java 数组模拟为 java.lang.Array[xxx]
         if isinstance(type_node, ast.ArrayType):
-            runtime_class = self.get_runtime_class_by_type_node(class_node, runtime_class, type_node.expression)
+            runtime_class = self.get_runtime_class_by_node(class_node, runtime_class, type_node.expression)
             return RuntimeClass.create(
                 package_name="java.lang",
                 public_class_name="Array",

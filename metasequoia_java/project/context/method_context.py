@@ -479,7 +479,7 @@ class MethodContext(MethodContextBase):
 
         # 尝试将标识符作为变量名处理
         if namespace.has_name(unknown_name):
-            return self.file_context.get_runtime_class_by_type_node(
+            return self.file_context.get_runtime_class_by_node(
                 class_node=self.class_context.class_node,
                 runtime_class=self.class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
                 type_node=namespace.get_name(unknown_name)
@@ -494,7 +494,7 @@ class MethodContext(MethodContextBase):
         variable_info = self.class_context.get_variable_node_by_name(unknown_name)
         if variable_info is not None:
             class_context, variable_node = variable_info
-            return class_context.file_context.get_runtime_class_by_type_node(
+            return class_context.file_context.get_runtime_class_by_node(
                 class_node=class_context.class_node,
                 runtime_class=class_context.get_runtime_class(),
                 type_node=variable_node.variable_type

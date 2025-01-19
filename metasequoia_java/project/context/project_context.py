@@ -274,7 +274,7 @@ class ProjectContext(ProjectContextBase):
             LOGGER.warning(f"获取类属性的抽象语法树节点失败: {runtime_variable}")
             return None
         variable_class_context, variable_node = variable_info
-        return variable_class_context.file_context.get_runtime_class_by_type_node(
+        return variable_class_context.file_context.get_runtime_class_by_node(
             class_node=variable_class_context.class_node,
             runtime_class=variable_class_context.get_runtime_class(),
             type_node=variable_node.variable_type
@@ -296,7 +296,7 @@ class ProjectContext(ProjectContextBase):
         method_node = class_node.get_method_by_name(runtime_method.method_name)
         if method_node is None:
             return None
-        return file_context.get_runtime_class_by_type_node(
+        return file_context.get_runtime_class_by_node(
             class_node=class_node,
             runtime_class=runtime_method.belong_class,
             type_node=method_node.return_type
