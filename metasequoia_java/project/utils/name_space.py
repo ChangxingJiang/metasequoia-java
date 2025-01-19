@@ -70,7 +70,9 @@ class SimpleNameSpace:
         return SimpleNameSpace.create_by_statements(method_node.block.statements)
 
     @staticmethod
-    def create_by_variable(variable_node: ast.Variable) -> "SimpleNameSpace":
+    def create_by_variable(variable_node: Optional[ast.Variable]) -> "SimpleNameSpace":
+        if variable_node is None:
+            return SimpleNameSpace()
         simple_name_space = SimpleNameSpace()
         simple_name_space.set_name(variable_node.name, variable_node.variable_type)
         return simple_name_space

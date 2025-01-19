@@ -290,8 +290,9 @@ class MethodContext(MethodContextBase):
                 yield from self.get_method_invocation(namespace, sub_node)
             namespace.pop_space()
         elif isinstance(statement_node, ast.Catch):
-            yield from self.get_method_invocation(namespace, statement_node.parameter)
+            namespace.add_space(SimpleNameSpace.create_by_variable(statement_node.parameter))
             yield from self.get_method_invocation(namespace, statement_node.block)
+            namespace.pop_space()
         elif isinstance(statement_node, ast.Switch):
             yield from self.get_method_invocation(namespace, statement_node.expression)
             for case_node in statement_node.cases:
@@ -464,8 +465,10 @@ class MethodContext(MethodContextBase):
                 type_arguments=variable_arguments
             )
 
-        else:
-            print(f"get_runtime_class_by_node: 暂不支持的表达式 {type_node}")
+        self.class_context.infer_runtime_class_by_node(
+            runtime_class=self.class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
+            type_node=type_node
+        )
 
     def _get_runtime_class_by_identifier_node(self,
                                               namespace: NameSpace,
