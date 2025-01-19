@@ -164,14 +164,8 @@ class FileContextBase(abc.ABC):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
-    def infer_runtime_class_by_node(self,
-                                    class_node: ast.Class,
-                                    runtime_class: RuntimeClass,
-                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
-        """
-        根据抽象语法树节点 class_node 中（运行中为 runtime_class），表示类型的抽象语法树节点 type_node，构造该类型对应的 runtime_class
-        对象
-        """
+    def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:
+        """推断当前文件中出现的抽象语法树节点的类型"""
 
 
 class ClassContextBase(abc.ABC):
@@ -302,6 +296,6 @@ class MethodContextBase(abc.ABC):
     @abc.abstractmethod
     def infer_runtime_class_by_node(self,
                                     namespace: NameSpace,
-                                    expression_node: ast.Tree
+                                    type_node: ast.Tree
                                     ) -> Optional[RuntimeClass]:
         """推断出现在当前方法中的抽象语法树类型"""

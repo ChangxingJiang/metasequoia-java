@@ -168,5 +168,21 @@ class ClassContext(ClassContextBase):
     def infer_runtime_class_by_node(self,
                                     runtime_class: RuntimeClass,
                                     type_node: ast.Tree) -> Optional[RuntimeClass]:
-        """推断出现在当前类中的抽象语法树类型"""
-        return self.file_context.infer_runtime_class_by_node(self.class_node, runtime_class, type_node)
+        """推断出现在当前类中的抽象语法树类型
+
+        场景 1：使用类的类型参数
+        - 抽象语法树节点为标识符类型（`Identifier`）
+        - 类的类型参数不为空
+        - 标识符的值与类的泛型的值相同
+        """
+        if isinstance(type_node, ast.Identifier):
+            identifier_name = type_node.name
+            if runtime_class.type_arguments is not None:
+                for idx, type_argument in enumerate(self.class_node.type_parameters):
+                    if isinstance(type_argument, ast.TypeParameter):
+                        if type_argument.name == identifier_name:
+                            return runtime_class.type_arguments[idx]
+                    else:
+                        print("未知泛型参数节点:", type_argument)
+
+        return self.file_context.infer_runtime_class_by_node(type_node)

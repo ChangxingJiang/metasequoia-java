@@ -281,10 +281,7 @@ class FileContext(FileContextBase):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
         return self._import_class_hash.get(class_name)
 
-    def infer_runtime_class_by_node(self,
-                                    class_node: ast.Class,
-                                    runtime_class: RuntimeClass,
-                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:
         """
         推断当前文件中出现的抽象语法树节点的类型
 
@@ -303,15 +300,6 @@ class FileContext(FileContextBase):
             # 7. java.lang 中的类
             if result := self.get_runtime_class_by_class_name(class_name):
                 return result
-
-            # 没有引用关系，可能是泛型
-            if runtime_class.type_arguments is not None:
-                for idx, type_argument in enumerate(class_node.type_parameters):
-                    if isinstance(type_argument, ast.TypeParameter):
-                        if type_argument.name == class_name:
-                            return runtime_class.type_arguments[idx]
-                    else:
-                        print("未知泛型参数节点:", type_argument)
 
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
                            f"class_name={class_name}, "
@@ -343,7 +331,7 @@ class FileContext(FileContextBase):
                         package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [
-                self.infer_runtime_class_by_node(class_node, runtime_class, argument)
+                self.infer_runtime_class_by_node(argument)
                 for argument in type_node.type_arguments
             ]
             return RuntimeClass.create(
@@ -355,7 +343,7 @@ class FileContext(FileContextBase):
 
         # 将 Java 数组模拟为 java.lang.Array[xxx]
         if isinstance(type_node, ast.ArrayType):
-            runtime_class = self.infer_runtime_class_by_node(class_node, runtime_class, type_node.expression)
+            runtime_class = self.infer_runtime_class_by_node(type_node.expression)
             return RuntimeClass.create(
                 package_name="java.lang",
                 public_class_name="Array",
