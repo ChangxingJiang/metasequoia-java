@@ -524,6 +524,10 @@ class MethodContext(MethodContextBase):
                 type_arguments=variable_arguments
             )
 
+        # 二元表达式
+        elif isinstance(type_node, ast.Binary):
+            return self.infer_runtime_class_by_node(runtime_method, namespace, type_node.left_operand)
+
         self.class_context.infer_runtime_class_by_node(
             runtime_class=runtime_method.belong_class,
             type_node=type_node
