@@ -2,11 +2,14 @@
 命名空间管理器
 
 TODO 待将 ast.Tree 替换为 ast.Type
+TODO 考虑将 RuntimeClass 的情况拆分出来或设计得更优雅
+TODO 考虑将命名空间作为 MethodContext 的一部分处理
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from metasequoia_java import ast
+from metasequoia_java.project.elements.runtime_class import RuntimeClass
 
 __all__ = [
     "SimpleNameSpace",
@@ -18,13 +21,16 @@ class SimpleNameSpace:
     """单层命名空间"""
 
     def __init__(self):
-        self._space: Dict[str, ast.Tree] = {}  # variable_name（变量名）到 variable_type（通用语法树类型节点）的映射关系
+        # variable_name（变量名）到 variable_type（通用语法树类型节点）或 RuntimeClass 的映射关系
+        self._space: Dict[str, Union[ast.Tree, RuntimeClass]] = {}
 
-    def set_name(self, variable_name: str, variable_type: ast.Tree) -> None:
+    def set_name(self, variable_name: str, variable_type: Union[ast.Tree, RuntimeClass]) -> None:
         """添加 variable_name 到 variable_type 的映射关系"""
         self._space[variable_name] = variable_type
 
-    def get_name(self, variable_name: str, default: Optional[ast.Tree] = None) -> ast.Tree:
+    def get_name(self, variable_name: str,
+                 default: Optional[Union[ast.Tree, RuntimeClass]] = None
+                 ) -> Union[ast.Tree, RuntimeClass]:
         """返回 variable_name 对应的 variable_type"""
         return self._space.get(variable_name, default)
 
@@ -119,11 +125,14 @@ class NameSpace:
         """出栈一层命名空间"""
         return self._stack.pop()
 
-    def set_name(self, variable_name: str, variable_type: ast.Tree) -> None:
+    def set_name(self, variable_name: str,
+                 variable_type: Union[ast.Tree, RuntimeClass]) -> None:
         """在栈顶命名空间中添加 variable_name 到 variable_type 的映射关系"""
         self._stack[-1].set_name(variable_name, variable_type)
 
-    def get_name(self, variable_name: str, default: Optional[ast.Tree] = None) -> ast.Tree:
+    def get_name(self, variable_name: str,
+                 default: Optional[Union[ast.Tree, RuntimeClass]] = None
+                 ) -> Union[ast.Tree, RuntimeClass]:
         """返回 variable_name 对应的 variable_type"""
         for i in range(self.level - 1, -1, -1):
             if self._stack[i].contains(variable_name):

@@ -18,6 +18,7 @@ from metasequoia_java.project.context.method_context import MethodContext
 from metasequoia_java.project.elements import RuntimeClass
 from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
+from metasequoia_java.project.name_space import NameSpace
 from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
 
@@ -46,6 +47,7 @@ class ProjectContext(ProjectContextBase):
             outer_method_param_type: Optional[Dict[Tuple[str, int], Callable[[RuntimeMethod], RuntimeClass]]] = None,
             outer_method_return_type: Optional[Dict[str, Callable[[RuntimeMethod], RuntimeClass]]] = None,
             outer_package_class_list: Optional[Dict[str, List[str]]] = None,
+            outer_lambda_param_type: Optional[Dict[str, Callable[[RuntimeClass], List[RuntimeClass]]]] = None,
             outer_java_file: Optional[Dict[str, str]] = None):
         """
 
@@ -64,6 +66,8 @@ class ProjectContext(ProjectContextBase):
             项目外已知方法返回值类型
         outer_package_class_list : Optional[Dict[str, List[str]]], default = None
             项目外已知 package 对应的 class_name 列表
+        outer_lambda_param_type : Optional[Dict[str, Callable[[RuntimeClass], List[RuntimeClass]]]], default = None
+            项目外已知的函数式接口（lambda 表达式）参数类型列表，即传入的函数式接口 RuntimeClass 类中唯一的抽象方法的参数
         outer_java_file : outer_file: Optional[Dict[str, str]], default = None
             项目外已知 package_name.class_name 对应的 Java 文件源码
         """
@@ -75,6 +79,8 @@ class ProjectContext(ProjectContextBase):
             outer_method_return_type = {}
         if outer_package_class_list is None:
             outer_package_class_list = {}
+        if outer_lambda_param_type is None:
+            outer_lambda_param_type = {}
         if outer_java_file is None:
             outer_java_file = {}
 
@@ -87,6 +93,7 @@ class ProjectContext(ProjectContextBase):
         self._outer_method_param_type = outer_method_param_type
         self._outer_method_return_type = outer_method_return_type
         self._outer_package_class_list = outer_package_class_list
+        self._outer_lambda_param_type = outer_lambda_param_type
         self._outer_java_file = {}
         for class_absolute_name, java_file in outer_java_file.items():
             self._outer_java_file[f"outer:{class_absolute_name}.java"] = java_file
@@ -305,7 +312,7 @@ class ProjectContext(ProjectContextBase):
             LOGGER.warning(f"方法 {method_context} 没有第 {param_idx} 个参数")
             return None
 
-        return method_context.infer_runtime_class_by_node(parameters[param_idx])
+        return method_context.infer_runtime_class_by_node(runtime_method, NameSpace(), parameters[param_idx])
 
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
@@ -327,23 +334,31 @@ class ProjectContext(ProjectContextBase):
             type_node=method_node.return_type
         )
 
+    def get_runtime_class_list_by_functional_interface(self, runtime_class: RuntimeClass
+                                                       ) -> Optional[List[RuntimeClass]]:
+        """根据函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
+        res = self.try_get_runtime_class_list_by_functional_interface(runtime_class)
+        if res is None:
+            LOGGER.warning(f"在项目外补充信息中，找不到函数式接口 {RuntimeClass} 的参数类型列表")
+        return res
+
     # ------------------------------ 获取项目外已知类型 ------------------------------
 
     def try_get_outer_attribute_type(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """获取项目外已知类属性类型"""
-        if runtime_variable.absolute_name not in self._outer_attribute_type:
+        if runtime_variable is None or runtime_variable.absolute_name not in self._outer_attribute_type:
             return None
         return self._outer_attribute_type[runtime_variable.absolute_name](runtime_variable)
 
     def try_get_outer_method_param_type(self, runtime_method: RuntimeMethod, param_idx: int) -> Optional[RuntimeClass]:
         """获取项目外已知方法参数类型"""
-        if (runtime_method.absolute_name, param_idx) not in self._outer_method_param_type:
+        if runtime_method is None or (runtime_method.absolute_name, param_idx) not in self._outer_method_param_type:
             return None
         return self._outer_method_param_type[(runtime_method.absolute_name, param_idx)](runtime_method)
 
     def try_get_outer_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """获取项目外已知方法返回值类型"""
-        if runtime_method.absolute_name not in self._outer_method_return_type:
+        if runtime_method is None or runtime_method.absolute_name not in self._outer_method_return_type:
             return None
         return self._outer_method_return_type[runtime_method.absolute_name](runtime_method)
 
@@ -352,3 +367,10 @@ class ProjectContext(ProjectContextBase):
         if package_name not in self._outer_package_class_list:
             return None
         return self._outer_package_class_list[package_name]
+
+    def try_get_runtime_class_list_by_functional_interface(self, runtime_class: RuntimeClass
+                                                           ) -> Optional[List[RuntimeClass]]:
+        """获取项目外的函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
+        if runtime_class is None or runtime_class.absolute_name not in self._outer_lambda_param_type:
+            return None
+        return self._outer_lambda_param_type[runtime_class.absolute_name](runtime_class)

@@ -14,8 +14,8 @@ from metasequoia_java.project.context.base_context import ProjectContextBase
 from metasequoia_java.project.elements import RuntimeClass
 from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
-from metasequoia_java.project.utils import NameSpace
-from metasequoia_java.project.utils import SimpleNameSpace
+from metasequoia_java.project.name_space import NameSpace
+from metasequoia_java.project.name_space import SimpleNameSpace
 
 __all__ = [
     "MethodContext"
@@ -351,14 +351,29 @@ class MethodContext(MethodContextBase):
             return  # 原生类型中不会调用其他方法
         elif isinstance(statement_node, ast.LambdaExpression):
             simple_name_space = SimpleNameSpace()
-            # print("外层:", len(statement_node.parameters), "-----", outer_runtime_method, outer_method_param_idx)
-            # print("类型:", self.project_context.get_runtime_class_by_runtime_method_param(outer_runtime_method, outer_method_param_idx))
-            for sub_idx, sub_node in enumerate(statement_node.parameters):
-                # 执行类型的 lambda 表达式
-                if sub_node.variable_type is not None:
-                    simple_name_space.set_name(sub_node.name, sub_node.variable_type)
+            # 获取 lambda 表达式对应的参数类型
+            lambda_runtime_class = self.project_context.get_runtime_class_by_runtime_method_param(
+                runtime_method=outer_runtime_method,
+                param_idx=outer_method_param_idx
+            )
+            # 获取 lambda 表达式的参数类型
+            lambda_param_type_list = self.project_context.get_runtime_class_list_by_functional_interface(
+                runtime_class=lambda_runtime_class
+            )
+            print("外层:", len(statement_node.parameters), "-----", outer_runtime_method, outer_method_param_idx)
+            print("类型:", lambda_runtime_class)
+            print("参数类型:", lambda_param_type_list)
+            if lambda_param_type_list is not None:
+                if len(statement_node.parameters) == len(lambda_param_type_list):
+                    for sub_idx, sub_node in enumerate(statement_node.parameters):
+                        if sub_node.variable_type is not None:
+                            simple_name_space.set_name(sub_node.name, sub_node.variable_type)
+                        else:
+                            simple_name_space.set_name(sub_node.name, lambda_param_type_list[sub_idx])
                 else:
-                    simple_name_space.set_name(sub_node.name, None)
+                    LOGGER.warning("lambda 表达式参数数量异常")
+            else:
+                LOGGER.warning("无法获取 lambda 表达式的参数类型")
             namespace.add_space(simple_name_space)
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.body)
             namespace.pop_space()
@@ -525,9 +540,12 @@ class MethodContext(MethodContextBase):
         # - 识符类型（`Identifier`）节点
         # - 标识符的值在当前层级命名空间中
         if namespace.has_name(identifier_name):  # TODO 命名空间中不需要包含类属性
+            type_node = namespace.get_name(identifier_name)
+            if isinstance(type_node, RuntimeClass):
+                return type_node
             return self.class_context.infer_runtime_class_by_node(
                 runtime_class=runtime_method.belong_class,
-                type_node=namespace.get_name(identifier_name)
+                type_node=type_node
             )
 
         return self.class_context.infer_runtime_class_by_identifier_name(

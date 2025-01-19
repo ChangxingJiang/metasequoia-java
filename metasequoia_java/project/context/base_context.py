@@ -9,8 +9,8 @@ from metasequoia_java import ast
 from metasequoia_java.project.elements import RuntimeClass
 from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
-from metasequoia_java.project.utils import NameSpace
-from metasequoia_java.project.utils import SimpleNameSpace
+from metasequoia_java.project.name_space import NameSpace
+from metasequoia_java.project.name_space import SimpleNameSpace
 
 __all__ = [
     "ProjectContextBase",
@@ -101,6 +101,11 @@ class ProjectContextBase(abc.ABC):
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
 
+    @abc.abstractmethod
+    def get_runtime_class_list_by_functional_interface(self, runtime_class: RuntimeClass
+                                                       ) -> Optional[List[RuntimeClass]]:
+        """根据函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
+
     # ------------------------------ 项目外已知信息管理方法 ------------------------------
 
     @abc.abstractmethod
@@ -118,6 +123,11 @@ class ProjectContextBase(abc.ABC):
     @abc.abstractmethod
     def try_get_outer_package_class_name_list(self, package_name: str) -> Optional[List[str]]:
         """获取项目外 package_name 对应的 class_name 的列表"""
+
+    @abc.abstractmethod
+    def try_get_runtime_class_list_by_functional_interface(self, runtime_class: RuntimeClass
+                                                           ) -> Optional[List[RuntimeClass]]:
+        """获取项目外的函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
 
 
 class FileContextBase(abc.ABC):

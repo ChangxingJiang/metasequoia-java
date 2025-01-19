@@ -11,7 +11,7 @@ __all__ = [
 ]
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class RuntimeMethod:
     """
     运行中的方法
