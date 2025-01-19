@@ -129,7 +129,7 @@ class ClassContext(ClassContextBase):
                 LOGGER.warning(f"无法处理的类名类型: {type_node}")
                 continue
 
-            runtime_class = self.file_context.get_runtime_class_by_class_name(class_name)
+            runtime_class = self.file_context.infer_runtime_class_by_identifier_name(class_name)
             if runtime_class is None:
                 LOGGER.warning(f"找不到继承类: class_name={class_name}")
             package_name = runtime_class.package_name
@@ -170,18 +170,38 @@ class ClassContext(ClassContextBase):
                                     type_node: ast.Tree) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
 
-        # 类层级 - 场景 1：使用类的类型参数
+        if isinstance(type_node, ast.Identifier):
+            return self.infer_runtime_class_by_identifier_name(runtime_class, type_node.name)
+
+        return self.file_context.infer_runtime_class_by_node(type_node)
+
+    def infer_runtime_class_by_identifier_name(self,
+                                               runtime_class: RuntimeClass,
+                                               identifier_name: str
+                                               ) -> RuntimeClass:
+        """推断出现在当前类中标识符名称的类型"""
+
+        # 【场景】类的类型参数
         # - 抽象语法树节点为标识符类型（`Identifier`）
         # - 类的类型参数不为空
         # - 标识符的值与类的泛型的值相同
-        if isinstance(type_node, ast.Identifier):
-            identifier_name = type_node.name
-            if runtime_class.type_arguments is not None:
-                for idx, type_argument in enumerate(self.class_node.type_parameters):
-                    if isinstance(type_argument, ast.TypeParameter):
-                        if type_argument.name == identifier_name:
-                            return runtime_class.type_arguments[idx]
-                    else:
-                        print("未知泛型参数节点:", type_argument)
+        if runtime_class.type_arguments is not None:
+            for idx, type_argument in enumerate(self.class_node.type_parameters):
+                if isinstance(type_argument, ast.TypeParameter):
+                    if type_argument.name == identifier_name:
+                        return runtime_class.type_arguments[idx]
+                else:
+                    print("未知泛型参数节点:", type_argument)
 
-        return self.file_context.infer_runtime_class_by_node(type_node)
+        # 【场景】类变量
+        # - 标识符类型（`Identifier`）节点
+        # - 标识符的值为类（或继承的父类、实现的接口）中的变量名称
+        variable_info = self.get_variable_node_by_name(identifier_name)
+        if variable_info is not None:
+            class_context, variable_node = variable_info
+            return class_context.infer_runtime_class_by_node(
+                runtime_class=class_context.get_runtime_class(),
+                type_node=variable_node.variable_type
+            )
+
+        return self.file_context.infer_runtime_class_by_identifier_name(identifier_name)

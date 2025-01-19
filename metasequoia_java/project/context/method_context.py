@@ -193,7 +193,7 @@ class MethodContext(MethodContextBase):
             identifier = statement_node.identifier
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
-                method_runtime_class = self.file_context.get_runtime_class_by_class_name(method_class_name)
+                method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
                 runtime_method = RuntimeMethod(
                     belong_class=method_runtime_class,
                     method_name=method_class_name
@@ -204,7 +204,7 @@ class MethodContext(MethodContextBase):
                 identifier_type_name = identifier.type_name
                 assert isinstance(identifier_type_name, ast.Identifier)
                 method_class_name = identifier_type_name.name
-                method_runtime_class = self.file_context.get_runtime_class_by_class_name(method_class_name)
+                method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
                 type_arguments = [
                     self.infer_runtime_class_by_node(namespace, type_argument)
                     for type_argument in identifier.type_arguments
@@ -386,10 +386,10 @@ class MethodContext(MethodContextBase):
     def infer_runtime_class_by_node(self,
                                     namespace: NameSpace,
                                     type_node: ast.Tree) -> Optional[RuntimeClass]:
-        """推断出现在当前方法中的抽象语法树类型"""
+        """推断出现在当前方法中抽象语法树节点的类型"""
         # name1
         if isinstance(type_node, ast.Identifier):
-            return self._get_runtime_class_by_identifier_node(namespace, type_node)
+            return self.infer_runtime_class_by_identifier_name(namespace, type_node.name)
 
         # name1.name2：如果 name1 为项目外元素，则可能无法获取
         elif isinstance(type_node, ast.MemberSelect):
@@ -470,44 +470,30 @@ class MethodContext(MethodContextBase):
             type_node=type_node
         )
 
-    def _get_runtime_class_by_identifier_node(self,
-                                              namespace: NameSpace,
-                                              identifier_node: ast.Identifier
-                                              ) -> RuntimeClass:
-        """根据当前方法中的 Identifier 节点中构造 RuntimeClass 对象"""
-        unknown_name = identifier_node.name
+    def infer_runtime_class_by_identifier_name(self,
+                                               namespace: NameSpace,
+                                               identifier_name: str
+                                               ) -> RuntimeClass:
+        """推断出现在当前方法中标识符名称的类型"""
 
-        if unknown_name == "this":
+        # 【场景】`this`
+        # - 标识符类型（`Identifier`）节点
+        # - 标识符的值为 `this`
+        if identifier_name == "this":
             return self.class_context.get_runtime_class()
 
-        # 尝试将标识符作为变量名处理
-        if namespace.has_name(unknown_name):
+        # 【场景】变量名
+        # - 识符类型（`Identifier`）节点
+        # - 标识符的值在当前层级命名空间中
+        if namespace.has_name(identifier_name):  # TODO 命名空间中不需要包含类属性
             return self.class_context.infer_runtime_class_by_node(
                 runtime_class=self.class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
-                type_node=namespace.get_name(unknown_name)
+                type_node=namespace.get_name(identifier_name)
             )
 
-        # 尝试将标识符作为类名解析
-        runtime_class = self.file_context.get_runtime_class_by_class_name(unknown_name)
-        if runtime_class is not None:
-            return runtime_class
-
-        # 尝试将标识符作为类属性解析（寻找父类中的属性） TODO 与命名空间存在重复，待优化
-        variable_info = self.class_context.get_variable_node_by_name(unknown_name)
-        if variable_info is not None:
-            class_context, variable_node = variable_info
-            return class_context.infer_runtime_class_by_node(
-                runtime_class=class_context.get_runtime_class(),
-                type_node=variable_node.variable_type
-            )
-
-        # 无法解析的场景，将其作为类名处理
-        LOGGER.error(f"使用了未知的标识符: {unknown_name}, position={self.get_runtime_method()}")
-        return RuntimeClass.create(
-            package_name=None,
-            public_class_name=unknown_name,
-            class_name=unknown_name,
-            type_arguments=[]
+        return self.class_context.infer_runtime_class_by_identifier_name(
+            runtime_class=self.class_context.get_runtime_class(),  # TODO 待改为包含形参的
+            identifier_name=identifier_name
         )
 
     def _get_runtime_class_by_member_select(self,

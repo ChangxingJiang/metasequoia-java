@@ -160,7 +160,7 @@ class FileContextBase(abc.ABC):
     # ------------------------------ 元素类型推断 ------------------------------
 
     @abc.abstractmethod
-    def get_runtime_class_by_class_name(self, class_name: str) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_identifier_name(self, class_name: str) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
@@ -226,6 +226,13 @@ class ClassContextBase(abc.ABC):
                                     runtime_class: RuntimeClass,
                                     type_node: ast.Tree) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
+
+    @abc.abstractmethod
+    def infer_runtime_class_by_identifier_name(self,
+                                               runtime_class: RuntimeClass,
+                                               identifier_name: str
+                                               ) -> RuntimeClass:
+        """推断出现在当前类中标识符名称的类型"""
 
 
 class MethodContextBase(abc.ABC):
@@ -299,3 +306,10 @@ class MethodContextBase(abc.ABC):
                                     type_node: ast.Tree
                                     ) -> Optional[RuntimeClass]:
         """推断出现在当前方法中的抽象语法树类型"""
+
+    @abc.abstractmethod
+    def infer_runtime_class_by_identifier_name(self,
+                                               namespace: NameSpace,
+                                               identifier_name: str
+                                               ) -> RuntimeClass:
+        """推断出现在当前方法中标识符名称的类型"""

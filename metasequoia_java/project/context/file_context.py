@@ -277,9 +277,12 @@ class FileContext(FileContextBase):
         """返回引用映射中是否包含类型"""
         return class_name in self._import_class_hash
 
-    def get_runtime_class_by_class_name(self, class_name: str) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_identifier_name(self, identifier_name: str) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
-        return self._import_class_hash.get(class_name)
+        if identifier_name in self._import_class_hash:
+            return self._import_class_hash[identifier_name]
+        LOGGER.error(f"使用了未知的标识符: {identifier_name}, position={self.package_name}.{self.public_class_name}")
+        return None
 
     def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:
         """
@@ -298,7 +301,7 @@ class FileContext(FileContextBase):
             # 5. 静态通配符导入：import static package.ClassName.*;
             # 6. package 中的其他类
             # 7. java.lang 中的类
-            if result := self.get_runtime_class_by_class_name(class_name):
+            if result := self.infer_runtime_class_by_identifier_name(class_name):
                 return result
 
             LOGGER.warning(f"无法根据抽象语法树节点获取类型: "
@@ -317,7 +320,7 @@ class FileContext(FileContextBase):
             if "." not in class_name:
                 # "类名"
                 package_name = None
-                if sub_runtime_class := self.get_runtime_class_by_class_name(class_name):
+                if sub_runtime_class := self.infer_runtime_class_by_identifier_name(class_name):
                     package_name = sub_runtime_class.package_name
             else:
                 # "包名.类名"
@@ -327,7 +330,7 @@ class FileContext(FileContextBase):
                     # "主类名.子类名"
                     main_class_name = package_name  # 主类名
                     package_name = None
-                    if sub_runtime_class := self.get_runtime_class_by_class_name(main_class_name):
+                    if sub_runtime_class := self.infer_runtime_class_by_identifier_name(main_class_name):
                         package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [

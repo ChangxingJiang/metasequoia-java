@@ -15,6 +15,7 @@ JAVA_LANG_CLASS_NAME_SET = {
     "ClassValue",
     "Double",
     "Enum",
+    "Exception",
     "Float",
     "Integer",
     "Math",
