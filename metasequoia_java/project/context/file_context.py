@@ -287,12 +287,15 @@ class FileContext(FileContextBase):
         LOGGER.error(f"使用了未知的标识符: {identifier_name}, position={self.package_name}.{self.public_class_name}")
         return None
 
-    def infer_runtime_class_by_node(self, type_node: ast.Tree) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_node(self, type_node: Optional[ast.Tree]) -> Optional[RuntimeClass]:
         """
         推断当前文件中出现的抽象语法树节点的类型
 
         TODO 参数待优化
         """
+        if type_node is None:
+            return None
+
         if isinstance(type_node, ast.Identifier):
             class_name = type_node.name
 

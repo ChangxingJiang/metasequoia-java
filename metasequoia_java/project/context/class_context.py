@@ -174,9 +174,12 @@ class ClassContext(ClassContextBase):
 
     def infer_runtime_class_by_node(self,
                                     runtime_class: RuntimeClass,
-                                    type_node: ast.Tree,
+                                    type_node: Optional[ast.Tree],
                                     is_not_variable: bool = False) -> Optional[RuntimeClass]:
         """推断出现在当前类中的抽象语法树类型"""
+        if type_node is None:
+            return None
+
         if isinstance(type_node, ast.Identifier):
             return self.infer_runtime_class_by_identifier_name(runtime_class, type_node.name, is_not_variable=True)
 

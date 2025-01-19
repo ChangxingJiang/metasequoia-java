@@ -330,9 +330,16 @@ class MethodContext(MethodContextBase):
         elif isinstance(statement_node, ast.PrimitiveType):
             return  # 原生类型中不会调用其他方法
         elif isinstance(statement_node, ast.LambdaExpression):
-            for sub_node in statement_node.parameters:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
+            simple_name_space = SimpleNameSpace()
+            for sub_idx, sub_node in enumerate(statement_node.parameters):
+                # 执行类型的 lambda 表达式
+                if sub_node.variable_type is not None:
+                    simple_name_space.set_name(sub_node.name, sub_node.variable_type)
+                else:
+                    simple_name_space.set_name(sub_node.name, None)
+            namespace.add_space(simple_name_space)
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.body)
+            namespace.pop_space()
         elif isinstance(statement_node, ast.WhileLoop):
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.condition)
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.statement)
@@ -391,8 +398,11 @@ class MethodContext(MethodContextBase):
     def infer_runtime_class_by_node(self,
                                     runtime_method: RuntimeMethod,
                                     namespace: NameSpace,
-                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+                                    type_node: Optional[ast.Tree]) -> Optional[RuntimeClass]:
         """推断出现在当前方法中抽象语法树节点的类型"""
+        if type_node is None:
+            return None
+
         # name1
         if isinstance(type_node, ast.Identifier):
             return self.infer_runtime_class_by_identifier_name(runtime_method, namespace, type_node.name)
