@@ -62,9 +62,11 @@ class RuntimeClass:
         if self.type_arguments is None:
             return (f"<RuntimeClass "
                     f"package={self.package_name}, "
+                    f"public_class={self.public_class_name}, "
                     f"class={self.class_name}>")
         else:
             return (f"<RuntimeClass "
                     f"package={self.package_name}, "
+                    f"public_class={self.public_class_name}, "
                     f"class={self.class_name}, "
                     f"type_arguments={self.type_arguments}>")

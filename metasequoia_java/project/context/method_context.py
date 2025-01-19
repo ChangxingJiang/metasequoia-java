@@ -357,6 +357,8 @@ class MethodContext(MethodContextBase):
             yield from self.get_method_invocation(namespace, statement_node.expression)
         elif isinstance(statement_node, ast.EmptyStatement):
             return  # 跳过空表达式
+        elif isinstance(statement_node, ast.Assert):
+            yield from self.get_method_invocation(namespace, statement_node.assertion)
         else:
             print(f"get_method_invocation: 未知表达式类型: {statement_node}")
             yield None
