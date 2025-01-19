@@ -281,13 +281,12 @@ class FileContext(FileContextBase):
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
         return self._import_class_hash.get(class_name)
 
-    def get_runtime_class_by_node(self,
-                                  class_node: ast.Class,
-                                  runtime_class: RuntimeClass,
-                                  type_node: ast.Tree) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_node(self,
+                                    class_node: ast.Class,
+                                    runtime_class: RuntimeClass,
+                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
         """
-        根据抽象语法树节点 class_node 中（运行中为 runtime_class），表示类型的抽象语法树节点 type_node，构造该类型对应的 runtime_class
-        对象
+        推断当前文件中出现的抽象语法树节点的类型
 
         TODO 参数待优化
         """
@@ -344,7 +343,7 @@ class FileContext(FileContextBase):
                         package_name = sub_runtime_class.package_name
                     class_name = f"{main_class_name}.{class_name}"
             type_arguments = [
-                self.get_runtime_class_by_node(class_node, runtime_class, argument)
+                self.infer_runtime_class_by_node(class_node, runtime_class, argument)
                 for argument in type_node.type_arguments
             ]
             return RuntimeClass.create(
@@ -356,7 +355,7 @@ class FileContext(FileContextBase):
 
         # 将 Java 数组模拟为 java.lang.Array[xxx]
         if isinstance(type_node, ast.ArrayType):
-            runtime_class = self.get_runtime_class_by_node(class_node, runtime_class, type_node.expression)
+            runtime_class = self.infer_runtime_class_by_node(class_node, runtime_class, type_node.expression)
             return RuntimeClass.create(
                 package_name="java.lang",
                 public_class_name="Array",

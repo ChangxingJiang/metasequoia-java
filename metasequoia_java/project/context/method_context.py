@@ -169,7 +169,7 @@ class MethodContext(MethodContextBase):
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select, ast.MemberSelect):
                 expression = method_select.expression
-                runtime_class = self.get_runtime_class_by_node(namespace, expression)
+                runtime_class = self.infer_runtime_class_by_node(namespace, expression)
                 runtime_method = RuntimeMethod(
                     belong_class=runtime_class,
                     method_name=method_select.identifier.name
@@ -206,7 +206,7 @@ class MethodContext(MethodContextBase):
                 method_class_name = identifier_type_name.name
                 method_runtime_class = self.file_context.get_runtime_class_by_class_name(method_class_name)
                 type_arguments = [
-                    self.get_runtime_class_by_node(namespace, type_argument)
+                    self.infer_runtime_class_by_node(namespace, type_argument)
                     for type_argument in identifier.type_arguments
                 ]
                 runtime_method = RuntimeMethod(
@@ -382,10 +382,10 @@ class MethodContext(MethodContextBase):
 
     # ------------------------------ 类型获取处理器 ------------------------------
 
-    def get_runtime_class_by_node(self,
-                                  namespace: NameSpace,
-                                  expression_node: ast.Tree) -> Optional[RuntimeClass]:
-        """获取当前类中节点元素的类型"""
+    def infer_runtime_class_by_node(self,
+                                    namespace: NameSpace,
+                                    expression_node: ast.Tree) -> Optional[RuntimeClass]:
+        """推断出现在当前方法中的抽象语法树类型"""
         # name1
         if isinstance(expression_node, ast.Identifier):
             return self._get_runtime_class_by_identifier_node(namespace, expression_node)
@@ -414,7 +414,7 @@ class MethodContext(MethodContextBase):
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select_node, ast.MemberSelect):
                 expression = method_select_node.expression
-                runtime_class = self.get_runtime_class_by_node(namespace, expression)
+                runtime_class = self.infer_runtime_class_by_node(namespace, expression)
                 runtime_method = RuntimeMethod(
                     belong_class=runtime_class,
                     method_name=method_select_node.identifier.name
@@ -428,11 +428,11 @@ class MethodContext(MethodContextBase):
 
         # 括号表达式
         elif isinstance(expression_node, ast.Parenthesized):
-            return self.get_runtime_class_by_node(namespace, expression_node.expression)
+            return self.infer_runtime_class_by_node(namespace, expression_node.expression)
 
         # 强制类型转换表达式
         elif isinstance(expression_node, ast.TypeCast):
-            return self.get_runtime_class_by_node(namespace, expression_node.expression)
+            return self.infer_runtime_class_by_node(namespace, expression_node.expression)
 
         # 字符串字面值
         elif isinstance(expression_node, ast.StringLiteral):
@@ -445,17 +445,17 @@ class MethodContext(MethodContextBase):
 
         # NewClass 节点
         elif isinstance(expression_node, ast.NewClass):
-            return self.get_runtime_class_by_node(namespace, expression_node.identifier)
+            return self.infer_runtime_class_by_node(namespace, expression_node.identifier)
 
         # ArrayAccess 节点
         elif isinstance(expression_node, ast.ArrayAccess):
-            variable_type = self.get_runtime_class_by_node(namespace, expression_node.expression)
+            variable_type = self.infer_runtime_class_by_node(namespace, expression_node.expression)
             return variable_type
 
         # ParameterizedType 节点
         elif isinstance(expression_node, ast.ParameterizedType):
-            variable_type = self.get_runtime_class_by_node(namespace, expression_node.type_name)
-            variable_arguments = [self.get_runtime_class_by_node(namespace, argument)
+            variable_type = self.infer_runtime_class_by_node(namespace, expression_node.type_name)
+            variable_arguments = [self.infer_runtime_class_by_node(namespace, argument)
                                   for argument in expression_node.type_arguments]
             return RuntimeClass.create(
                 package_name=variable_type.package_name,
@@ -479,8 +479,7 @@ class MethodContext(MethodContextBase):
 
         # 尝试将标识符作为变量名处理
         if namespace.has_name(unknown_name):
-            return self.file_context.get_runtime_class_by_node(
-                class_node=self.class_context.class_node,
+            return self.class_context.infer_runtime_class_by_node(
                 runtime_class=self.class_context.get_runtime_class(),  # TODO 待考虑当前类的泛型
                 type_node=namespace.get_name(unknown_name)
             )
@@ -494,8 +493,7 @@ class MethodContext(MethodContextBase):
         variable_info = self.class_context.get_variable_node_by_name(unknown_name)
         if variable_info is not None:
             class_context, variable_node = variable_info
-            return class_context.file_context.get_runtime_class_by_node(
-                class_node=class_context.class_node,
+            return class_context.infer_runtime_class_by_node(
                 runtime_class=class_context.get_runtime_class(),
                 type_node=variable_node.variable_type
             )
@@ -515,7 +513,7 @@ class MethodContext(MethodContextBase):
         """根据当前方法中的 MemberSelect 节点构造 RuntimeClass 对象"""
 
         # 获取 name1 的类型
-        runtime_class = self.get_runtime_class_by_node(namespace, member_select_node.expression)
+        runtime_class = self.infer_runtime_class_by_node(namespace, member_select_node.expression)
 
         # 全局搜索类属性的类型
         runtime_variable = RuntimeVariable(

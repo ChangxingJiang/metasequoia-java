@@ -162,3 +162,11 @@ class ClassContext(ClassContextBase):
     def get_name_space(self) -> NameSpace:
         """返回包含类变量的命名空间"""
         return NameSpace(self._simple_name_space)
+
+    # ------------------------------ 元素类型推断 ------------------------------
+
+    def infer_runtime_class_by_node(self,
+                                    runtime_class: RuntimeClass,
+                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+        """推断出现在当前类中的抽象语法树类型"""
+        return self.file_context.infer_runtime_class_by_node(self.class_node, runtime_class, type_node)

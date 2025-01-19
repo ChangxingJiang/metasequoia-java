@@ -61,4 +61,7 @@ print(ms_java.JavaParser(ms_java.LexicalFSM(code), mode=ms_java.ParserMode.TYPE)
 - 在终结符类型的枚举类上，我们大体延用了 JDK 源码中的名称，但将驼峰式改为下划线式以适应 Python 的风格；
 - 我们将每个终结符之后的空格、换行符和注释，作为该终结符的附属元素添加。
 
-## 
+分析器设计思路：
+
+- `context` 后缀的类为项目、文件、类和方法的 **静态** 上下文管理器；
+- `runtime` 前缀的类为类、方法、变量的 **动态** 实例。

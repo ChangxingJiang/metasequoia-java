@@ -157,17 +157,17 @@ class FileContextBase(abc.ABC):
     def get_class_node_by_class_name(self, class_name) -> Optional[ast.Class]:
         """根据 class_name 获取指定类的抽象语法树节点"""
 
-    # ------------------------------ 项目映射管理器 ------------------------------
+    # ------------------------------ 元素类型推断 ------------------------------
 
     @abc.abstractmethod
     def get_runtime_class_by_class_name(self, class_name: str) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
-    def get_runtime_class_by_node(self,
-                                  class_node: ast.Class,
-                                  runtime_class: RuntimeClass,
-                                  type_node: ast.Tree) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_node(self,
+                                    class_node: ast.Class,
+                                    runtime_class: RuntimeClass,
+                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
         """
         根据抽象语法树节点 class_node 中（运行中为 runtime_class），表示类型的抽象语法树节点 type_node，构造该类型对应的 runtime_class
         对象
@@ -224,6 +224,14 @@ class ClassContextBase(abc.ABC):
     @abc.abstractmethod
     def get_name_space(self) -> NameSpace:
         """返回包含类变量的命名空间"""
+
+    # ------------------------------ 元素类型推断 ------------------------------
+
+    @abc.abstractmethod
+    def infer_runtime_class_by_node(self,
+                                    runtime_class: RuntimeClass,
+                                    type_node: ast.Tree) -> Optional[RuntimeClass]:
+        """推断出现在当前类中的抽象语法树类型"""
 
 
 class MethodContextBase(abc.ABC):
@@ -289,9 +297,11 @@ class MethodContextBase(abc.ABC):
                     ) -> Generator[ast.Tree, None, None]:
         """获取当前表达式中调用的方法中，寻找 search_type 类型的节点"""
 
+    # ------------------------------ 元素类型推断 ------------------------------
+
     @abc.abstractmethod
-    def get_runtime_class_by_node(self,
-                                  namespace: NameSpace,
-                                  expression_node: ast.Tree
-                                  ) -> Optional[RuntimeClass]:
-        """获取当前类中节点元素的类型"""
+    def infer_runtime_class_by_node(self,
+                                    namespace: NameSpace,
+                                    expression_node: ast.Tree
+                                    ) -> Optional[RuntimeClass]:
+        """推断出现在当前方法中的抽象语法树类型"""

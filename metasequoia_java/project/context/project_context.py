@@ -274,30 +274,27 @@ class ProjectContext(ProjectContextBase):
             LOGGER.warning(f"获取类属性的抽象语法树节点失败: {runtime_variable}")
             return None
         variable_class_context, variable_node = variable_info
-        return variable_class_context.file_context.get_runtime_class_by_node(
-            class_node=variable_class_context.class_node,
+        return variable_class_context.infer_runtime_class_by_node(
             runtime_class=variable_class_context.get_runtime_class(),
             type_node=variable_node.variable_type
         )
 
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
-        file_context = self.create_file_context_by_runtime_class(runtime_method.belong_class)
+        class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
 
         # runtime_method.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
-        if file_context is None:
+        if class_context is None:
             res = self.try_get_outer_method_return_type(runtime_method)
             if res is None:
                 LOGGER.warning(f"在项目外补充信息中，找不到方法返回值类型: {runtime_method}")
             return res
 
         # runtime_method.belong_class 在项目中，获取返回值类型
-        class_node = file_context.get_class_node_by_class_name(runtime_method.belong_class.class_name)
-        method_node = class_node.get_method_by_name(runtime_method.method_name)
+        method_node = class_context.class_node.get_method_by_name(runtime_method.method_name)
         if method_node is None:
             return None
-        return file_context.get_runtime_class_by_node(
-            class_node=class_node,
+        return class_context.infer_runtime_class_by_node(
             runtime_class=runtime_method.belong_class,
             type_node=method_node.return_type
         )
