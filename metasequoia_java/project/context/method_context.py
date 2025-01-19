@@ -360,9 +360,12 @@ class MethodContext(MethodContextBase):
             lambda_param_type_list = self.project_context.get_runtime_class_list_by_functional_interface(
                 runtime_class=lambda_runtime_class
             )
-            print("外层:", len(statement_node.parameters), "-----", outer_runtime_method, outer_method_param_idx)
-            print("类型:", lambda_runtime_class)
-            print("参数类型:", lambda_param_type_list)
+            # print("外层:", len(statement_node.parameters), "-----", outer_runtime_method.absolute_name,
+            #       outer_method_param_idx)
+            # print("类型:", lambda_runtime_class)
+            # print("形参列表:", len(lambda_param_type_list) if lambda_param_type_list is not None else 0,
+            #       lambda_param_type_list)
+            # print("实参列表:", len(statement_node.parameters), statement_node.parameters)
             if lambda_param_type_list is not None:
                 if len(statement_node.parameters) == len(lambda_param_type_list):
                     for sub_idx, sub_node in enumerate(statement_node.parameters):
@@ -370,10 +373,13 @@ class MethodContext(MethodContextBase):
                             simple_name_space.set_name(sub_node.name, sub_node.variable_type)
                         else:
                             simple_name_space.set_name(sub_node.name, lambda_param_type_list[sub_idx])
+                            # print("lambda 推断结果:", outer_runtime_method.absolute_name, sub_idx, "->",
+                            #       lambda_param_type_list[sub_idx])
                 else:
-                    LOGGER.warning("lambda 表达式参数数量异常")
+                    LOGGER.warning(f"lambda 表达式参数数量异常, position={outer_runtime_method}, "
+                                   f"expected: {len(lambda_param_type_list)}, actual={len(statement_node.parameters)}")
             else:
-                LOGGER.warning("无法获取 lambda 表达式的参数类型")
+                LOGGER.warning(f"无法获取 lambda 表达式的参数类型: {outer_runtime_method}")
             namespace.add_space(simple_name_space)
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.body)
             namespace.pop_space()

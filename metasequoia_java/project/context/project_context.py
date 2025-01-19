@@ -339,7 +339,7 @@ class ProjectContext(ProjectContextBase):
         """根据函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
         res = self.try_get_runtime_class_list_by_functional_interface(runtime_class)
         if res is None:
-            LOGGER.warning(f"在项目外补充信息中，找不到函数式接口 {RuntimeClass} 的参数类型列表")
+            LOGGER.warning(f"在项目外补充信息中，找不到函数式接口 {runtime_class} 的参数类型列表")
         return res
 
     # ------------------------------ 获取项目外已知类型 ------------------------------
