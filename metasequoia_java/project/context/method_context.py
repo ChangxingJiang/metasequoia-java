@@ -16,6 +16,7 @@ from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.name_space import NameSpace
 from metasequoia_java.project.name_space import SimpleNameSpace
+from metasequoia_java.project.utils import get_first_name_from_absolute_name
 from metasequoia_java.project.utils import is_long_member_select
 from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
@@ -242,9 +243,16 @@ class MethodContext(MethodContextBase):
                 )
                 LOGGER.debug(f"生成调用方法(类型 4): {res_runtime_method}")
                 yield res_runtime_method, statement_node.arguments
+            elif isinstance(identifier, ast.MemberSelect):
+                runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, identifier, is_type=True)
+                res_runtime_method = RuntimeMethod(
+                    belong_class=runtime_class,
+                    method_name=identifier.identifier.name
+                )
+                yield res_runtime_method, statement_node.arguments
+                LOGGER.debug(f"生成调用方法(类型 5): {res_runtime_method}")
             else:
-                res_runtime_method = None
-                LOGGER.error("NewClass 暂不支持的类型: ", identifier)
+                LOGGER.error(f"NewClass 暂不支持的类型: {identifier}")
 
             # 递归处理方法参数
             for idx, argument in enumerate(statement_node.arguments):
@@ -436,8 +444,23 @@ class MethodContext(MethodContextBase):
                                     runtime_method: RuntimeMethod,
                                     namespace: NameSpace,
                                     type_node: Optional[ast.Tree],
-                                    is_not_variable: bool = False) -> Optional[RuntimeClass]:
-        """推断出现在当前方法中抽象语法树节点的类型"""
+                                    is_not_variable: bool = False,
+                                    is_type: bool = False) -> Optional[RuntimeClass]:
+        """推断出现在当前方法中抽象语法树节点的类型
+
+        Parameters
+        ----------
+        runtime_method : RuntimeMethod
+            目标抽象语法树节点所在运行中方法
+        namespace : NameSpace
+            目标抽象语法树节点所在位置的命名空间
+        type_node : Optional[ast.Tree]
+            目标抽象语法树节点
+        is_not_variable : bool, default = False
+            目标抽象语法树节点是否可能出现在命名空间中
+        is_type : bool, default = False
+            目标抽象语法树节点是否为类型
+        """
         if type_node is None:
             return None
 
@@ -447,12 +470,18 @@ class MethodContext(MethodContextBase):
                 runtime_method=runtime_method,
                 namespace=namespace,
                 identifier_name=type_node.name,
-                is_not_variable=is_not_variable
+                is_not_variable=is_not_variable,
+                is_type=is_type
             )
 
         # name1.name2：如果 name1 为项目外元素，则可能无法获取
         elif isinstance(type_node, ast.MemberSelect):
-            return self._get_runtime_class_by_member_select(runtime_method, namespace, type_node)
+            return self._get_runtime_class_by_member_select(
+                runtime_method=runtime_method,
+                namespace=namespace,
+                member_select_node=type_node,
+                is_type=is_type
+            )
 
         # name1().name2()
         elif isinstance(type_node, ast.MethodInvocation):
@@ -505,19 +534,27 @@ class MethodContext(MethodContextBase):
 
         # NewClass 节点
         elif isinstance(type_node, ast.NewClass):
-            return self.infer_runtime_class_by_node(runtime_method, namespace, type_node.identifier)
+            return self.infer_runtime_class_by_node(
+                runtime_method=runtime_method,
+                namespace=namespace,
+                type_node=type_node.identifier,
+                is_type=True
+            )
 
         # ArrayAccess 节点
         elif isinstance(type_node, ast.ArrayAccess):
             variable_type = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.expression)
-            return variable_type
+            if variable_type is None or variable_type.type_arguments is None or len(variable_type.type_arguments) < 1:
+                LOGGER.warning(f"数组类型没有第 0 个泛型: {variable_type}")
+            return variable_type.type_arguments[0]
 
         # ParameterizedType 节点
         elif isinstance(type_node, ast.ParameterizedType):
             variable_type = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.type_name,
-                                                             is_not_variable=True)
+                                                             is_not_variable=True, is_type=True)
             variable_arguments = [
-                self.infer_runtime_class_by_node(runtime_method, namespace, argument, is_not_variable=True)
+                self.infer_runtime_class_by_node(runtime_method, namespace, argument, is_not_variable=True,
+                                                 is_type=True)
                 for argument in type_node.type_arguments]
             if variable_type is not None:
                 return RuntimeClass.create(
@@ -533,6 +570,17 @@ class MethodContext(MethodContextBase):
         elif isinstance(type_node, ast.Binary):
             return self.infer_runtime_class_by_node(runtime_method, namespace, type_node.left_operand)
 
+        # 初始化类型
+        # 【Java 样例】String[]
+        if isinstance(type_node, ast.ArrayType):
+            runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.expression)
+            return RuntimeClass.create(
+                package_name="java.lang",
+                public_class_name="Array",
+                class_name="Array",
+                type_arguments=[runtime_class]
+            )
+
         self.class_context.infer_runtime_class_by_node(
             runtime_class=runtime_method.belong_class,
             type_node=type_node
@@ -543,6 +591,7 @@ class MethodContext(MethodContextBase):
                                                namespace: NameSpace,
                                                identifier_name: str,
                                                is_not_variable: bool = False,
+                                               is_type: bool = False,
                                                need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前方法中标识符名称的类型"""
@@ -564,7 +613,8 @@ class MethodContext(MethodContextBase):
                 runtime_method=runtime_method,
                 namespace=namespace,
                 type_node=type_node,
-                is_not_variable=True
+                is_not_variable=True,
+                is_type=True
             )
 
         return self.class_context.infer_runtime_class_by_identifier_name(
@@ -576,7 +626,8 @@ class MethodContext(MethodContextBase):
     def _get_runtime_class_by_member_select(self,
                                             runtime_method: RuntimeMethod,
                                             namespace: NameSpace,
-                                            member_select_node: ast.MemberSelect) -> Optional[RuntimeClass]:
+                                            member_select_node: ast.MemberSelect,
+                                            is_type: bool) -> Optional[RuntimeClass]:
         """根据当前方法中的 MemberSelect 节点构造 RuntimeClass 对象"""
 
         # 【场景】直接使用类的绝对引用
@@ -595,11 +646,21 @@ class MethodContext(MethodContextBase):
                     type_arguments=None  # 调用的一定是静态方法，不需要考虑类型参数
                 )
 
-            # 尝试整体寻找，作为子类
-            runtime_class_1 = self.file_context.infer_runtime_class_by_identifier_name(class_absolute_name,
-                                                                                       need_warning=False)
-            if runtime_class_1 is not None:
-                return runtime_class_1
+            # 如果是类型，则一定是子类，ClassName.SubClassName
+            if is_type is True:
+                first_name = get_first_name_from_absolute_name(class_absolute_name)
+                runtime_class = self.infer_runtime_class_by_identifier_name(
+                    runtime_method=runtime_method,
+                    namespace=namespace,
+                    identifier_name=first_name,
+                    is_type=True
+                )
+                return RuntimeClass.create(
+                    package_name=runtime_class.package_name,
+                    public_class_name=runtime_class.public_class_name,
+                    class_name=class_absolute_name,
+                    type_arguments=None
+                )
 
         # 获取 name1 的类型
         runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, member_select_node.expression)

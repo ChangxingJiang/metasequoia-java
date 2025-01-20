@@ -325,7 +325,7 @@ class FileContext(FileContextBase):
                 type_arguments=None
             )
 
-        # 将 Java 数组模拟为 java.lang.Array[xxx]
+        # 将 Java 数组模拟为 java.lang.Array[xxx]  TODO 在 MethodContext 中已复制，待判断这里是否还有意义
         if isinstance(type_node, ast.ArrayType):
             runtime_class = self.infer_runtime_class_by_node(type_node.expression)
             return RuntimeClass.create(

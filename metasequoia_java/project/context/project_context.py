@@ -316,6 +316,12 @@ class ProjectContext(ProjectContextBase):
 
     def get_runtime_class_by_runtime_method_return_type(self, runtime_method: RuntimeMethod) -> Optional[RuntimeClass]:
         """根据 runtimeMethod 返回值的类型，构造 runtimeClass"""
+        # 处理继承自 java.langObject 的 toString 方法和 equals 方法
+        if runtime_method.method_name == "toString":
+            return RuntimeClass.create_by_public_class_absolute_name("java.lang.String")
+        if runtime_method.method_name == "equals":
+            return RuntimeClass.create_by_public_class_absolute_name("java.lang.Boolean")
+
         class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
 
         # runtime_method.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
