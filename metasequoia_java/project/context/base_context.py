@@ -87,7 +87,7 @@ class ProjectContextBase(abc.ABC):
         """根据 runtimeMethod 对象构造 MethodContext 对象"""
 
     @abc.abstractmethod
-    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[ast.Tree]:
+    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
 
     @abc.abstractmethod
@@ -185,7 +185,9 @@ class FileContextBase(abc.ABC):
         """返回引用映射中是否包含类型"""
 
     @abc.abstractmethod
-    def infer_runtime_class_by_identifier_name(self, class_name: str) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_identifier_name(self,
+                                               identifier_name: str,
+                                               need_warning: bool = True) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
 
     @abc.abstractmethod
@@ -258,7 +260,8 @@ class ClassContextBase(abc.ABC):
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_class: RuntimeClass,
                                                identifier_name: str,
-                                               is_not_variable: bool = False
+                                               is_not_variable: bool = False,
+                                               need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前类中标识符名称的类型"""
 
@@ -342,6 +345,7 @@ class MethodContextBase(abc.ABC):
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_method: RuntimeMethod,
                                                namespace: NameSpace,
-                                               identifier_name: str
+                                               identifier_name: str,
+                                               need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前方法中标识符名称的类型"""

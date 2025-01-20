@@ -16,6 +16,7 @@ from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.name_space import NameSpace
 from metasequoia_java.project.name_space import SimpleNameSpace
+from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
 __all__ = [
     "MethodContext"
@@ -536,7 +537,8 @@ class MethodContext(MethodContextBase):
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_method: RuntimeMethod,
                                                namespace: NameSpace,
-                                               identifier_name: str
+                                               identifier_name: str,
+                                               need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前方法中标识符名称的类型"""
 
@@ -560,14 +562,31 @@ class MethodContext(MethodContextBase):
 
         return self.class_context.infer_runtime_class_by_identifier_name(
             runtime_class=runtime_method.belong_class,
-            identifier_name=identifier_name
+            identifier_name=identifier_name,
+            need_warning=need_warning
         )
 
     def _get_runtime_class_by_member_select(self,
                                             runtime_method: RuntimeMethod,
                                             namespace: NameSpace,
-                                            member_select_node: ast.MemberSelect) -> Optional[ast.Tree]:
+                                            member_select_node: ast.MemberSelect) -> Optional[RuntimeClass]:
         """根据当前方法中的 MemberSelect 节点构造 RuntimeClass 对象"""
+
+        # 【场景】直接使用类的绝对引用
+        # - 抽象语法树节点 `MemberSelect`，且其中包含抽象语法树节点也是 `MemberSelect` 或 `Identifier`
+        # - 第一个抽象语法树节点（`Identifier`）作为标识符无法被解析
+        if self._is_long_member_select(member_select_node):
+            class_absolute_name = member_select_node.generate()
+            first_name = class_absolute_name[:class_absolute_name.index(".")]
+            if self.infer_runtime_class_by_identifier_name(runtime_method, namespace, first_name,
+                                                           need_warning=False) is None:
+                package_name, class_name = split_last_name_from_absolute_name(class_absolute_name)
+                return RuntimeClass(
+                    package_name=package_name,
+                    public_class_name=class_name,
+                    class_name=class_name,
+                    type_arguments=None  # 调用的一定是静态方法，不需要考虑类型参数
+                )
 
         # 获取 name1 的类型
         runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, member_select_node.expression)
@@ -579,3 +598,10 @@ class MethodContext(MethodContextBase):
         )
 
         return self._project_context.get_type_node_by_runtime_variable(runtime_variable)
+
+    def _is_long_member_select(self, member_select_node: ast.MemberSelect) -> bool:
+        """判断 member_select_node 是否为 xxx.xxx.xxx 的格式"""
+        expression_node = member_select_node.expression
+        if isinstance(expression_node, ast.Identifier):
+            return True
+        return isinstance(expression_node, ast.MemberSelect) and self._is_long_member_select(expression_node)

@@ -265,7 +265,7 @@ class ProjectContext(ProjectContextBase):
             return None
         return MethodContext.create_by_method_name(class_context, runtime_method.method_name)
 
-    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[ast.Tree]:
+    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
         if runtime_variable.belong_class is None:
             return None

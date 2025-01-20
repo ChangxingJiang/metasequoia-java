@@ -280,11 +280,15 @@ class FileContext(FileContextBase):
         """返回引用映射中是否包含类型"""
         return class_name in self._import_class_hash
 
-    def infer_runtime_class_by_identifier_name(self, identifier_name: str) -> Optional[RuntimeClass]:
+    def infer_runtime_class_by_identifier_name(self,
+                                               identifier_name: str,
+                                               need_warning: bool = True) -> Optional[RuntimeClass]:
         """根据当前文件中出现的 class_name，获取对应的 RuntimeClass 对象"""
         if identifier_name in self._import_class_hash:
             return self._import_class_hash[identifier_name]
-        LOGGER.error(f"使用了未知的标识符: {identifier_name}, position={self.package_name}.{self.public_class_name}")
+        if need_warning is True:
+            LOGGER.error(f"使用了未知的标识符: {identifier_name}, "
+                         f"position={self.package_name}.{self.public_class_name}")
         return None
 
     def infer_runtime_class_by_node(self, type_node: Optional[ast.Tree]) -> Optional[RuntimeClass]:

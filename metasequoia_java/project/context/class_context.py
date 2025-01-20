@@ -217,7 +217,8 @@ class ClassContext(ClassContextBase):
     def infer_runtime_class_by_identifier_name(self,
                                                runtime_class: RuntimeClass,
                                                identifier_name: str,
-                                               is_not_variable: bool = False
+                                               is_not_variable: bool = False,
+                                               need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前类中标识符名称的类型
 
@@ -230,6 +231,8 @@ class ClassContext(ClassContextBase):
         is_not_variable : bool
             当前标识符是否一定不是变量
             之所以需要这个参数，是因为当类属性的变量名和类型相同时，如果没有这个参数会导致无限递归
+        need_warning : bool
+            如果匹配失败是否需要发送警告信息
 
         Returns
         -------
@@ -261,4 +264,7 @@ class ClassContext(ClassContextBase):
                     is_not_variable=True
                 )
 
-        return self.file_context.infer_runtime_class_by_identifier_name(identifier_name)
+        return self.file_context.infer_runtime_class_by_identifier_name(
+            identifier_name=identifier_name,
+            need_warning=need_warning
+        )
