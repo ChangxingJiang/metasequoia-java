@@ -249,7 +249,7 @@ class ClassContext(ClassContextBase):
                     if type_argument.name == identifier_name:
                         return runtime_class.type_arguments[idx]
                 else:
-                    print("未知泛型参数节点:", type_argument)
+                    LOGGER.warning("未知泛型参数节点:", type_argument)
 
         # 【场景】类变量
         # - 标识符类型（`Identifier`）节点

@@ -200,7 +200,7 @@ class MethodContext(MethodContextBase):
 
             else:
                 res_runtime_method = None
-                print(f"get_method_invocation, 暂不支持的表达式类型: {statement_node}")
+                LOGGER.error(f"get_method_invocation, 暂不支持的表达式类型: {statement_node}")
 
             # 递归处理方法参数
             for idx, argument in enumerate(statement_node.arguments):
@@ -243,7 +243,7 @@ class MethodContext(MethodContextBase):
                 yield res_runtime_method, statement_node.arguments
             else:
                 res_runtime_method = None
-                print("NewClass 暂不支持的类型: ", identifier)
+                LOGGER.error("NewClass 暂不支持的类型: ", identifier)
 
             # 递归处理方法参数
             for idx, argument in enumerate(statement_node.arguments):
@@ -361,12 +361,6 @@ class MethodContext(MethodContextBase):
             lambda_param_type_list = self.project_context.get_runtime_class_list_by_functional_interface(
                 runtime_class=lambda_runtime_class
             )
-            # print("外层:", len(statement_node.parameters), "-----", outer_runtime_method.absolute_name,
-            #       outer_method_param_idx)
-            # print("类型:", lambda_runtime_class)
-            # print("形参列表:", len(lambda_param_type_list) if lambda_param_type_list is not None else 0,
-            #       lambda_param_type_list)
-            # print("实参列表:", len(statement_node.parameters), statement_node.parameters)
             if lambda_param_type_list is not None:
                 if len(statement_node.parameters) == len(lambda_param_type_list):
                     for sub_idx, sub_node in enumerate(statement_node.parameters):
@@ -374,8 +368,6 @@ class MethodContext(MethodContextBase):
                             simple_name_space.set_name(sub_node.name, sub_node.variable_type)
                         else:
                             simple_name_space.set_name(sub_node.name, lambda_param_type_list[sub_idx])
-                            # print("lambda 推断结果:", outer_runtime_method.absolute_name, sub_idx, "->",
-                            #       lambda_param_type_list[sub_idx])
                 else:
                     LOGGER.warning(f"lambda 表达式参数数量异常, position={outer_runtime_method}, "
                                    f"expected: {len(lambda_param_type_list)}, actual={len(statement_node.parameters)}")
@@ -414,7 +406,7 @@ class MethodContext(MethodContextBase):
         elif isinstance(statement_node, ast.Assert):
             yield from self.get_method_invocation(runtime_method, namespace, statement_node.assertion)
         else:
-            print(f"get_method_invocation: 未知表达式类型: {statement_node}")
+            LOGGER.error(f"get_method_invocation: 未知表达式类型: {statement_node}")
             yield None
 
     def search_node(self,
@@ -482,7 +474,7 @@ class MethodContext(MethodContextBase):
                 )
 
             else:
-                print(f"get_runtime_class_by_node: 未知的类型 {type_node}")
+                LOGGER.error(f"get_runtime_class_by_node: 未知的类型 {type_node}")
                 return None
 
             return self.project_context.get_runtime_class_by_runtime_method_return_type(runtime_method)

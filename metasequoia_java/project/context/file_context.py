@@ -335,5 +335,5 @@ class FileContext(FileContextBase):
                 type_arguments=[runtime_class]
             )
 
-        print(f"get_runtime_class_by_type_node: 暂不支持的表达式 {type_node}")
+        LOGGER.error(f"get_runtime_class_by_type_node: 暂不支持的表达式 {type_node}")
         return None
