@@ -17,6 +17,7 @@ from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.name_space import NameSpace
 from metasequoia_java.project.name_space import SimpleNameSpace
 from metasequoia_java.project.utils import get_first_name_from_absolute_name
+from metasequoia_java.project.utils import get_last_name_from_absolute_name
 from metasequoia_java.project.utils import is_long_member_select
 from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
@@ -51,16 +52,12 @@ class MethodContext(MethodContextBase):
         # 如果方法名和类名一样，则说明方法为初始化方法，将方法名改为 init
         if class_context is None:
             return None
-        if method_name == class_context.class_name:
+        if get_last_name_from_absolute_name(class_context.class_name) == method_name:
             method_name = "init"
 
         method_info = class_context.get_method_node_by_name(method_name)
         if method_info is None:
-            # TODO 待考虑将类处理逻辑合并到其他位置
-            class_name = class_context.class_name
-            if "." in class_name:
-                class_name = class_name[class_name.rindex(".") + 1:]
-            if class_name != method_name:  # 未声明的默认构造方法不需要处理
+            if method_name != "init":  # 如果是构造方法，则可能是没有特别声明的默认构造方法，不需要警告
                 LOGGER.warning(f"找不到方法 {class_context.get_runtime_class().absolute_name}.{method_name}")
             return None
 

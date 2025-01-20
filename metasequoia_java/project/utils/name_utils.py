@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 __all__ = [
     "split_last_name_from_absolute_name",
     "get_first_name_from_absolute_name",
+    "get_last_name_from_absolute_name",
 ]
 
 
@@ -50,3 +51,21 @@ def get_first_name_from_absolute_name(absolute_name: str) -> str:
     if "." not in absolute_name:
         return absolute_name
     return absolute_name[:absolute_name.index(".")]
+
+
+def get_last_name_from_absolute_name(absolute_name: str) -> str:
+    """获取 absolute_name（完整引用名称）中的最后一个名称
+
+    Parameters
+    ----------
+    absolute_name : str
+        完整引用名称（xxx.xxx.xxx）
+
+    Returns
+    -------
+    str
+        最后一个名称
+    """
+    if "." not in absolute_name:
+        return absolute_name
+    return absolute_name[absolute_name.rindex(".") + 1:]
