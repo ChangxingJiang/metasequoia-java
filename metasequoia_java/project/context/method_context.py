@@ -16,6 +16,7 @@ from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.name_space import NameSpace
 from metasequoia_java.project.name_space import SimpleNameSpace
+from metasequoia_java.project.utils import is_long_member_select
 from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
 __all__ = [
@@ -547,8 +548,9 @@ class MethodContext(MethodContextBase):
             type_node = namespace.get_name(identifier_name)
             if isinstance(type_node, RuntimeClass):
                 return type_node
-            return self.class_context.infer_runtime_class_by_node(
-                runtime_class=runtime_method.belong_class,
+            return self.infer_runtime_class_by_node(
+                runtime_method=runtime_method,
+                namespace=namespace,
                 type_node=type_node
             )
 
@@ -567,7 +569,7 @@ class MethodContext(MethodContextBase):
         # 【场景】直接使用类的绝对引用
         # - 抽象语法树节点 `MemberSelect`，且其中包含抽象语法树节点也是 `MemberSelect` 或 `Identifier`
         # - 第一个抽象语法树节点（`Identifier`）作为标识符无法被解析
-        if self._is_long_member_select(member_select_node):
+        if is_long_member_select(member_select_node):
             class_absolute_name = member_select_node.generate()
             first_name = class_absolute_name[:class_absolute_name.index(".")]
             if self.infer_runtime_class_by_identifier_name(runtime_method, namespace, first_name,
@@ -590,10 +592,3 @@ class MethodContext(MethodContextBase):
         )
 
         return self._project_context.get_type_node_by_runtime_variable(runtime_variable)
-
-    def _is_long_member_select(self, member_select_node: ast.MemberSelect) -> bool:
-        """判断 member_select_node 是否为 xxx.xxx.xxx 的格式"""
-        expression_node = member_select_node.expression
-        if isinstance(expression_node, ast.Identifier):
-            return True
-        return isinstance(expression_node, ast.MemberSelect) and self._is_long_member_select(expression_node)
