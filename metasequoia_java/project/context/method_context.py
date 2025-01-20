@@ -519,12 +519,15 @@ class MethodContext(MethodContextBase):
             variable_arguments = [
                 self.infer_runtime_class_by_node(runtime_method, namespace, argument, is_not_variable=True)
                 for argument in type_node.type_arguments]
-            return RuntimeClass.create(
-                package_name=variable_type.package_name,
-                public_class_name=variable_type.class_name,
-                class_name=variable_type.class_name,
-                type_arguments=variable_arguments
-            )
+            if variable_type is not None:
+                return RuntimeClass.create(
+                    package_name=variable_type.package_name,
+                    public_class_name=variable_type.class_name,
+                    class_name=variable_type.class_name,
+                    type_arguments=variable_arguments
+                )
+            else:
+                LOGGER.warning(f"找不到类型 {type_node.type_name}, position={runtime_method}")
 
         # 二元表达式
         elif isinstance(type_node, ast.Binary):
@@ -591,6 +594,12 @@ class MethodContext(MethodContextBase):
                     class_name=class_name,
                     type_arguments=None  # 调用的一定是静态方法，不需要考虑类型参数
                 )
+
+            # 尝试整体寻找，作为子类
+            runtime_class_1 = self.file_context.infer_runtime_class_by_identifier_name(class_absolute_name,
+                                                                                       need_warning=False)
+            if runtime_class_1 is not None:
+                return runtime_class_1
 
         # 获取 name1 的类型
         runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, member_select_node.expression)
