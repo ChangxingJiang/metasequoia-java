@@ -34,7 +34,7 @@ class MethodContext(MethodContextBase):
                  file_context: FileContextBase,
                  class_context: ClassContextBase,
                  method_name: str,
-                 method_node: ast.Method):
+                 method_node: Optional[ast.Method]):
         self._project_context = project_context
         self._file_context = file_context
         self._class_context = class_context
@@ -42,8 +42,11 @@ class MethodContext(MethodContextBase):
         self._method_node = method_node
 
         # 初始化方法的命名空间
-        self._simple_name_space = (SimpleNameSpace.create_by_method_params(method_node)
-                                   + SimpleNameSpace.create_by_method_body(method_node))
+        if method_node is not None:
+            self._simple_name_space = (SimpleNameSpace.create_by_method_params(method_node)
+                                       + SimpleNameSpace.create_by_method_body(method_node))
+        else:
+            self._simple_name_space = SimpleNameSpace()
         self._name_space = self._class_context.get_name_space()
         self._name_space.add_space(self._simple_name_space)
 
@@ -67,8 +70,27 @@ class MethodContext(MethodContextBase):
 
         # 如果最终找不到方法
         if method_info is None:
-            if method_name != "init":  # 如果是构造方法，则可能是没有特别声明的默认构造方法，不需要警告
-                LOGGER.warning(f"找不到方法 {class_absolute_name}.{method_name}")
+            # 枚举类的 values() 方法
+            if ast.Modifier.ENUM in class_context.class_node.modifiers.flags and method_name == "values":
+                return MethodContext(
+                    project_context=class_context.project_context,
+                    file_context=class_context.file_context,
+                    class_context=class_context,
+                    method_name=method_name,
+                    method_node=None
+                )
+
+            # 默认的构造方法
+            if method_name == "init":
+                return MethodContext(
+                    project_context=class_context.project_context,
+                    file_context=class_context.file_context,
+                    class_context=class_context,
+                    method_name=method_name,
+                    method_node=None
+                )
+
+            LOGGER.warning(f"找不到方法 {class_absolute_name}.{method_name}")
             return None
 
         return MethodContext(
