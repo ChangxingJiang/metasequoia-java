@@ -117,7 +117,7 @@ class FileContext(FileContextBase):
     def get_class_node_by_class_name(self, class_name: str) -> Optional[ast.Class]:
         """根据 class_name 获取指定类的抽象语法树节点，如果获取不到则返回 None"""
         if "." in class_name:
-            return self.file_node.get_sub_class_by_name(class_name)  # 根据子类名获取类的抽象语法树节点
+            return self.file_node.get_inner_class_by_name(class_name)  # 根据内部类名获取类的抽象语法树节点
         return self.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
 
     # ------------------------------ 引用映射管理器 ------------------------------

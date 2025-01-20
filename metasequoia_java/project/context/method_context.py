@@ -52,13 +52,23 @@ class MethodContext(MethodContextBase):
         # 如果方法名和类名一样，则说明方法为初始化方法，将方法名改为 init
         if class_context is None:
             return None
+
+        class_absolute_name = class_context.get_runtime_class().absolute_name
+
         if get_last_name_from_absolute_name(class_context.class_name) == method_name:
             method_name = "init"
 
         method_info = class_context.get_method_node_by_name(method_name)
+
+        # 递归地从内部类向外部类寻找方法
+        while method_info is None and class_context.outer_class_context is not None:
+            class_context = class_context.outer_class_context
+            method_info = class_context.get_method_node_by_name(method_name)
+
+        # 如果最终找不到方法
         if method_info is None:
             if method_name != "init":  # 如果是构造方法，则可能是没有特别声明的默认构造方法，不需要警告
-                LOGGER.warning(f"找不到方法 {class_context.get_runtime_class().absolute_name}.{method_name}")
+                LOGGER.warning(f"找不到方法 {class_absolute_name}.{method_name}")
             return None
 
         return MethodContext(

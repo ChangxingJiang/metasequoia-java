@@ -1091,8 +1091,8 @@ class CompilationUnit(Tree):
                 return declaration
         return None
 
-    def get_sub_class_by_name(self, class_name: str) -> Optional[Class]:
-        """根据子类名获取类的抽象语法树节点"""
+    def get_inner_class_by_name(self, class_name: str) -> Optional[Class]:
+        """根据内部类名获取类的抽象语法树节点"""
         now_level_list = self.type_declarations
         class_node: Optional[Class] = None
         for now_level_class_name in class_name.split("."):

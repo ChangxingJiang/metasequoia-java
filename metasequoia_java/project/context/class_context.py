@@ -26,23 +26,38 @@ class ClassContext(ClassContextBase):
                  project_context: ProjectContextBase,
                  file_context: FileContextBase,
                  class_name: str,
-                 class_node: ast.Class):
+                 class_node: ast.Class,
+                 outer_class_context: Optional["ClassContextBase"] = None):
         self._project_context = project_context
         self._file_context = file_context
         self._class_name = class_name
         self._class_node = class_node
 
+        # 如果当前类为内部类，则指向外部类的上下文管理器，否则为 None
+        self._outer_class_context = outer_class_context
+
         self._simple_name_space = SimpleNameSpace.create_by_class(class_node)
 
     @staticmethod
     def create_by_class_name(file_context: FileContextBase, class_name: str) -> Optional["ClassContext"]:
+        """根据类型构造 ClassContext 对象"""
         if file_context is None:
             return None
+
+        if "." in class_name:
+            class_node = file_context.file_node.get_inner_class_by_name(class_name)  # 根据内部类名获取类的抽象语法树节点
+            outer_class_name = class_name[:class_name.rindex(".")]
+            outer_class_context = ClassContext.create_by_class_name(file_context, outer_class_name)
+        else:
+            class_node = file_context.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
+            outer_class_context = None
+
         return ClassContext(
             project_context=file_context.project_context,
             file_context=file_context,
             class_name=class_name,
-            class_node=file_context.get_class_node_by_class_name(class_name)
+            class_node=class_node,
+            outer_class_context=outer_class_context
         )
 
     @staticmethod
@@ -78,6 +93,11 @@ class ClassContext(ClassContextBase):
     def class_node(self) -> ast.Class:
         """返回类的抽象语法树节点"""
         return self._class_node
+
+    @property
+    def outer_class_context(self) -> Optional["ClassContextBase"]:
+        """返回外部类的 ClassContext 对象（仅当当前类为内部类时不为 None）"""
+        return self._outer_class_context
 
     def get_method_node_by_name(self, method_name: str) -> Optional[Tuple[ClassContextBase, ast.Method]]:
         """根据 method_name 获取方法所在类的 ClassContext 和抽象语法树节点"""

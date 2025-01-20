@@ -218,6 +218,11 @@ class ClassContextBase(abc.ABC):
     def class_node(self) -> ast.Class:
         """返回类的抽象语法树节点"""
 
+    @property
+    @abc.abstractmethod
+    def outer_class_context(self) -> Optional["ClassContextBase"]:
+        """返回外部类的 ClassContext 对象（仅当当前类为内部类时不为 None）"""
+
     # ------------------------------ method 和 variable 层级处理方法 ------------------------------
 
     @abc.abstractmethod
