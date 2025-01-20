@@ -5416,7 +5416,7 @@ class JavaParser:
             else:
                 if not was_semi:
                     self.raise_syntax_error(self.token.pos, "EnumConstantExpected")
-                members.append(self.class_or_interface_or_record_body_declaration(
+                members.extend(self.class_or_interface_or_record_body_declaration(
                     modifiers=None,
                     class_name=enum_name,
                     is_interface=False,

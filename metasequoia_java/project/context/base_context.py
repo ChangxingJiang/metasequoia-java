@@ -174,10 +174,6 @@ class FileContextBase(abc.ABC):
     def get_public_class_declaration(self) -> ast.Class:
         """返回公有类的抽象语法树节点"""
 
-    @abc.abstractmethod
-    def get_class_node_by_class_name(self, class_name) -> Optional[ast.Class]:
-        """根据 class_name 获取指定类的抽象语法树节点"""
-
     # ------------------------------ 元素类型推断 ------------------------------
 
     @abc.abstractmethod
