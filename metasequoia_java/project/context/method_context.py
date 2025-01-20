@@ -435,14 +435,20 @@ class MethodContext(MethodContextBase):
     def infer_runtime_class_by_node(self,
                                     runtime_method: RuntimeMethod,
                                     namespace: NameSpace,
-                                    type_node: Optional[ast.Tree]) -> Optional[RuntimeClass]:
+                                    type_node: Optional[ast.Tree],
+                                    is_not_variable: bool = False) -> Optional[RuntimeClass]:
         """推断出现在当前方法中抽象语法树节点的类型"""
         if type_node is None:
             return None
 
         # name1
         if isinstance(type_node, ast.Identifier):
-            return self.infer_runtime_class_by_identifier_name(runtime_method, namespace, type_node.name)
+            return self.infer_runtime_class_by_identifier_name(
+                runtime_method=runtime_method,
+                namespace=namespace,
+                identifier_name=type_node.name,
+                is_not_variable=is_not_variable
+            )
 
         # name1.name2：如果 name1 为项目外元素，则可能无法获取
         elif isinstance(type_node, ast.MemberSelect):
@@ -508,9 +514,11 @@ class MethodContext(MethodContextBase):
 
         # ParameterizedType 节点
         elif isinstance(type_node, ast.ParameterizedType):
-            variable_type = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.type_name)
-            variable_arguments = [self.infer_runtime_class_by_node(runtime_method, namespace, argument)
-                                  for argument in type_node.type_arguments]
+            variable_type = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.type_name,
+                                                             is_not_variable=True)
+            variable_arguments = [
+                self.infer_runtime_class_by_node(runtime_method, namespace, argument, is_not_variable=True)
+                for argument in type_node.type_arguments]
             return RuntimeClass.create(
                 package_name=variable_type.package_name,
                 public_class_name=variable_type.class_name,
@@ -531,6 +539,7 @@ class MethodContext(MethodContextBase):
                                                runtime_method: RuntimeMethod,
                                                namespace: NameSpace,
                                                identifier_name: str,
+                                               is_not_variable: bool = False,
                                                need_warning: bool = True
                                                ) -> RuntimeClass:
         """推断出现在当前方法中标识符名称的类型"""
@@ -544,14 +553,15 @@ class MethodContext(MethodContextBase):
         # 【场景】变量名
         # - 识符类型（`Identifier`）节点
         # - 标识符的值在当前层级命名空间中
-        if namespace.has_name(identifier_name):  # TODO 命名空间中不需要包含类属性
+        if is_not_variable is False and namespace.has_name(identifier_name):  # TODO 命名空间中不需要包含类属性
             type_node = namespace.get_name(identifier_name)
             if isinstance(type_node, RuntimeClass):
                 return type_node
             return self.infer_runtime_class_by_node(
                 runtime_method=runtime_method,
                 namespace=namespace,
-                type_node=type_node
+                type_node=type_node,
+                is_not_variable=True
             )
 
         return self.class_context.infer_runtime_class_by_identifier_name(
