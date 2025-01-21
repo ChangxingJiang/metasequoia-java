@@ -156,7 +156,7 @@ class MethodContext(MethodContextBase):
                               statement_node: ast.Tree,
                               outer_runtime_method: Optional[RuntimeMethod] = None,
                               outer_method_param_idx: Optional[int] = None
-                              ) -> Generator[Tuple[RuntimeMethod, List[ast.Expression]], None, None]:
+                              ) -> Generator[Tuple[RuntimeMethod, ast.MethodInvocation], None, None]:
         """获取当前表达式中调用的方法
 
         适配场景：
@@ -192,7 +192,7 @@ class MethodContext(MethodContextBase):
                     if method_name in self.file_context.import_method_hash:
                         res_runtime_method = self.file_context.import_method_hash[method_name]
                         # 调用 import 导入的静态方法
-                        yield res_runtime_method, visit_node.arguments
+                        yield res_runtime_method, visit_node
                     else:
                         # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
                         res_runtime_method = RuntimeMethod(
@@ -205,7 +205,7 @@ class MethodContext(MethodContextBase):
                             method_name=method_name
                         )
                         LOGGER.debug(f"生成调用方法(类型 1): {res_runtime_method}")
-                        yield res_runtime_method, visit_node.arguments
+                        yield res_runtime_method, visit_node
 
                 # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
                 elif isinstance(method_select, ast.MemberSelect):
@@ -216,7 +216,7 @@ class MethodContext(MethodContextBase):
                         method_name=method_select.identifier.name
                     )
                     LOGGER.debug(f"生成调用方法(类型 2): {res_runtime_method}")
-                    yield res_runtime_method, visit_node.arguments
+                    yield res_runtime_method, visit_node
 
                 else:
                     LOGGER.error(f"get_method_invocation, 暂不支持的表达式类型: {visit_node}")
@@ -231,7 +231,7 @@ class MethodContext(MethodContextBase):
                         method_name=method_class_name
                     )
                     LOGGER.debug(f"生成调用方法(类型 3): {res_runtime_method}")
-                    yield res_runtime_method, visit_node.arguments
+                    yield res_runtime_method, visit_node
                 elif isinstance(identifier, ast.ParameterizedType):
                     identifier_type_name = identifier.type_name
                     assert isinstance(identifier_type_name, ast.Identifier)
@@ -251,7 +251,7 @@ class MethodContext(MethodContextBase):
                         method_name=method_class_name
                     )
                     LOGGER.debug(f"生成调用方法(类型 4): {res_runtime_method}")
-                    yield res_runtime_method, visit_node.arguments
+                    yield res_runtime_method, visit_node
                 elif isinstance(identifier, ast.MemberSelect):
                     runtime_class = self.infer_runtime_class_by_node(runtime_method, visit_namespace, identifier,
                                                                      is_type=True)
@@ -259,7 +259,7 @@ class MethodContext(MethodContextBase):
                         belong_class=runtime_class,
                         method_name=identifier.identifier.name
                     )
-                    yield res_runtime_method, visit_node.arguments
+                    yield res_runtime_method, visit_node
                     LOGGER.debug(f"生成调用方法(类型 5): {res_runtime_method}")
                 else:
                     LOGGER.error(f"NewClass 暂不支持的类型: {identifier}")
@@ -788,4 +788,4 @@ class MethodContext(MethodContextBase):
             variable_name=member_select_node.identifier.name
         )
 
-        return self._project_context.get_type_node_by_runtime_variable(runtime_variable)
+        return self._project_context.get_type_runtime_class_by_runtime_variable(runtime_variable)

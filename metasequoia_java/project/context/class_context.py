@@ -30,7 +30,7 @@ class ClassContext(ClassContextBase):
                  outer_class_context: Optional["ClassContextBase"] = None):
         self._project_context = project_context
         self._file_context = file_context
-        self._class_name = class_name
+        self._class_name = class_name  # 如果当前类为匿名类，则为 Anonymous  # TODO 考虑是否有更优方法
         self._class_node = class_node
 
         # 如果当前类为内部类，则指向外部类的上下文管理器，否则为 None
@@ -51,6 +51,9 @@ class ClassContext(ClassContextBase):
         else:
             class_node = file_context.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
             outer_class_context = None
+        
+        if class_node is None:
+            return None
 
         return ClassContext(
             project_context=file_context.project_context,
@@ -118,7 +121,9 @@ class ClassContext(ClassContextBase):
                 return method_info
         return None
 
-    def get_variable_node_by_name(self, variable_name: str) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
+    def get_variable_node_by_name(self,
+                                  variable_name: str,
+                                  need_warning: bool = True) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
         """根据 variable_name 获取类变量所在类的 ClassContext 和抽象语法树节点"""
         # 优先在当前类中寻找属性
         variable_node = self.class_node.get_variable_by_name(variable_name)
@@ -129,7 +134,8 @@ class ClassContext(ClassContextBase):
         for runtime_class in self.get_extends_and_implements():
             class_context = self.project_context.create_class_context_by_runtime_class(runtime_class)
             if class_context is None:
-                LOGGER.warning(f"在项目中找不到 runtime_class: {runtime_class}")
+                if need_warning is True:
+                    LOGGER.warning(f"尝试在父类中获取属性时，在项目中找不到 runtime_class: {runtime_class}")
                 continue
 
             variable_info = class_context.get_variable_node_by_name(variable_name)
@@ -275,7 +281,8 @@ class ClassContext(ClassContextBase):
         # - 标识符类型（`Identifier`）节点
         # - 标识符的值为类（或继承的父类、实现的接口）中的变量名称
         if is_not_variable is False:
-            variable_info = self.get_variable_node_by_name(identifier_name)
+            # 尝试性地寻找类变量，如果需要不到不需要报警，而是由 file_context.infer_runtime_class_by_identifier_name 报警
+            variable_info = self.get_variable_node_by_name(identifier_name, need_warning=False)
             if variable_info is not None:
                 class_context, variable_node = variable_info
                 return class_context.infer_runtime_class_by_node(

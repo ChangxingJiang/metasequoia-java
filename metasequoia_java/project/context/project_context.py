@@ -108,11 +108,13 @@ class ProjectContext(ProjectContextBase):
         return self._project_path
 
     @functools.lru_cache(maxsize=1024)
-    def get_file_node_by_file_path(self, file_path: str) -> ast.CompilationUnit:
+    def get_file_node_by_file_path(self, file_path: str) -> Optional[ast.CompilationUnit]:
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
         if file_path not in self._cache_file_node_to_file_path:
             if not file_path.startswith("outer:"):
                 # 从文件系统中读取 Java 文件
+                if not os.path.exists(file_path):
+                    return None
                 with open(file_path, "r", encoding="UTF-8") as file:
                     self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
             else:
@@ -212,6 +214,9 @@ class ProjectContext(ProjectContextBase):
         class_name_list: List[str] = []
         for file_path in file_path_list:
             file_node: ast.CompilationUnit = self.get_file_node_by_file_path(file_path)
+            if file_node is None:
+                LOGGER.warning(f"获取文件失败: {file_path}")
+                return []
             for class_declaration in file_node.get_class_node_list():
                 if ast.Modifier.PRIVATE not in class_declaration.modifiers.flags:
                     class_name_list.append(class_declaration.name)
@@ -241,6 +246,7 @@ class ProjectContext(ProjectContextBase):
 
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
+    @functools.lru_cache(maxsize=65536)
     def create_file_context_by_runtime_class(self,
                                              runtime_class: Optional[RuntimeClass]
                                              ) -> Optional[FileContextBase]:
@@ -249,6 +255,7 @@ class ProjectContext(ProjectContextBase):
             return None
         return FileContext.create_by_runtime_class(self, runtime_class)
 
+    @functools.lru_cache(maxsize=65536)
     def create_class_context_by_runtime_class(self,
                                               runtime_class: Optional[RuntimeClass]
                                               ) -> Optional[ClassContextBase]:
@@ -258,41 +265,44 @@ class ProjectContext(ProjectContextBase):
             return None
         return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
 
+    @functools.lru_cache(maxsize=65536)
     def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> Optional[MethodContextBase]:
         """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""
+        if runtime_method is None or runtime_method.belong_class is None:
+            return None
         class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
         if class_context is None:
             return None
         return MethodContext.create_by_method_name(class_context, runtime_method.method_name)
 
-    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
-        """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
-        if runtime_variable.belong_class is None:
-            return None
-        file_context = FileContext.create_by_public_class_absolute_name(
-            project_context=self,
-            absolute_name=runtime_variable.belong_class.absolute_name
-        )
-
-        # runtime_variable.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
-        if file_context is None:
+    def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
+        """根据 RuntimeVariable 对象，获取该变量类型的 RuntimeClass 对象"""
+        variable_info = self.get_variable_info_by_runtime_variable(runtime_variable)
+        if variable_info is None:
             res = self.try_get_outer_attribute_type(runtime_variable)
             if res is None:
                 LOGGER.warning(f"在项目外补充信息中，找不到属性类型: "
                                f"variable={runtime_variable.absolute_name}")
             return res
 
-        # runtime_variable.belong_class 在项目中，获取变量类型
-        class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class)
-        variable_info = class_context.get_variable_node_by_name(runtime_variable.variable_name)
-        if variable_info is None:
-            LOGGER.warning(f"获取类属性的抽象语法树节点失败: {runtime_variable}")
-            return None
         variable_class_context, variable_node = variable_info
         return variable_class_context.infer_runtime_class_by_node(
             runtime_class=variable_class_context.get_runtime_class(),
             type_node=variable_node.variable_type
         )
+
+    def get_variable_info_by_runtime_variable(self,
+                                              runtime_variable: RuntimeVariable
+                                              ) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
+        """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
+        class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class)
+        if class_context is None:
+            LOGGER.warning(f"获取类变量的抽象语法树节点失败(类不存在): {runtime_variable}")
+            return None
+        variable_info = class_context.get_variable_node_by_name(runtime_variable.variable_name)
+        if variable_info is None:
+            LOGGER.warning(f"获取类变量的抽象语法树节点失败(变量不存在): {runtime_variable}")
+        return variable_info
 
     def get_runtime_class_by_runtime_method_param(self,
                                                   runtime_method: RuntimeMethod,

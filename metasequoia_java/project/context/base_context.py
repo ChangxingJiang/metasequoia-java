@@ -87,8 +87,14 @@ class ProjectContextBase(abc.ABC):
         """根据 runtimeMethod 对象构造 MethodContext 对象"""
 
     @abc.abstractmethod
-    def get_type_node_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
+    def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 runtimeVariable 返回值的类型，构造 runtimeClass"""
+
+    @abc.abstractmethod
+    def get_variable_info_by_runtime_variable(self,
+                                              runtime_variable: RuntimeVariable
+                                              ) -> Optional[Tuple["ClassContextBase", ast.Variable]]:
+        """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
 
     @abc.abstractmethod
     def get_runtime_class_by_runtime_method_param(self,
@@ -318,7 +324,7 @@ class MethodContextBase(abc.ABC):
                               namespace: NameSpace,
                               statement_node: ast.Tree,
                               outer_runtime_method: Optional[RuntimeMethod] = None
-                              ) -> Generator[Tuple[RuntimeMethod, List[ast.Expression]], None, None]:
+                              ) -> Generator[Tuple[RuntimeMethod, ast.MethodInvocation], None, None]:
         """获取当前表达式中调用的方法"""
 
     @abc.abstractmethod

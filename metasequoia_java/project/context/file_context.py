@@ -229,7 +229,7 @@ class FileContext(FileContextBase):
                 LOGGER.warning(f"无法通过 runtime_class 获取其中包含静态 variable_name 列表: {runtime_class}")
             else:
                 for variable_name in variable_name_list:
-                    self._import_variable_hash[method_name] = RuntimeVariable(
+                    self._import_variable_hash[variable_name] = RuntimeVariable(
                         belong_class=runtime_class,
                         variable_name=variable_name
                     )
