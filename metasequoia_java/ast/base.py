@@ -43,6 +43,12 @@ class Tree(abc.ABC):
 
     @property
     def is_literal(self) -> bool:
+        """是否为字面值节点"""
+        return False
+
+    @property
+    def is_leaf(self) -> bool:
+        """如果是叶子节点则返回 True，否则返回 False"""
         return False
 
     @abc.abstractmethod

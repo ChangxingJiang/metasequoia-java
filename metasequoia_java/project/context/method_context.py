@@ -271,7 +271,7 @@ class MethodContext(MethodContextBase):
                      outer_runtime_method: Optional[RuntimeMethod] = None,
                      outer_method_param_idx: Optional[int] = None
                      ) -> Generator[Tuple[NameSpace, ast.Tree], None, None]:
-        """获取当前表达式中调用的方法
+        """遍历抽象语法树中的所有节点
 
         Parameters
         ----------
@@ -293,10 +293,7 @@ class MethodContext(MethodContextBase):
         yield namespace, ast_node
 
         # 递归结束条件
-        if ast_node.kind in {ast.TreeKind.IDENTIFIER, ast.TreeKind.INT_LITERAL, ast.TreeKind.LONG_LITERAL,
-                             ast.TreeKind.FLOAT_LITERAL, ast.TreeKind.DOUBLE_LITERAL, ast.TreeKind.CHAR_LITERAL,
-                             ast.TreeKind.STRING_LITERAL, ast.TreeKind.BOOLEAN_LITERAL,
-                             ast.TreeKind.NULL_LITERAL}:
+        if ast_node.is_leaf:
             return
 
         # 递归

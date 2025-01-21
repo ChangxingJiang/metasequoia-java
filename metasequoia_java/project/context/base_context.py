@@ -322,6 +322,30 @@ class MethodContextBase(abc.ABC):
         """获取当前表达式中调用的方法"""
 
     @abc.abstractmethod
+    def visitor_tree(self,
+                     runtime_method: RuntimeMethod,
+                     namespace: NameSpace,
+                     ast_node: ast.Tree,
+                     outer_runtime_method: Optional[RuntimeMethod] = None,
+                     outer_method_param_idx: Optional[int] = None
+                     ) -> Generator[Tuple[NameSpace, ast.Tree], None, None]:
+        """遍历抽象语法树中的所有节点
+
+        Parameters
+        ----------
+        runtime_method : RuntimeMethod
+            当前方法所在的方法上下文管理器
+        namespace : NameSpace
+            当前方法所在位置的命名空间
+        ast_node : ast.Tree
+            待分析的抽象语法树节点
+        outer_runtime_method : Optional[RuntimeClass], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的 RuntimeMethod 对象，用于实现 lambda 语句的类型推断
+        outer_method_param_idx : Optional[int], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的参数下标，用于实现 lambda 语句的类型推断
+        """
+
+    @abc.abstractmethod
     def search_node(self,
                     statement_node: ast.Tree,
                     search_type: Type,

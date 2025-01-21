@@ -728,6 +728,11 @@ class Identifier(Expression):
             source=None
         )
 
+    @property
+    def is_leaf(self) -> bool:
+        """如果是叶子节点则返回 True，否则返回 False"""
+        return True
+
     def generate(self) -> str:
         return self.name
 
@@ -1667,6 +1672,11 @@ class Literal(Expression, abc.ABC):
 
     @property
     def is_literal(self) -> bool:
+        return True
+
+    @property
+    def is_leaf(self) -> bool:
+        """如果是叶子节点则返回 True，否则返回 False"""
         return True
 
 
