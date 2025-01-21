@@ -142,10 +142,6 @@ class MethodContext(MethodContextBase):
 
     # ------------------------------ 命名空间管理器 ------------------------------
 
-    def get_simple_name_space(self) -> SimpleNameSpace:
-        """返回方法参数变量和方法代码块中变量的单层命名空间"""
-        return self._simple_name_space
-
     def get_name_space(self) -> NameSpace:
         """返回包含类变量、方法参数变量和方法代码块中变量的命名空间"""
         name_space = self._class_context.get_name_space()
@@ -179,28 +175,140 @@ class MethodContext(MethodContextBase):
             待分析的抽象语法树节点
         outer_runtime_method : Optional[RuntimeClass], default = None
             如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的 RuntimeMethod 对象，用于实现 lambda 语句的类型推断
+        outer_method_param_idx : Optional[int], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的参数下标，用于实现 lambda 语句的类型推断
         """
-        # -------------------- 递归结束条件 --------------------
-        if statement_node is None:
+        for visit_namespace, visit_node in self.visitor_tree(runtime_method, namespace, statement_node):
+            if not isinstance(visit_namespace, NameSpace):
+                print(visit_namespace, visit_node)
+
+            # -------------------- 递归元素产出 --------------------
+            if isinstance(visit_node, ast.MethodInvocation):
+
+                method_select = visit_node.method_select
+
+                if isinstance(method_select, ast.Identifier):
+                    method_name = method_select.name
+                    if method_name in self.file_context.import_method_hash:
+                        res_runtime_method = self.file_context.import_method_hash[method_name]
+                        # 调用 import 导入的静态方法
+                        yield res_runtime_method, visit_node.arguments
+                    else:
+                        # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
+                        res_runtime_method = RuntimeMethod(
+                            belong_class=RuntimeClass.create(
+                                package_name=self.file_context.package_name,
+                                public_class_name=self.file_context.public_class_name,
+                                class_name=self.class_context.class_name,
+                                type_arguments=None  # TODO 待改为当前类构造时的泛型
+                            ),
+                            method_name=method_name
+                        )
+                        LOGGER.debug(f"生成调用方法(类型 1): {res_runtime_method}")
+                        yield res_runtime_method, visit_node.arguments
+
+                # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
+                elif isinstance(method_select, ast.MemberSelect):
+                    expression = method_select.expression
+                    runtime_class = self.infer_runtime_class_by_node(runtime_method, visit_namespace, expression)
+                    res_runtime_method = RuntimeMethod(
+                        belong_class=runtime_class,
+                        method_name=method_select.identifier.name
+                    )
+                    LOGGER.debug(f"生成调用方法(类型 2): {res_runtime_method}")
+                    yield res_runtime_method, visit_node.arguments
+
+                else:
+                    LOGGER.error(f"get_method_invocation, 暂不支持的表达式类型: {visit_node}")
+
+            elif isinstance(visit_node, ast.NewClass):
+                identifier = visit_node.identifier
+                if isinstance(identifier, ast.Identifier):
+                    method_class_name = identifier.name
+                    method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
+                    res_runtime_method = RuntimeMethod(
+                        belong_class=method_runtime_class,
+                        method_name=method_class_name
+                    )
+                    LOGGER.debug(f"生成调用方法(类型 3): {res_runtime_method}")
+                    yield res_runtime_method, visit_node.arguments
+                elif isinstance(identifier, ast.ParameterizedType):
+                    identifier_type_name = identifier.type_name
+                    assert isinstance(identifier_type_name, ast.Identifier)
+                    method_class_name = identifier_type_name.name
+                    method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
+                    type_arguments = [
+                        self.infer_runtime_class_by_node(runtime_method, visit_namespace, type_argument)
+                        for type_argument in identifier.type_arguments
+                    ]
+                    res_runtime_method = RuntimeMethod(
+                        belong_class=RuntimeClass.create(
+                            package_name=method_runtime_class.package_name,
+                            public_class_name=method_runtime_class.public_class_name,
+                            class_name=method_runtime_class.class_name,
+                            type_arguments=type_arguments
+                        ),
+                        method_name=method_class_name
+                    )
+                    LOGGER.debug(f"生成调用方法(类型 4): {res_runtime_method}")
+                    yield res_runtime_method, visit_node.arguments
+                elif isinstance(identifier, ast.MemberSelect):
+                    runtime_class = self.infer_runtime_class_by_node(runtime_method, visit_namespace, identifier,
+                                                                     is_type=True)
+                    res_runtime_method = RuntimeMethod(
+                        belong_class=runtime_class,
+                        method_name=identifier.identifier.name
+                    )
+                    yield res_runtime_method, visit_node.arguments
+                    LOGGER.debug(f"生成调用方法(类型 5): {res_runtime_method}")
+                else:
+                    LOGGER.error(f"NewClass 暂不支持的类型: {identifier}")
+
+    def visitor_tree(self,
+                     runtime_method: RuntimeMethod,
+                     namespace: NameSpace,
+                     ast_node: ast.Tree,
+                     outer_runtime_method: Optional[RuntimeMethod] = None,
+                     outer_method_param_idx: Optional[int] = None
+                     ) -> Generator[Tuple[NameSpace, ast.Tree], None, None]:
+        """获取当前表达式中调用的方法
+
+        Parameters
+        ----------
+        runtime_method : RuntimeMethod
+            当前方法所在的方法上下文管理器
+        namespace : NameSpace
+            当前方法所在位置的命名空间
+        ast_node : ast.Tree
+            待分析的抽象语法树节点
+        outer_runtime_method : Optional[RuntimeClass], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的 RuntimeMethod 对象，用于实现 lambda 语句的类型推断
+        outer_method_param_idx : Optional[int], default = None
+            如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的参数下标，用于实现 lambda 语句的类型推断
+        """
+        if ast_node is None:
             return
 
-        if statement_node.kind in {ast.TreeKind.IDENTIFIER, ast.TreeKind.INT_LITERAL, ast.TreeKind.LONG_LITERAL,
-                                   ast.TreeKind.FLOAT_LITERAL, ast.TreeKind.DOUBLE_LITERAL, ast.TreeKind.CHAR_LITERAL,
-                                   ast.TreeKind.STRING_LITERAL, ast.TreeKind.BOOLEAN_LITERAL,
-                                   ast.TreeKind.NULL_LITERAL}:
+        # 产出递归元素
+        yield namespace, ast_node
+
+        # 递归结束条件
+        if ast_node.kind in {ast.TreeKind.IDENTIFIER, ast.TreeKind.INT_LITERAL, ast.TreeKind.LONG_LITERAL,
+                             ast.TreeKind.FLOAT_LITERAL, ast.TreeKind.DOUBLE_LITERAL, ast.TreeKind.CHAR_LITERAL,
+                             ast.TreeKind.STRING_LITERAL, ast.TreeKind.BOOLEAN_LITERAL,
+                             ast.TreeKind.NULL_LITERAL}:
             return
 
-        # -------------------- 递归元素产出 --------------------
-        if isinstance(statement_node, ast.MethodInvocation):
+        # 递归
+        if isinstance(ast_node, ast.MethodInvocation):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.method_select)
 
-            method_select = statement_node.method_select
+            method_select = ast_node.method_select
 
             if isinstance(method_select, ast.Identifier):
                 method_name = method_select.name
                 if method_name in self.file_context.import_method_hash:
                     res_runtime_method = self.file_context.import_method_hash[method_name]
-                    # 调用 import 导入的静态方法
-                    yield res_runtime_method, statement_node.arguments
                 else:
                     # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
                     res_runtime_method = RuntimeMethod(
@@ -212,8 +320,6 @@ class MethodContext(MethodContextBase):
                         ),
                         method_name=method_name
                     )
-                    LOGGER.debug(f"生成调用方法(类型 1): {res_runtime_method}")
-                    yield res_runtime_method, statement_node.arguments
 
             # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
             elif isinstance(method_select, ast.MemberSelect):
@@ -223,26 +329,19 @@ class MethodContext(MethodContextBase):
                     belong_class=runtime_class,
                     method_name=method_select.identifier.name
                 )
-                LOGGER.debug(f"生成调用方法(类型 2): {res_runtime_method}")
-                yield res_runtime_method, statement_node.arguments
-
-                # 继续递归寻找调用的方法
-                yield from self.get_method_invocation(runtime_method, namespace, expression)
 
             else:
                 res_runtime_method = None
-                LOGGER.error(f"get_method_invocation, 暂不支持的表达式类型: {statement_node}")
+                LOGGER.error(f"visitor_tree, 暂不支持的表达式类型: {ast_node}")
 
             # 递归处理方法参数
-            for idx, argument in enumerate(statement_node.arguments):
-                yield from self.get_method_invocation(runtime_method, namespace, argument,
-                                                      outer_runtime_method=res_runtime_method,
-                                                      outer_method_param_idx=idx)
+            for idx, argument in enumerate(ast_node.arguments):
+                yield from self.visitor_tree(runtime_method, namespace, argument,
+                                             outer_runtime_method=res_runtime_method,
+                                             outer_method_param_idx=idx)
 
-            return
-
-        if isinstance(statement_node, ast.NewClass):
-            identifier = statement_node.identifier
+        elif isinstance(ast_node, ast.NewClass):
+            identifier = ast_node.identifier
             if isinstance(identifier, ast.Identifier):
                 method_class_name = identifier.name
                 method_runtime_class = self.file_context.infer_runtime_class_by_identifier_name(method_class_name)
@@ -250,8 +349,6 @@ class MethodContext(MethodContextBase):
                     belong_class=method_runtime_class,
                     method_name=method_class_name
                 )
-                LOGGER.debug(f"生成调用方法(类型 3): {res_runtime_method}")
-                yield res_runtime_method, statement_node.arguments
             elif isinstance(identifier, ast.ParameterizedType):
                 identifier_type_name = identifier.type_name
                 assert isinstance(identifier_type_name, ast.Identifier)
@@ -270,125 +367,119 @@ class MethodContext(MethodContextBase):
                     ),
                     method_name=method_class_name
                 )
-                LOGGER.debug(f"生成调用方法(类型 4): {res_runtime_method}")
-                yield res_runtime_method, statement_node.arguments
             elif isinstance(identifier, ast.MemberSelect):
                 runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, identifier, is_type=True)
                 res_runtime_method = RuntimeMethod(
                     belong_class=runtime_class,
                     method_name=identifier.identifier.name
                 )
-                yield res_runtime_method, statement_node.arguments
-                LOGGER.debug(f"生成调用方法(类型 5): {res_runtime_method}")
             else:
+                res_runtime_method = None
                 LOGGER.error(f"NewClass 暂不支持的类型: {identifier}")
 
             # 递归处理方法参数
-            for idx, argument in enumerate(statement_node.arguments):
-                yield from self.get_method_invocation(runtime_method, namespace, argument,
-                                                      outer_runtime_method=res_runtime_method,
-                                                      outer_method_param_idx=idx)
+            for idx, argument in enumerate(ast_node.arguments):
+                yield from self.visitor_tree(runtime_method, namespace, argument,
+                                             outer_runtime_method=res_runtime_method,
+                                             outer_method_param_idx=idx)
 
-            return
-
-        # -------------------- 其他递归条件 --------------------
-        if isinstance(statement_node, ast.InstanceOf):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.instance_type)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.pattern)
-        elif isinstance(statement_node, ast.TypeCast):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.cast_type)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, (ast.Break, ast.Continue)):
+        elif isinstance(ast_node, ast.InstanceOf):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.instance_type)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.pattern)
+        elif isinstance(ast_node, ast.TypeCast):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.cast_type)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, (ast.Break, ast.Continue)):
             return  # break 语句中和 contain 语句中不会调用其他方法
-        elif isinstance(statement_node, ast.Throw):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.Variable):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.initializer)
-        elif isinstance(statement_node, ast.MemberSelect):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.ExpressionStatement):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.Assignment):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.If):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.condition)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.then_statement)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.else_statement)
-        elif isinstance(statement_node, ast.Block):
-            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.statements))
-            for sub_node in statement_node.statements:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
+        elif isinstance(ast_node, ast.Throw):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.Variable):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.initializer)
+        elif isinstance(ast_node, ast.MemberSelect):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.ExpressionStatement):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.Assignment):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.If):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.condition)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.then_statement)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.else_statement)
+        elif isinstance(ast_node, ast.Block):
+            namespace.add_space(SimpleNameSpace.create_by_statements(ast_node.statements))
+            for sub_node in ast_node.statements:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.Parenthesized):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.ArrayAccess):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.index)
-        elif isinstance(statement_node, ast.Binary):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.left_operand)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.right_operand)
-        elif isinstance(statement_node, ast.Return):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.ConditionalExpression):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.condition)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.true_expression)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.false_expression)
-        elif isinstance(statement_node, ast.EnhancedForLoop):
-            namespace.add_space(SimpleNameSpace.create_by_variable(statement_node.variable))
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.variable)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.statement)
+        elif isinstance(ast_node, ast.Parenthesized):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.ArrayAccess):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.index)
+        elif isinstance(ast_node, ast.Binary):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.left_operand)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.right_operand)
+        elif isinstance(ast_node, ast.Return):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.ConditionalExpression):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.condition)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.true_expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.false_expression)
+        elif isinstance(ast_node, ast.EnhancedForLoop):
+            namespace.add_space(SimpleNameSpace.create_by_variable(ast_node.variable))
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.variable)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.statement)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.Unary):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.Try):
-            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.resources))
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.block)
-            for sub_node in statement_node.catches:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.finally_block)
-            for sub_node in statement_node.resources:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
+        elif isinstance(ast_node, ast.Unary):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.Try):
+            namespace.add_space(SimpleNameSpace.create_by_statements(ast_node.resources))
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.block)
+            for sub_node in ast_node.catches:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.finally_block)
+            for sub_node in ast_node.resources:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.Catch):
-            namespace.add_space(SimpleNameSpace.create_by_variable(statement_node.parameter))
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.block)
+        elif isinstance(ast_node, ast.Catch):
+            namespace.add_space(SimpleNameSpace.create_by_variable(ast_node.parameter))
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.block)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.Switch):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-            for case_node in statement_node.cases:
-                yield from self.get_method_invocation(runtime_method, namespace, case_node)
-        elif isinstance(statement_node, ast.Case):
-            if statement_node.expressions is not None:
-                for sub_node in statement_node.expressions:
-                    yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            for sub_node in statement_node.labels:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.guard)
-            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.statements))
-            for sub_node in statement_node.statements:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.body)
+        elif isinstance(ast_node, ast.Switch):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            for case_node in ast_node.cases:
+                yield from self.visitor_tree(runtime_method, namespace, case_node)
+        elif isinstance(ast_node, ast.Case):
+            if ast_node.expressions is not None:
+                for sub_node in ast_node.expressions:
+                    yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            for sub_node in ast_node.labels:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.guard)
+            namespace.add_space(SimpleNameSpace.create_by_statements(ast_node.statements))
+            for sub_node in ast_node.statements:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.body)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.PatternCaseLabel):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.pattern)
-        elif isinstance(statement_node, ast.ConstantCaseLabel):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.DefaultCaseLabel):
+        elif isinstance(ast_node, ast.PatternCaseLabel):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.pattern)
+        elif isinstance(ast_node, ast.ConstantCaseLabel):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.DefaultCaseLabel):
             return  # switch 语句的 default 子句不会调用其他方法
-        elif isinstance(statement_node, ast.ForLoop):
-            namespace.add_space(SimpleNameSpace.create_by_statements(statement_node.initializer))
-            for sub_node in statement_node.initializer:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.condition)
-            for sub_node in statement_node.update:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.statement)
+        elif isinstance(ast_node, ast.ForLoop):
+            namespace.add_space(SimpleNameSpace.create_by_statements(ast_node.initializer))
+            for sub_node in ast_node.initializer:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.condition)
+            for sub_node in ast_node.update:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.statement)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.PrimitiveType):
+        elif isinstance(ast_node, ast.PrimitiveType):
             return  # 原生类型中不会调用其他方法
-        elif isinstance(statement_node, ast.LambdaExpression):
+        elif isinstance(ast_node, ast.LambdaExpression):
             simple_name_space = SimpleNameSpace()
             # 获取 lambda 表达式对应的参数类型
             lambda_runtime_class = self.project_context.get_runtime_class_by_runtime_method_param(
@@ -400,52 +491,52 @@ class MethodContext(MethodContextBase):
                 runtime_class=lambda_runtime_class
             )
             if lambda_param_type_list is not None:
-                if len(statement_node.parameters) == len(lambda_param_type_list):
-                    for sub_idx, sub_node in enumerate(statement_node.parameters):
+                if len(ast_node.parameters) == len(lambda_param_type_list):
+                    for sub_idx, sub_node in enumerate(ast_node.parameters):
                         if sub_node.variable_type is not None:
                             simple_name_space.set_name(sub_node.name, sub_node.variable_type)
                         else:
                             simple_name_space.set_name(sub_node.name, lambda_param_type_list[sub_idx])
                 else:
                     LOGGER.warning(f"lambda 表达式参数数量异常, position={outer_runtime_method}, "
-                                   f"expected: {len(lambda_param_type_list)}, actual={len(statement_node.parameters)}")
+                                   f"expected: {len(lambda_param_type_list)}, actual={len(ast_node.parameters)}")
             else:
                 LOGGER.warning(f"无法获取 lambda 表达式的参数类型: {outer_runtime_method}")
             namespace.add_space(simple_name_space)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.body)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.body)
             namespace.pop_space()
-        elif isinstance(statement_node, ast.WhileLoop):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.condition)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.statement)
-        elif isinstance(statement_node, ast.NewArray):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.array_type)
-            for sub_node in statement_node.dimensions:
-                yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            if statement_node.initializers is not None:
-                for sub_node in statement_node.initializers:
-                    yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            if statement_node.annotations is not None:
-                for sub_node in statement_node.annotations:
-                    yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-            if statement_node.dim_annotations is not None:
-                for node_list in statement_node.dim_annotations:
+        elif isinstance(ast_node, ast.WhileLoop):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.condition)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.statement)
+        elif isinstance(ast_node, ast.NewArray):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.array_type)
+            for sub_node in ast_node.dimensions:
+                yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            if ast_node.initializers is not None:
+                for sub_node in ast_node.initializers:
+                    yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            if ast_node.annotations is not None:
+                for sub_node in ast_node.annotations:
+                    yield from self.visitor_tree(runtime_method, namespace, sub_node)
+            if ast_node.dim_annotations is not None:
+                for node_list in ast_node.dim_annotations:
                     for sub_node in node_list:
-                        yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-        elif isinstance(statement_node, ast.MemberReference):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-            if statement_node.type_arguments is not None:
-                for sub_node in statement_node.type_arguments:
-                    yield from self.get_method_invocation(runtime_method, namespace, sub_node)
-        elif isinstance(statement_node, ast.CompoundAssignment):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.variable)
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.expression)
-        elif isinstance(statement_node, ast.EmptyStatement):
+                        yield from self.visitor_tree(runtime_method, namespace, sub_node)
+        elif isinstance(ast_node, ast.MemberReference):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            if ast_node.type_arguments is not None:
+                for sub_node in ast_node.type_arguments:
+                    yield from self.visitor_tree(runtime_method, namespace, sub_node)
+        elif isinstance(ast_node, ast.CompoundAssignment):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.variable)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+        elif isinstance(ast_node, ast.EmptyStatement):
             return  # 跳过空表达式
-        elif isinstance(statement_node, ast.Assert):
-            yield from self.get_method_invocation(runtime_method, namespace, statement_node.assertion)
+        elif isinstance(ast_node, ast.Assert):
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.assertion)
         else:
-            LOGGER.error(f"get_method_invocation: 未知表达式类型: {statement_node}")
-            yield None
+            LOGGER.error(f"visitor_tree: 未知表达式类型: {ast_node}")
+            yield None, None
 
     def search_node(self,
                     statement_node: ast.Tree,

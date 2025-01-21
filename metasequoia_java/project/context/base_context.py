@@ -307,14 +307,10 @@ class MethodContextBase(abc.ABC):
     # ------------------------------ 命名空间管理器 ------------------------------
 
     @abc.abstractmethod
-    def get_simple_name_space(self) -> SimpleNameSpace:
-        """返回方法参数变量和方法代码块中变量的单层命名空间"""
-
-    @abc.abstractmethod
     def get_name_space(self) -> NameSpace:
         """返回包含类变量、方法参数变量和方法代码块中变量的命名空间"""
 
-    # ------------------------------ 方法调用遍历器 ------------------------------
+    # ------------------------------ 抽象语法树遍历器 ------------------------------
 
     @abc.abstractmethod
     def get_method_invocation(self,
