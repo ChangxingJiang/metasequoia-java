@@ -57,22 +57,6 @@ class FileContext(FileContextBase):
             file_node=file_node
         )
 
-    @staticmethod
-    def create_by_public_class_absolute_name(project_context: ProjectContextBase,
-                                             absolute_name: str
-                                             ) -> Optional["FileContext"]:
-        """使用公有类的绝对引用路径构造 FileContext"""
-        package_name, class_name = split_last_name_from_absolute_name(absolute_name)
-        file_node: ast.CompilationUnit = project_context.get_file_node_by_absolute_name(absolute_name)
-        if file_node is None:
-            return None
-        return FileContext(
-            project_context=project_context,
-            package_name=package_name,
-            public_class_name=class_name,
-            file_node=file_node
-        )
-
     @property
     def project_context(self) -> ProjectContextBase:
         """返回所属项目上下文管理器"""

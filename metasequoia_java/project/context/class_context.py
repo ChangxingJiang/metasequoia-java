@@ -63,20 +63,6 @@ class ClassContext(ClassContextBase):
             outer_class_context=outer_class_context
         )
 
-    @staticmethod
-    def create_by_public_class(file_context: FileContextBase) -> Optional["ClassContext"]:
-        if file_context is None:
-            return None
-        class_node = file_context.get_public_class_declaration()
-        if class_node is None:
-            return None
-        return ClassContext(
-            project_context=file_context.project_context,
-            file_context=file_context,
-            class_name=file_context.public_class_name,
-            class_node=class_node
-        )
-
     @property
     def project_context(self) -> ProjectContextBase:
         """返回所属项目上下文管理器"""
