@@ -92,12 +92,6 @@ class FileContext(FileContextBase):
         """返回静态方法引用映射"""
         return self._import_method_hash
 
-    # ------------------------------ class 层级处理方法 ------------------------------
-
-    def get_public_class_declaration(self) -> ast.Class:
-        """返回公有类的抽象语法树节点"""
-        return self.file_node.get_public_class()
-
     # ------------------------------ 引用映射管理器 ------------------------------
 
     def _init_import_hash(self) -> None:

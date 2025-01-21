@@ -174,12 +174,6 @@ class FileContextBase(abc.ABC):
     def import_method_hash(self) -> Dict[str, RuntimeMethod]:
         """返回静态方法引用映射"""
 
-    # ------------------------------ class 层级处理方法 ------------------------------
-
-    @abc.abstractmethod
-    def get_public_class_declaration(self) -> ast.Class:
-        """返回公有类的抽象语法树节点"""
-
     # ------------------------------ 元素类型推断 ------------------------------
 
     @abc.abstractmethod
@@ -300,11 +294,6 @@ class MethodContextBase(abc.ABC):
     @abc.abstractmethod
     def method_node(self) -> ast.Method:
         """返回方法的抽象语法树节点"""
-
-    @property
-    @abc.abstractmethod
-    def block_statements(self) -> List[ast.Statement]:
-        """获取代码块中的语句列表"""
 
     @abc.abstractmethod
     def get_runtime_method(self) -> RuntimeMethod:

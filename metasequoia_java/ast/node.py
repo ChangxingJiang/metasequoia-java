@@ -2031,6 +2031,13 @@ class Method(Tree):
             source=source
         )
 
+    @property
+    def block_statements(self) -> List[Statement]:
+        """获取代码块中的语句列表"""
+        if self.block is None:
+            return []
+        return self.block.statements
+
     def generate(self) -> str:
         """TODO"""
 

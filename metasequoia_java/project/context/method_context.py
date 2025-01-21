@@ -126,13 +126,6 @@ class MethodContext(MethodContextBase):
         """返回方法的抽象语法树节点"""
         return self._method_node
 
-    @property
-    def block_statements(self) -> List[ast.Statement]:
-        """获取代码块中的语句列表"""
-        if self.method_node.block is None:
-            return []
-        return self.method_node.block.statements
-
     def get_runtime_method(self) -> RuntimeMethod:
         """返回当前方法上下文对应的 RuntimeMethod 对象"""
         return RuntimeMethod(
