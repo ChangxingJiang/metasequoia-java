@@ -1977,6 +1977,29 @@ class MethodInvocation(Expression):
         arguments = generate_tree_list(self.arguments, sep=Separator.COMMA)
         return f"{self.method_select.generate()}{type_arguments}({arguments})"
 
+    @property
+    def n_argument(self) -> int:
+        """返回方法的实参数量"""
+        return len(self.arguments)
+
+    @property
+    def method_name(self) -> str:
+        """返回方法名称"""
+        if isinstance(self.method_select, Identifier):
+            return self.method_select.name
+        if isinstance(self.method_select, MemberSelect):
+            return self.method_select.identifier.name
+        raise KeyError("cannot get method_name from node")  # TODO 待验证类型
+
+    @property
+    def belong_expression(self) -> Optional[Expression]:
+        """返回方法所属的表达式，如果方法前没有表达式则返回 None"""
+        if isinstance(self.method_select, Identifier):
+            return None
+        if isinstance(self.method_select, MemberSelect):
+            return self.method_select.expression
+        raise KeyError("cannot get belong_expression from node")  # TODO 待验证类型
+
 
 @dataclasses.dataclass(slots=True)
 class Method(Tree):
