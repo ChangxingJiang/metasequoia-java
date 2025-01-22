@@ -61,26 +61,34 @@ class ProjectContextBase(abc.ABC):
         """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
 
     @abc.abstractmethod
-    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass) -> ast.CompilationUnit:
+    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass,
+                                       need_warning: bool = True
+                                       ) -> ast.CompilationUnit:
         """根据 RuntimeClass 对象构造类所在文件的抽象语法树节点"""
 
     @abc.abstractmethod
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
-                                                 class_name: str
+                                                 class_name: str,
+                                                 need_warning: bool = True
                                                  ) -> Optional[ast.CompilationUnit]:
-        """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
+        """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点"""
 
     # ------------------------------ 项目全局搜索方法 ------------------------------
 
     @abc.abstractmethod
-    def create_file_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> Optional[
-        "FileContextBase"]:
-        """根据 RuntimeClass 对象，构造类所在的文件的 FileContext 对象，如果不在当前项目中则返回 None"""
+    def create_file_context_by_runtime_class(self,
+                                             runtime_class: Optional[RuntimeClass],
+                                             need_warning: bool = True
+                                             ) -> Optional["FileContextBase"]:
+        """尝试根据 RuntimeClass 对象构造公有类所在文件的 FileContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
 
     @abc.abstractmethod
-    def create_class_context_by_runtime_class(self, runtime_class: Optional[RuntimeClass]) -> "ClassContextBase":
-        """根据 runtimeClass 对象，构造类的 ClassContext 对象，如果不在当前项目中则返回 None"""
+    def create_class_context_by_runtime_class(self,
+                                              runtime_class: Optional[RuntimeClass],
+                                              need_warning: bool = True
+                                              ) -> Optional["ClassContextBase"]:
+        """尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
 
     @abc.abstractmethod
     def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> "MethodContextBase":

@@ -121,17 +121,21 @@ class ProjectContext(ProjectContextBase):
         return self.get_file_node_by_package_name_class_name(package_name, class_name)
 
     @functools.lru_cache(maxsize=1024)
-    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass) -> ast.CompilationUnit:
+    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass,
+                                       need_warning: bool = True
+                                       ) -> ast.CompilationUnit:
         """根据 RuntimeClass 对象构造类所在文件的抽象语法树节点"""
         return self.get_file_node_by_package_name_class_name(
             package_name=runtime_class.package_name,
-            class_name=runtime_class.public_class_name
+            class_name=runtime_class.public_class_name,
+            need_warning=need_warning
         )
 
     @functools.lru_cache(maxsize=1024)
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
-                                                 class_name: str
+                                                 class_name: str,
+                                                 need_warning: bool = True
                                                  ) -> Optional[ast.CompilationUnit]:
         """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点
 
@@ -153,12 +157,14 @@ class ProjectContext(ProjectContextBase):
             return self.get_file_node_by_file_path(file_path_list[0])
 
         if len(file_path_list) > 1:
-            LOGGER.warning(f"公有类对应多个 Java 文件: package_name={package_name}, class_name={class_name}")
+            if need_warning:
+                LOGGER.warning(f"公有类对应多个 Java 文件: package_name={package_name}, class_name={class_name}")
             return None
 
         file_path = f"outer:{package_name}.{class_name}.java"  # 项目外部 Java 源码文件路径
         if file_path not in self._outer_java_file:
-            LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={class_name}")
+            if need_warning:
+                LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={class_name}")
             return None
         return self.get_file_node_by_file_path(file_path)
 
@@ -251,19 +257,21 @@ class ProjectContext(ProjectContextBase):
 
     @functools.lru_cache(maxsize=65536)
     def create_file_context_by_runtime_class(self,
-                                             runtime_class: Optional[RuntimeClass]
+                                             runtime_class: Optional[RuntimeClass],
+                                             need_warning: bool = True
                                              ) -> Optional[FileContextBase]:
-        """根据 RuntimeClass 对象，构造类所在的文件的 FileContext 对象，如果不在当前项目中则返回 None"""
+        """尝试根据 RuntimeClass 对象构造公有类所在文件的 FileContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
         if runtime_class is None:
             return None
-        return FileContext.create_by_runtime_class(self, runtime_class)
+        return FileContext.create_by_runtime_class(self, runtime_class, need_warning=need_warning)
 
     @functools.lru_cache(maxsize=65536)
     def create_class_context_by_runtime_class(self,
-                                              runtime_class: Optional[RuntimeClass]
+                                              runtime_class: Optional[RuntimeClass],
+                                              need_warning: bool = True
                                               ) -> Optional[ClassContextBase]:
-        """根据 runtimeClass 对象，构造类的 ClassContext 对象，如果不在当前项目中则返回 None"""
-        file_context = self.create_file_context_by_runtime_class(runtime_class)
+        """尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
+        file_context = self.create_file_context_by_runtime_class(runtime_class, need_warning=need_warning)
         if file_context is None:
             return None
         return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
@@ -335,7 +343,11 @@ class ProjectContext(ProjectContextBase):
         if runtime_method.method_name == "equals":
             return RuntimeClass.create_by_public_class_absolute_name("java.lang.Boolean")
 
-        class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
+        # 尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None
+        class_context = self.create_class_context_by_runtime_class(
+            runtime_class=runtime_method.belong_class,
+            need_warning=False
+        )
 
         # runtime_method.belong_class 不在项目中，尝试通过项目外已知方法返回值类型获取
         if class_context is None:
