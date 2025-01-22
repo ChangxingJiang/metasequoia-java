@@ -81,8 +81,10 @@ class ProjectContextBase(abc.ABC):
         """尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
 
     @abc.abstractmethod
-    def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> "MethodContextBase":
-        """根据 runtimeMethod 对象构造 MethodContext 对象"""
+    def create_method_context_by_runtime_method(self,
+                                                runtime_method: Optional[RuntimeMethod],
+                                                need_warning: bool = True) -> Optional["MethodContextBase"]:
+        """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""
 
     @abc.abstractmethod
     def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
@@ -90,7 +92,8 @@ class ProjectContextBase(abc.ABC):
 
     @abc.abstractmethod
     def get_variable_info_by_runtime_variable(self,
-                                              runtime_variable: RuntimeVariable
+                                              runtime_variable: RuntimeVariable,
+                                              need_warning: bool = True
                                               ) -> Optional[Tuple["ClassContextBase", ast.Variable]]:
         """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
 

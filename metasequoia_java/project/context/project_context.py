@@ -19,7 +19,6 @@ from metasequoia_java.project.elements import RuntimeClass
 from metasequoia_java.project.elements import RuntimeMethod
 from metasequoia_java.project.elements import RuntimeVariable
 from metasequoia_java.project.name_space import NameSpace
-from metasequoia_java.project.utils import split_last_name_from_absolute_name
 
 
 class ProjectContext(ProjectContextBase):
@@ -271,18 +270,23 @@ class ProjectContext(ProjectContextBase):
         return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
 
     @functools.lru_cache(maxsize=65536)
-    def create_method_context_by_runtime_method(self, runtime_method: RuntimeMethod) -> Optional[MethodContextBase]:
+    def create_method_context_by_runtime_method(self,
+                                                runtime_method: Optional[RuntimeMethod],
+                                                need_warning: bool = True) -> Optional[MethodContextBase]:
         """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""
         if runtime_method is None or runtime_method.belong_class is None:
             return None
-        class_context = self.create_class_context_by_runtime_class(runtime_method.belong_class)
+        class_context = self.create_class_context_by_runtime_class(
+            runtime_class=runtime_method.belong_class,
+            need_warning=need_warning
+        )
         if class_context is None:
             return None
         return MethodContext.create_by_method_name(class_context, runtime_method.method_name)
 
     def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 RuntimeVariable 对象，获取该变量类型的 RuntimeClass 对象"""
-        variable_info = self.get_variable_info_by_runtime_variable(runtime_variable)
+        variable_info = self.get_variable_info_by_runtime_variable(runtime_variable, need_warning=False)
         if variable_info is None:
             res = self.try_get_outer_attribute_type(runtime_variable)
             if res is None:
@@ -297,10 +301,11 @@ class ProjectContext(ProjectContextBase):
         )
 
     def get_variable_info_by_runtime_variable(self,
-                                              runtime_variable: RuntimeVariable
+                                              runtime_variable: RuntimeVariable,
+                                              need_warning: bool = True
                                               ) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
         """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
-        class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class)
+        class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class, need_warning=False)
         if class_context is None:
             LOGGER.warning(f"获取类变量的抽象语法树节点失败(类不存在): {runtime_variable}")
             return None
@@ -314,7 +319,7 @@ class ProjectContext(ProjectContextBase):
                                                   param_idx: int
                                                   ) -> Optional[RuntimeClass]:
         """根据 RuntimeMethod 对象，返回其中第 param_idx 个参数的类型"""
-        method_context = self.create_method_context_by_runtime_method(runtime_method)
+        method_context = self.create_method_context_by_runtime_method(runtime_method, need_warning=False)
         if method_context is None:
             res = self.try_get_outer_method_param_type(runtime_method, param_idx)
             if res is None:

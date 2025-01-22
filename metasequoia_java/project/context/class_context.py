@@ -97,7 +97,10 @@ class ClassContext(ClassContextBase):
 
         # 尝试在父类中寻找方法（原则上只会有一个父类中包含）
         for runtime_class in self.get_extends_and_implements():
-            class_context = self.project_context.create_class_context_by_runtime_class(runtime_class)
+            class_context = self.project_context.create_class_context_by_runtime_class(
+                runtime_class=runtime_class,
+                need_warning=False
+            )
             if class_context is None:
                 LOGGER.warning(f"在项目中找不到 runtime_class: {runtime_class}")
                 continue
@@ -118,7 +121,10 @@ class ClassContext(ClassContextBase):
 
         # 尝试在父类中寻找属性
         for runtime_class in self.get_extends_and_implements():
-            class_context = self.project_context.create_class_context_by_runtime_class(runtime_class)
+            class_context = self.project_context.create_class_context_by_runtime_class(
+                runtime_class=runtime_class,
+                need_warning=False
+            )
             if class_context is None:
                 if need_warning is True:
                     LOGGER.warning(f"尝试在父类中获取属性时，在项目中找不到 runtime_class: {runtime_class}")
