@@ -656,6 +656,7 @@ class MethodContext(MethodContextBase):
             variable_type = self.infer_runtime_class_by_node(runtime_method, namespace, type_node.expression)
             if variable_type is None or variable_type.type_arguments is None or len(variable_type.type_arguments) < 1:
                 LOGGER.warning(f"数组类型没有第 0 个泛型: {variable_type}")
+                return None
             return variable_type.type_arguments[0]
 
         # ParameterizedType 节点

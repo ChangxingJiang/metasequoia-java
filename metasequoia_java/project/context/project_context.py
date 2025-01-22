@@ -213,6 +213,8 @@ class ProjectContext(ProjectContextBase):
         # package_name 在当前项目中
         class_name_list: List[str] = []
         for file_path in file_path_list:
+            if not file_path.endswith(".java"):
+                continue  # 跳过非 Java 代码文件
             file_node: ast.CompilationUnit = self.get_file_node_by_file_path(file_path)
             if file_node is None:
                 LOGGER.warning(f"获取文件失败: {file_path}")
