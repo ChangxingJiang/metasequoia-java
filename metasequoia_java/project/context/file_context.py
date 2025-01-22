@@ -42,16 +42,10 @@ class FileContext(FileContextBase):
 
     @staticmethod
     def create_by_runtime_class(project_context: ProjectContextBase,
-                                runtime_class: Optional[RuntimeClass],
-                                need_warning: bool = True
-                                ) -> Optional["FileContext"]:
-        """使用公有类或飞公有类的 RuntimeClass 构造 FileContext 对象"""
-        if runtime_class is None:
-            return None
-        file_node: ast.CompilationUnit = project_context.get_file_node_by_runtime_class(runtime_class,
-                                                                                        need_warning=need_warning)
-        if file_node is None:
-            return None
+                                runtime_class: RuntimeClass,
+                                file_node: ast.CompilationUnit
+                                ) -> "FileContext":
+        """使用公有类或非公有类的 RuntimeClass 构造 FileContext 对象"""
         return FileContext(
             project_context=project_context,
             package_name=runtime_class.package_name,

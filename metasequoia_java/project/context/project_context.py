@@ -121,17 +121,6 @@ class ProjectContext(ProjectContextBase):
         return self.get_file_node_by_package_name_class_name(package_name, class_name)
 
     @functools.lru_cache(maxsize=1024)
-    def get_file_node_by_runtime_class(self, runtime_class: RuntimeClass,
-                                       need_warning: bool = True
-                                       ) -> ast.CompilationUnit:
-        """根据 RuntimeClass 对象构造类所在文件的抽象语法树节点"""
-        return self.get_file_node_by_package_name_class_name(
-            package_name=runtime_class.package_name,
-            class_name=runtime_class.public_class_name,
-            need_warning=need_warning
-        )
-
-    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
                                                  class_name: str,
@@ -263,7 +252,18 @@ class ProjectContext(ProjectContextBase):
         """尝试根据 RuntimeClass 对象构造公有类所在文件的 FileContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
         if runtime_class is None:
             return None
-        return FileContext.create_by_runtime_class(self, runtime_class, need_warning=need_warning)
+        file_node: Optional[ast.CompilationUnit] = self.get_file_node_by_package_name_class_name(
+            package_name=runtime_class.package_name,
+            class_name=runtime_class.public_class_name,
+            need_warning=need_warning
+        )
+        if file_node is None:
+            return None
+        return FileContext.create_by_runtime_class(
+            project_context=self,
+            runtime_class=runtime_class,
+            file_node=file_node
+        )
 
     @functools.lru_cache(maxsize=65536)
     def create_class_context_by_runtime_class(self,
