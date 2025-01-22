@@ -57,13 +57,9 @@ class ProjectContextBase(abc.ABC):
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
 
     @abc.abstractmethod
-    def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
-        """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
-
-    @abc.abstractmethod
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
-                                                 class_name: str,
+                                                 public_class_name: str,
                                                  need_warning: bool = True
                                                  ) -> Optional[ast.CompilationUnit]:
         """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点"""

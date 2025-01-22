@@ -115,15 +115,9 @@ class ProjectContext(ProjectContextBase):
         return parse_compilation_unit(self._outer_java_file[file_path])
 
     @functools.lru_cache(maxsize=1024)
-    def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
-        """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
-        package_name, class_name = split_last_name_from_absolute_name(absolute_name)
-        return self.get_file_node_by_package_name_class_name(package_name, class_name)
-
-    @functools.lru_cache(maxsize=1024)
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
-                                                 class_name: str,
+                                                 public_class_name: str,
                                                  need_warning: bool = True
                                                  ) -> Optional[ast.CompilationUnit]:
         """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点
@@ -138,7 +132,7 @@ class ProjectContext(ProjectContextBase):
         file_path_list = []
         for package_path in package_path_list:
             # 通过文件系统读取 Java 代码文件
-            file_path = os.path.join(package_path, f"{class_name}.java")
+            file_path = os.path.join(package_path, f"{public_class_name}.java")
             if os.path.exists(file_path):
                 file_path_list.append(file_path)
 
@@ -147,13 +141,13 @@ class ProjectContext(ProjectContextBase):
 
         if len(file_path_list) > 1:
             if need_warning:
-                LOGGER.warning(f"公有类对应多个 Java 文件: package_name={package_name}, class_name={class_name}")
+                LOGGER.warning(f"公有类对应多个 Java 文件: package_name={package_name}, class_name={public_class_name}")
             return None
 
-        file_path = f"outer:{package_name}.{class_name}.java"  # 项目外部 Java 源码文件路径
+        file_path = f"outer:{package_name}.{public_class_name}.java"  # 项目外部 Java 源码文件路径
         if file_path not in self._outer_java_file:
             if need_warning:
-                LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={class_name}")
+                LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={public_class_name}")
             return None
         return self.get_file_node_by_file_path(file_path)
 
@@ -254,7 +248,7 @@ class ProjectContext(ProjectContextBase):
             return None
         file_node: Optional[ast.CompilationUnit] = self.get_file_node_by_package_name_class_name(
             package_name=runtime_class.package_name,
-            class_name=runtime_class.public_class_name,
+            public_class_name=runtime_class.public_class_name,
             need_warning=need_warning
         )
         if file_node is None:
