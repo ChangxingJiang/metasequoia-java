@@ -31,12 +31,12 @@ class ProjectContextBase(abc.ABC):
     # ------------------------------ package 层级处理方法 ------------------------------
 
     @abc.abstractmethod
-    def get_package_path_by_package_name(self, package_name: str) -> Optional[str]:
-        """根据 package_name（包名称）获取 package_path（包路径）"""
+    def get_package_path_list_by_package_name(self, package_name: Optional[str]) -> List[str]:
+        """根据 package_name 获取所有可能的 package_path 的列表"""
 
     @abc.abstractmethod
     def get_file_path_list_by_package_name(self, package_name: str) -> List[str]:
-        """根据 package_name（包名称）获取其中所有 file_path（文件路径）"""
+        """根据 package_name 获取其中所有文件的文件路径的列表"""
 
     @abc.abstractmethod
     def get_class_name_list_by_package_name(self, package_name: str) -> List[str]:

@@ -98,10 +98,6 @@ class ProjectContext(ProjectContextBase):
         for class_absolute_name, java_file in outer_java_file.items():
             self._outer_java_file[f"outer:{class_absolute_name}.java"] = java_file
 
-        # 绝对名称到所属文件路径的映射
-        self._cache_file_node_to_file_path: Dict[str, ast.CompilationUnit] = {}
-        self._cache_package_name_to_package_path: Dict[str, str] = {}
-
     @property
     def project_path(self) -> str:
         """返回项目根路径"""
@@ -110,16 +106,13 @@ class ProjectContext(ProjectContextBase):
     @functools.lru_cache(maxsize=1024)
     def get_file_node_by_file_path(self, file_path: str) -> Optional[ast.CompilationUnit]:
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
-        if file_path not in self._cache_file_node_to_file_path:
-            if not file_path.startswith("outer:"):
-                # 从文件系统中读取 Java 文件
-                if not os.path.exists(file_path):
-                    return None
-                with open(file_path, "r", encoding="UTF-8") as file:
-                    self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(file.read())
-            else:
-                self._cache_file_node_to_file_path[file_path] = parse_compilation_unit(self._outer_java_file[file_path])
-        return self._cache_file_node_to_file_path[file_path]
+        if not file_path.startswith("outer:"):
+            # 从文件系统中读取 Java 文件
+            if not os.path.exists(file_path):
+                return None
+            with open(file_path, "r", encoding="UTF-8") as file:
+                return parse_compilation_unit(file.read())
+        return parse_compilation_unit(self._outer_java_file[file_path])
 
     @functools.lru_cache(maxsize=1024)
     def get_file_node_by_absolute_name(self, absolute_name: str) -> ast.CompilationUnit:
@@ -140,62 +133,70 @@ class ProjectContext(ProjectContextBase):
                                                  package_name: str,
                                                  class_name: str
                                                  ) -> Optional[ast.CompilationUnit]:
-        """根据 absolute_name（绝对引用名称）获取 file_node（抽象语法树的文件节点）"""
-        # 根据 package_name（包名称）获取 package_path（包路径）
-        package_path = self.get_package_path_by_package_name(package_name)
-        if package_path is not None:
+        """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点
+
+        1. 如果 package_name 和公有类的 class_name 对应大于 1 个文件，则返回 None 并发送警告
+        2. 如果 package_name 和公有类的 class_name 没有对应文件，则尝试通过项目外部 Java 源码文件路径获取，如果获取失败则返回 None 并发送警告
+        """
+        # 根据 package_name 获取所有可能的 package_path 的列表
+        package_path_list = self.get_package_path_list_by_package_name(package_name)
+
+        # 根据 package_path 的列表获取 class_name 对应的所有文件路径的列表
+        file_path_list = []
+        for package_path in package_path_list:
             # 通过文件系统读取 Java 代码文件
             file_path = os.path.join(package_path, f"{class_name}.java")
-        else:
-            # 通过项目外信息补充
-            file_path = f"outer:{package_name}.{class_name}.java"
-            if file_path not in self._outer_java_file:
-                return None
+            if os.path.exists(file_path):
+                file_path_list.append(file_path)
+
+        if len(file_path_list) == 1:
+            return self.get_file_node_by_file_path(file_path_list[0])
+
+        if len(file_path_list) > 1:
+            LOGGER.warning(f"公有类对应多个 Java 文件: package_name={package_name}, class_name={class_name}")
+            return None
+
+        file_path = f"outer:{package_name}.{class_name}.java"  # 项目外部 Java 源码文件路径
+        if file_path not in self._outer_java_file:
+            LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={class_name}")
+            return None
         return self.get_file_node_by_file_path(file_path)
 
     @functools.lru_cache(maxsize=1024)
-    def get_package_path_by_package_name(self, package_name: Optional[str]) -> Optional[str]:
-        """根据 package_name（包名称）获取 package_path（包路径）"""
+    def get_package_path_list_by_package_name(self, package_name: Optional[str]) -> List[str]:
+        """根据 package_name 获取所有可能的 package_path 的列表
+
+        因为代码中可能存在多个 source code root，所以同一个 package_name 对应多个 package_path 应该属于一种合理的场景。
+        """
         if package_name is None:
-            return None
-        if package_name not in self._cache_package_name_to_package_path:
-            # 计算所有备选 module 根路径
-            candidate_path_list = []
-            for module_name, module_path in self._modules.items():
-                candidate_path_list.extend(module_path)
+            return []
 
-            # 在每个备选路径中查找 package
-            for name in package_name.split("."):
-                new_candidate_path_list = []
-                for candidate_path in candidate_path_list:
-                    new_candidate_path = os.path.join(candidate_path, name)
-                    if os.path.exists(new_candidate_path):
-                        new_candidate_path_list.append(new_candidate_path)
-                candidate_path_list = new_candidate_path_list
+        # 计算所有备选 module 根路径
+        candidate_path_list = []
+        for module_name, module_path in self._modules.items():
+            candidate_path_list.extend(module_path)
 
-            if len(candidate_path_list) > 1:
-                LOGGER.warning(f"package（{package_name}）存在大于等于 1 个可选路径: {candidate_path_list}")
-                return None
-            if len(candidate_path_list) == 0:
-                return None
+        # 在每个备选路径中查找 package
+        for name in package_name.split("."):
+            new_candidate_path_list = []
+            for candidate_path in candidate_path_list:
+                new_candidate_path = os.path.join(candidate_path, name)
+                if os.path.exists(new_candidate_path):
+                    new_candidate_path_list.append(new_candidate_path)
+            candidate_path_list = new_candidate_path_list
 
-            self._cache_package_name_to_package_path[package_name] = candidate_path_list[0]
-
-        return self._cache_package_name_to_package_path[package_name]
+        return candidate_path_list
 
     @functools.lru_cache(maxsize=1024)
-    def get_file_path_list_by_package_name(self, package_name: str) -> Optional[List[str]]:
-        """根据 package_name（包名称）获取其中所有 file_path（文件路径）"""
-        package_path = self.get_package_path_by_package_name(package_name)
-        if package_path is None:
-            return None
+    def get_file_path_list_by_package_name(self, package_name: str) -> List[str]:
+        """根据 package_name 获取其中所有文件的文件路径的列表"""
+        package_path_list = self.get_package_path_list_by_package_name(package_name)
         file_path_list = []
-        for file_name in os.listdir(package_path):
-            file_path = os.path.join(package_path, file_name)
-            if os.path.isdir(file_path):
-                pass  # 不需要处理 package 中的子路径
-            else:
-                file_path_list.append(file_path)
+        for package_path in package_path_list:
+            for file_name in os.listdir(package_path):
+                file_path = os.path.join(package_path, file_name)
+                if not os.path.isdir(file_path):  # 不需要处理 package 中的子路径
+                    file_path_list.append(file_path)
         return file_path_list
 
     @functools.lru_cache(maxsize=1024)
@@ -204,7 +205,7 @@ class ProjectContext(ProjectContextBase):
         file_path_list = self.get_file_path_list_by_package_name(package_name)
 
         # package_name 不在当前项目中，尝试从项目外知识库中获取
-        if file_path_list is None:
+        if not file_path_list:
             res = self.try_get_outer_package_class_name_list(package_name)
             if res is None:
                 LOGGER.warning(f"在项目外补充信息中，找不到 package_name 对应的 class_name 的列表: {package_name}")
