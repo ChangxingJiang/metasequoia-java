@@ -1062,60 +1062,7 @@ for state_, operation_map in FSM_OPERATION_MAP_SOURCE.items():
             FSM_OPERATION_MAP[(state_, ch)] = FSM_OPERATION_MAP_DEFAULT[state_]
 
 if __name__ == "__main__":
-    lexical_fsm = LexicalFSM("""
-package com.tyc.darwin.markets.company_clean_info.util;
-
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.IOException;
-import java.text.ParseException;
-import java.util.Collections;
-import java.util.List;
-
-/**
- * @author: LanChunqian
- * @date:2017年10月24日 下午3:45:32
- * 
- */
-public class FileUtil {
-	private static final Logger logger = LoggerFactory.getLogger(FileUtil.class);
-
-	/**
-	 * 单例
-	 */
-	private static class FileUtilHolder {
-		private static final FileUtil INSTANCE = new FileUtil();
-	}
-
-	public static final FileUtil getInstance() {
-		return FileUtilHolder.INSTANCE;
-	}
-
-	/**
-	 * Suppress default constructor for noninstantiability
-	 */
-	private FileUtil() {}
-	
-	/**
-	 * 在指定文件中写入内容并换行
-	 * @param path 指定文件的路径
-	 * @param data 要添加的内容
-	 * @param append 是否在原文件中追加内容，即是否保留原文件中内容
-	 */
-	public synchronized static void writeToNewLine(String path, String data, boolean append) {
-		try {
-			String newLineData = data + "\r\n";
-			FileUtils.write(new File(path), newLineData, "UTF-8", append);
-		} catch (IOException e) {
-			System.out.println("Write To File Error!");
-			logger.info("Write To File Error!");
-			e.printStackTrace();
-		}
-	}
-    """)
+    lexical_fsm = LexicalFSM(r'"(\"value\":\")([^\"]*)(\")"')
     token_list = []
     while token := lexical_fsm.lex():
         print("token:", token.name, token.kind.name, token.pos, token.end_pos)

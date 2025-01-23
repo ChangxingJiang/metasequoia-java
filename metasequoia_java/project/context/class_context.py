@@ -51,7 +51,7 @@ class ClassContext(ClassContextBase):
         else:
             class_node = file_context.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
             outer_class_context = None
-        
+
         if class_node is None:
             return None
 
@@ -95,6 +95,12 @@ class ClassContext(ClassContextBase):
         if method_node is not None:
             return self, method_node
 
+        # 在外部类中查找方法
+        if self.outer_class_context is not None:
+            method_node = self.outer_class_context.class_node.get_method_by_name(method_name)
+            if method_node is not None:
+                return self.outer_class_context, method_node
+
         # 尝试在父类中寻找方法（原则上只会有一个父类中包含）
         for runtime_class in self.get_extends_and_implements():
             class_context = self.project_context.create_class_context_by_runtime_class(
@@ -118,6 +124,12 @@ class ClassContext(ClassContextBase):
         variable_node = self.class_node.get_variable_by_name(variable_name)
         if variable_node is not None:
             return self, variable_node
+
+        # 在外部类中寻找属性
+        if self.outer_class_context is not None:
+            variable_node = self.outer_class_context.class_node.get_variable_by_name(variable_name)
+            if variable_node is not None:
+                return self.outer_class_context, variable_node
 
         # 尝试在父类中寻找属性
         for runtime_class in self.get_extends_and_implements():
