@@ -108,7 +108,9 @@ class ClassContext(ClassContextBase):
                 need_warning=False
             )
             if class_context is None:
-                LOGGER.warning(f"在项目中找不到 runtime_class: {runtime_class}")
+                LOGGER.warning(
+                    f"在尝试在 {self.file_context.package_name}.{self.class_name} 中寻找 {method_name} 方法时，尝试在父类中寻找方法，"
+                    f"但在项目中找不到父类 {runtime_class.absolute_name}")
                 continue
 
             method_info = class_context.get_method_node_by_name(method_name)
