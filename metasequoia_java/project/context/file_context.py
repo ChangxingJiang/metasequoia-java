@@ -257,7 +257,6 @@ class FileContext(FileContextBase):
         if need_warning is True:
             LOGGER.error(f"使用了未知的标识符: {identifier_name}, "
                          f"position={self.package_name}.{self.public_class_name}")
-            raise
         return None
 
     def infer_runtime_class_by_node(self, type_node: Optional[ast.Tree]) -> Optional[RuntimeClass]:
