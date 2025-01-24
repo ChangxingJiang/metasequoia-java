@@ -6,8 +6,8 @@ from typing import Optional
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.sa.context.base_context import ClassContextBase
-from metasequoia_java.sa.context.base_context import MethodContextBase
+from metasequoia_java.sa.context.base_context import ClassContext
+from metasequoia_java.sa.context.base_context import MethodContext
 from metasequoia_java.sa.context.class_context import ClassContextImp
 from metasequoia_java.sa.context.method_context import MethodContextImp
 
@@ -17,21 +17,21 @@ __all__ = [
 ]
 
 
-def create_anonymous_class_context(method_context: MethodContextBase,
+def create_anonymous_class_context(method_context: MethodContext,
                                    class_node: Optional[ast.Class]
-                                   ) -> Optional[ClassContextBase]:
+                                   ) -> Optional[ClassContext]:
     """根据匿名类的抽象语法树节点（Class 类型）构造 ClassContext 对象，如果抽象语法树节点为空（即不是匿名类）则返回 None
 
     Parameters
     ----------
-    method_context : MethodContextBase
+    method_context : MethodContext
         匿名类所在方法的 MethodContext 对象
     class_node : ast.Class
         匿名类的抽象语法树节点
 
     Returns
     -------
-    ClassContextBase
+    ClassContext
         匿名类的 ClassContext 对象
     """
     if class_node is None:
@@ -45,15 +45,15 @@ def create_anonymous_class_context(method_context: MethodContextBase,
     )
 
 
-def create_anonymous_class_method_context(method_context: MethodContextBase,
+def create_anonymous_class_method_context(method_context: MethodContext,
                                           class_node: ast.Class,
-                                          method_name: str) -> Optional[MethodContextBase]:
+                                          method_name: str) -> Optional[MethodContext]:
     """根据匿名类的抽象语法树节点（Class 类型）和方法名 method_name 构造匿名类中方法的 MethodContext 对象，如果抽象语法树节点为空（即不是匿
     名类）或 method_name 方法不存在则返回 None
 
     Parameters
     ----------
-    method_context : MethodContextBase
+    method_context : MethodContext
         匿名类所在方法的 MethodContext 对象
     class_node : ast.Class
         匿名类的抽象语法树节点
@@ -62,7 +62,7 @@ def create_anonymous_class_method_context(method_context: MethodContextBase,
 
     Returns
     -------
-    MethodContextBase
+    MethodContext
         匿名类中方法的 MethodContext 对象
     """
     anonymous_class_context = create_anonymous_class_context(

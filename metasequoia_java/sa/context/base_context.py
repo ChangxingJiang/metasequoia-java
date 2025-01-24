@@ -13,14 +13,14 @@ from metasequoia_java.sa.name_space import NameSpace
 from metasequoia_java.sa.name_space import SimpleNameSpace
 
 __all__ = [
-    "ProjectContextBase",
-    "FileContextBase",
-    "ClassContextBase",
-    "MethodContextBase",
+    "ProjectContext",
+    "FileContext",
+    "ClassContext",
+    "MethodContext",
 ]
 
 
-class ProjectContextBase(abc.ABC):
+class ProjectContext(abc.ABC):
     """项目层级消上下文管理器的抽象基类"""
 
     @property
@@ -70,20 +70,20 @@ class ProjectContextBase(abc.ABC):
     def create_file_context_by_runtime_class(self,
                                              runtime_class: Optional[RuntimeClass],
                                              need_warning: bool = True
-                                             ) -> Optional["FileContextBase"]:
+                                             ) -> Optional["FileContext"]:
         """尝试根据 RuntimeClass 对象构造公有类所在文件的 FileContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
 
     @abc.abstractmethod
     def create_class_context_by_runtime_class(self,
                                               runtime_class: Optional[RuntimeClass],
                                               need_warning: bool = True
-                                              ) -> Optional["ClassContextBase"]:
+                                              ) -> Optional["ClassContext"]:
         """尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
 
     @abc.abstractmethod
     def create_method_context_by_runtime_method(self,
                                                 runtime_method: Optional[RuntimeMethod],
-                                                need_warning: bool = True) -> Optional["MethodContextBase"]:
+                                                need_warning: bool = True) -> Optional["MethodContext"]:
         """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""
 
     @abc.abstractmethod
@@ -94,7 +94,7 @@ class ProjectContextBase(abc.ABC):
     def get_variable_info_by_runtime_variable(self,
                                               runtime_variable: RuntimeVariable,
                                               need_warning: bool = True
-                                              ) -> Optional[Tuple["ClassContextBase", ast.Variable]]:
+                                              ) -> Optional[Tuple["ClassContext", ast.Variable]]:
         """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
 
     @abc.abstractmethod
@@ -137,12 +137,12 @@ class ProjectContextBase(abc.ABC):
         """获取项目外的函数式接口 RuntimeClass 的 lambda 表达式的参数类型列表"""
 
 
-class FileContextBase(abc.ABC):
+class FileContext(abc.ABC):
     """文件层级上下文管理器的抽象基类"""
 
     @property
     @abc.abstractmethod
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属项目上下文管理器"""
 
     @property
@@ -192,17 +192,17 @@ class FileContextBase(abc.ABC):
         """推断当前文件中出现的抽象语法树节点的类型"""
 
 
-class ClassContextBase(abc.ABC):
+class ClassContext(abc.ABC):
     """类层级上下文管理器的抽象基类"""
 
     @property
     @abc.abstractmethod
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属项目上下文管理器"""
 
     @property
     @abc.abstractmethod
-    def file_context(self) -> FileContextBase:
+    def file_context(self) -> FileContext:
         """返回所属文件上下文管理器"""
 
     @property
@@ -217,17 +217,17 @@ class ClassContextBase(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def outer_class_context(self) -> Optional["ClassContextBase"]:
+    def outer_class_context(self) -> Optional["ClassContext"]:
         """返回外部类的 ClassContext 对象（仅当当前类为内部类时不为 None）"""
 
     # ------------------------------ method 和 variable 层级处理方法 ------------------------------
 
     @abc.abstractmethod
-    def get_method_node_by_name(self, method_name: str) -> Optional[Tuple["ClassContextBase", ast.Method]]:
+    def get_method_node_by_name(self, method_name: str) -> Optional[Tuple["ClassContext", ast.Method]]:
         """根据 method_name 获取方法的抽象语法树节点"""
 
     @abc.abstractmethod
-    def get_variable_node_by_name(self, variable_name: str) -> Optional[Tuple["ClassContextBase", ast.Variable]]:
+    def get_variable_node_by_name(self, variable_name: str) -> Optional[Tuple["ClassContext", ast.Variable]]:
         """根据 variable_name 获取类变量的抽象语法树节点"""
 
     @abc.abstractmethod
@@ -268,22 +268,22 @@ class ClassContextBase(abc.ABC):
         """推断出现在当前类中标识符名称的类型"""
 
 
-class MethodContextBase(abc.ABC):
+class MethodContext(abc.ABC):
     """方法层级上下文管理器的抽象基类"""
 
     @property
     @abc.abstractmethod
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属的项目上下文管理器"""
 
     @property
     @abc.abstractmethod
-    def file_context(self) -> FileContextBase:
+    def file_context(self) -> FileContext:
         """返回所属的文件上下文管理器"""
 
     @property
     @abc.abstractmethod
-    def class_context(self) -> ClassContextBase:
+    def class_context(self) -> ClassContext:
         """返回所属的类上下文管理器"""
 
     @property

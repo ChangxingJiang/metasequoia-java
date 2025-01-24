@@ -7,8 +7,8 @@ from typing import Dict, Optional
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
 from metasequoia_java.sa.constants import JAVA_LANG_CLASS_NAME_SET
-from metasequoia_java.sa.context.base_context import FileContextBase
-from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.context.base_context import FileContext
+from metasequoia_java.sa.context.base_context import ProjectContext
 from metasequoia_java.sa.elements import RuntimeClass
 from metasequoia_java.sa.elements import RuntimeMethod
 from metasequoia_java.sa.elements import RuntimeVariable
@@ -19,11 +19,11 @@ __all__ = [
 ]
 
 
-class FileContextImp(FileContextBase):
+class FileContextImp(FileContext):
     """文件级上下文"""
 
     def __init__(self,
-                 project_context: ProjectContextBase,
+                 project_context: ProjectContext,
                  package_name: str,
                  public_class_name: str,
                  file_node: ast.CompilationUnit):
@@ -41,7 +41,7 @@ class FileContextImp(FileContextBase):
         return f"<FileContext package_name={self.package_name}, public_class_name={self.public_class_name}>"
 
     @staticmethod
-    def create_by_runtime_class(project_context: ProjectContextBase,
+    def create_by_runtime_class(project_context: ProjectContext,
                                 runtime_class: RuntimeClass,
                                 file_node: ast.CompilationUnit
                                 ) -> "FileContextImp":
@@ -54,7 +54,7 @@ class FileContextImp(FileContextBase):
         )
 
     @property
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属项目上下文管理器"""
         return self._project_context
 

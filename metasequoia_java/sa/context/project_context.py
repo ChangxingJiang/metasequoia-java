@@ -8,10 +8,10 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from metasequoia_java import ast, parse_compilation_unit
 from metasequoia_java.common import LOGGER
-from metasequoia_java.sa.context.base_context import ClassContextBase
-from metasequoia_java.sa.context.base_context import FileContextBase
-from metasequoia_java.sa.context.base_context import MethodContextBase
-from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.context.base_context import ClassContext
+from metasequoia_java.sa.context.base_context import FileContext
+from metasequoia_java.sa.context.base_context import MethodContext
+from metasequoia_java.sa.context.base_context import ProjectContext
 from metasequoia_java.sa.context.class_context import ClassContextImp
 from metasequoia_java.sa.context.file_context import FileContextImp
 from metasequoia_java.sa.context.method_context import MethodContextImp
@@ -21,7 +21,7 @@ from metasequoia_java.sa.elements import RuntimeVariable
 from metasequoia_java.sa.name_space import NameSpace
 
 
-class ProjectContextImp(ProjectContextBase):
+class ProjectContextImp(ProjectContext):
     """项目级上下文
 
     在初始化阶段，获取所有 module 以及 module 中的顶级目录。
@@ -241,7 +241,7 @@ class ProjectContextImp(ProjectContextBase):
     def create_file_context_by_runtime_class(self,
                                              runtime_class: Optional[RuntimeClass],
                                              need_warning: bool = True
-                                             ) -> Optional[FileContextBase]:
+                                             ) -> Optional[FileContext]:
         """尝试根据 RuntimeClass 对象构造公有类所在文件的 FileContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
         if runtime_class is None:
             return None
@@ -262,7 +262,7 @@ class ProjectContextImp(ProjectContextBase):
     def create_class_context_by_runtime_class(self,
                                               runtime_class: Optional[RuntimeClass],
                                               need_warning: bool = True
-                                              ) -> Optional[ClassContextBase]:
+                                              ) -> Optional[ClassContext]:
         """尝试根据 RuntimeClass 构造 ClassContext 对象，如果在当前项目中查找不到 RuntimeClass 则返回 None"""
         file_context = self.create_file_context_by_runtime_class(runtime_class, need_warning=need_warning)
         if file_context is None:
@@ -272,7 +272,7 @@ class ProjectContextImp(ProjectContextBase):
     @functools.lru_cache(maxsize=65536)
     def create_method_context_by_runtime_method(self,
                                                 runtime_method: Optional[RuntimeMethod],
-                                                need_warning: bool = True) -> Optional[MethodContextBase]:
+                                                need_warning: bool = True) -> Optional[MethodContext]:
         """根据 runtimeMethod 对象构造 MethodContext 对象，如果不在当前项目中则返回 None"""
         if runtime_method is None or runtime_method.belong_class is None:
             return None
@@ -303,7 +303,7 @@ class ProjectContextImp(ProjectContextBase):
     def get_variable_info_by_runtime_variable(self,
                                               runtime_variable: RuntimeVariable,
                                               need_warning: bool = True
-                                              ) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
+                                              ) -> Optional[Tuple[ClassContext, ast.Variable]]:
         """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
         class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class, need_warning=False)
         if class_context is None:

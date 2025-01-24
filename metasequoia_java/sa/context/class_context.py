@@ -7,9 +7,9 @@ from typing import List, Optional, Tuple
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.sa.context.base_context import ClassContextBase
-from metasequoia_java.sa.context.base_context import FileContextBase
-from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.context.base_context import ClassContext
+from metasequoia_java.sa.context.base_context import FileContext
+from metasequoia_java.sa.context.base_context import ProjectContext
 from metasequoia_java.sa.elements import RuntimeClass
 from metasequoia_java.sa.name_space import NameSpace
 from metasequoia_java.sa.name_space import SimpleNameSpace
@@ -19,15 +19,15 @@ __all__ = [
 ]
 
 
-class ClassContextImp(ClassContextBase):
+class ClassContextImp(ClassContext):
     """类上下文管理类的实现类"""
 
     def __init__(self,
-                 project_context: ProjectContextBase,
-                 file_context: FileContextBase,
+                 project_context: ProjectContext,
+                 file_context: FileContext,
                  class_name: str,
                  class_node: ast.Class,
-                 outer_class_context: Optional["ClassContextBase"] = None):
+                 outer_class_context: Optional["ClassContext"] = None):
         self._project_context = project_context
         self._file_context = file_context
         self._class_name = class_name  # 如果当前类为匿名类，则为 Anonymous  # TODO 考虑是否有更优方法
@@ -39,7 +39,7 @@ class ClassContextImp(ClassContextBase):
         self._simple_name_space = SimpleNameSpace.create_by_class(class_node)
 
     @staticmethod
-    def create_by_class_name(file_context: FileContextBase, class_name: str) -> Optional["ClassContextImp"]:
+    def create_by_class_name(file_context: FileContext, class_name: str) -> Optional["ClassContextImp"]:
         """根据类型构造 ClassContext 对象"""
         if file_context is None:
             return None
@@ -64,12 +64,12 @@ class ClassContextImp(ClassContextBase):
         )
 
     @property
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属项目上下文管理器"""
         return self._project_context
 
     @property
-    def file_context(self) -> FileContextBase:
+    def file_context(self) -> FileContext:
         """返回所属文件上下文管理器"""
         return self._file_context
 
@@ -84,11 +84,11 @@ class ClassContextImp(ClassContextBase):
         return self._class_node
 
     @property
-    def outer_class_context(self) -> Optional["ClassContextBase"]:
+    def outer_class_context(self) -> Optional["ClassContext"]:
         """返回外部类的 ClassContext 对象（仅当当前类为内部类时不为 None）"""
         return self._outer_class_context
 
-    def get_method_node_by_name(self, method_name: str) -> Optional[Tuple[ClassContextBase, ast.Method]]:
+    def get_method_node_by_name(self, method_name: str) -> Optional[Tuple[ClassContext, ast.Method]]:
         """根据 method_name 获取方法所在类的 ClassContext 和抽象语法树节点"""
         # 优先在当前类中寻找方法
         method_node = self.class_node.get_method_by_name(method_name)
@@ -120,7 +120,7 @@ class ClassContextImp(ClassContextBase):
 
     def get_variable_node_by_name(self,
                                   variable_name: str,
-                                  need_warning: bool = True) -> Optional[Tuple[ClassContextBase, ast.Variable]]:
+                                  need_warning: bool = True) -> Optional[Tuple[ClassContext, ast.Variable]]:
         """根据 variable_name 获取类变量所在类的 ClassContext 和抽象语法树节点"""
         # 优先在当前类中寻找属性
         variable_node = self.class_node.get_variable_by_name(variable_name)

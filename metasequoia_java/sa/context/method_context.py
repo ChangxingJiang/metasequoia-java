@@ -7,10 +7,10 @@ from typing import Generator, Optional, Tuple, Type
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.sa.context.base_context import ClassContextBase
-from metasequoia_java.sa.context.base_context import FileContextBase
-from metasequoia_java.sa.context.base_context import MethodContextBase
-from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.context.base_context import ClassContext
+from metasequoia_java.sa.context.base_context import FileContext
+from metasequoia_java.sa.context.base_context import MethodContext
+from metasequoia_java.sa.context.base_context import ProjectContext
 from metasequoia_java.sa.elements import RuntimeClass
 from metasequoia_java.sa.elements import RuntimeMethod
 from metasequoia_java.sa.elements import RuntimeVariable
@@ -26,13 +26,13 @@ __all__ = [
 ]
 
 
-class MethodContextImp(MethodContextBase):
+class MethodContextImp(MethodContext):
     """方法上下文"""
 
     def __init__(self,
-                 project_context: ProjectContextBase,
-                 file_context: FileContextBase,
-                 class_context: ClassContextBase,
+                 project_context: ProjectContext,
+                 file_context: FileContext,
+                 class_context: ClassContext,
                  method_name: str,
                  method_node: Optional[ast.Method]):
         self._project_context = project_context
@@ -51,7 +51,7 @@ class MethodContextImp(MethodContextBase):
         self._name_space.add_space(self._simple_name_space)
 
     @staticmethod
-    def create_by_method_name(class_context: Optional[ClassContextBase], method_name: str) -> Optional[
+    def create_by_method_name(class_context: Optional[ClassContext], method_name: str) -> Optional[
         "MethodContextImp"]:
         # 如果方法名和类名一样，则说明方法为初始化方法，将方法名改为 init
         if class_context is None:
@@ -103,17 +103,17 @@ class MethodContextImp(MethodContextBase):
         )
 
     @property
-    def project_context(self) -> ProjectContextBase:
+    def project_context(self) -> ProjectContext:
         """返回所属的项目上下文管理器"""
         return self._project_context
 
     @property
-    def file_context(self) -> FileContextBase:
+    def file_context(self) -> FileContext:
         """返回所属的文件上下文管理器"""
         return self._file_context
 
     @property
-    def class_context(self) -> ClassContextBase:
+    def class_context(self) -> ClassContext:
         """返回所属的类上下文管理器"""
         return self._class_context
 
