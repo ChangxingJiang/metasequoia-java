@@ -22,11 +22,11 @@ from metasequoia_java.sa.utils import is_long_member_select
 from metasequoia_java.sa.utils import split_last_name_from_absolute_name
 
 __all__ = [
-    "MethodContext"
+    "MethodContextImp"
 ]
 
 
-class MethodContext(MethodContextBase):
+class MethodContextImp(MethodContextBase):
     """方法上下文"""
 
     def __init__(self,
@@ -51,7 +51,8 @@ class MethodContext(MethodContextBase):
         self._name_space.add_space(self._simple_name_space)
 
     @staticmethod
-    def create_by_method_name(class_context: Optional[ClassContextBase], method_name: str) -> Optional["MethodContext"]:
+    def create_by_method_name(class_context: Optional[ClassContextBase], method_name: str) -> Optional[
+        "MethodContextImp"]:
         # 如果方法名和类名一样，则说明方法为初始化方法，将方法名改为 init
         if class_context is None:
             return None
@@ -72,7 +73,7 @@ class MethodContext(MethodContextBase):
         if method_info is None:
             # 枚举类的 values() 方法
             if ast.Modifier.ENUM in class_context.class_node.modifiers.flags and method_name == "values":
-                return MethodContext(
+                return MethodContextImp(
                     project_context=class_context.project_context,
                     file_context=class_context.file_context,
                     class_context=class_context,
@@ -82,7 +83,7 @@ class MethodContext(MethodContextBase):
 
             # 默认的构造方法
             if method_name == "init":
-                return MethodContext(
+                return MethodContextImp(
                     project_context=class_context.project_context,
                     file_context=class_context.file_context,
                     class_context=class_context,
@@ -93,7 +94,7 @@ class MethodContext(MethodContextBase):
             LOGGER.warning(f"找不到方法 {class_absolute_name}.{method_name}")
             return None
 
-        return MethodContext(
+        return MethodContextImp(
             project_context=class_context.project_context,
             file_context=class_context.file_context,
             class_context=class_context,

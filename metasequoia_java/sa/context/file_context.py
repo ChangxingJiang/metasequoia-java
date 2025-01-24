@@ -15,11 +15,11 @@ from metasequoia_java.sa.elements import RuntimeVariable
 from metasequoia_java.sa.utils import split_last_name_from_absolute_name
 
 __all__ = [
-    "FileContext"
+    "FileContextImp"
 ]
 
 
-class FileContext(FileContextBase):
+class FileContextImp(FileContextBase):
     """文件级上下文"""
 
     def __init__(self,
@@ -44,9 +44,9 @@ class FileContext(FileContextBase):
     def create_by_runtime_class(project_context: ProjectContextBase,
                                 runtime_class: RuntimeClass,
                                 file_node: ast.CompilationUnit
-                                ) -> "FileContext":
+                                ) -> "FileContextImp":
         """使用公有类或非公有类的 RuntimeClass 构造 FileContext 对象"""
-        return FileContext(
+        return FileContextImp(
             project_context=project_context,
             package_name=runtime_class.package_name,
             public_class_name=runtime_class.public_class_name,

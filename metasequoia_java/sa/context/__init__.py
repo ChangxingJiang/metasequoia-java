@@ -3,7 +3,7 @@ from metasequoia_java.sa.context.base_context import ClassContextBase
 from metasequoia_java.sa.context.base_context import FileContextBase
 from metasequoia_java.sa.context.base_context import MethodContextBase
 from metasequoia_java.sa.context.base_context import ProjectContextBase
-from metasequoia_java.sa.context.class_context import ClassContext
-from metasequoia_java.sa.context.file_context import FileContext
-from metasequoia_java.sa.context.method_context import MethodContext
-from metasequoia_java.sa.context.project_context import ProjectContext
+from metasequoia_java.sa.context.class_context import ClassContextImp
+from metasequoia_java.sa.context.file_context import FileContextImp
+from metasequoia_java.sa.context.method_context import MethodContextImp
+from metasequoia_java.sa.context.project_context import ProjectContextImp

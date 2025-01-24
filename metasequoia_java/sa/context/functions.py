@@ -8,8 +8,8 @@ from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
 from metasequoia_java.sa.context.base_context import ClassContextBase
 from metasequoia_java.sa.context.base_context import MethodContextBase
-from metasequoia_java.sa.context.class_context import ClassContext
-from metasequoia_java.sa.context.method_context import MethodContext
+from metasequoia_java.sa.context.class_context import ClassContextImp
+from metasequoia_java.sa.context.method_context import MethodContextImp
 
 __all__ = [
     "create_anonymous_class_context",
@@ -36,7 +36,7 @@ def create_anonymous_class_context(method_context: MethodContextBase,
     """
     if class_node is None:
         return None
-    return ClassContext(
+    return ClassContextImp(
         project_context=method_context.project_context,
         file_context=method_context.file_context,
         class_name="Anonymous",
@@ -75,7 +75,7 @@ def create_anonymous_class_method_context(method_context: MethodContextBase,
     if method_node is None:
         LOGGER.warning(f"在 {method_context.get_runtime_method()} 方法的匿名类中找不到 {method_name} 方法")
         return None
-    anonymous_method_context = MethodContext(
+    anonymous_method_context = MethodContextImp(
         project_context=method_context.project_context,
         file_context=method_context.file_context,
         class_context=anonymous_class_context,

@@ -12,16 +12,16 @@ from metasequoia_java.sa.context.base_context import ClassContextBase
 from metasequoia_java.sa.context.base_context import FileContextBase
 from metasequoia_java.sa.context.base_context import MethodContextBase
 from metasequoia_java.sa.context.base_context import ProjectContextBase
-from metasequoia_java.sa.context.class_context import ClassContext
-from metasequoia_java.sa.context.file_context import FileContext
-from metasequoia_java.sa.context.method_context import MethodContext
+from metasequoia_java.sa.context.class_context import ClassContextImp
+from metasequoia_java.sa.context.file_context import FileContextImp
+from metasequoia_java.sa.context.method_context import MethodContextImp
 from metasequoia_java.sa.elements import RuntimeClass
 from metasequoia_java.sa.elements import RuntimeMethod
 from metasequoia_java.sa.elements import RuntimeVariable
 from metasequoia_java.sa.name_space import NameSpace
 
 
-class ProjectContext(ProjectContextBase):
+class ProjectContextImp(ProjectContextBase):
     """项目级上下文
 
     在初始化阶段，获取所有 module 以及 module 中的顶级目录。
@@ -252,7 +252,7 @@ class ProjectContext(ProjectContextBase):
         )
         if file_node is None:
             return None
-        return FileContext.create_by_runtime_class(
+        return FileContextImp.create_by_runtime_class(
             project_context=self,
             runtime_class=runtime_class,
             file_node=file_node
@@ -267,7 +267,7 @@ class ProjectContext(ProjectContextBase):
         file_context = self.create_file_context_by_runtime_class(runtime_class, need_warning=need_warning)
         if file_context is None:
             return None
-        return ClassContext.create_by_class_name(file_context, runtime_class.class_name)
+        return ClassContextImp.create_by_class_name(file_context, runtime_class.class_name)
 
     @functools.lru_cache(maxsize=65536)
     def create_method_context_by_runtime_method(self,
@@ -282,7 +282,7 @@ class ProjectContext(ProjectContextBase):
         )
         if class_context is None:
             return None
-        return MethodContext.create_by_method_name(class_context, runtime_method.method_name)
+        return MethodContextImp.create_by_method_name(class_context, runtime_method.method_name)
 
     def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 RuntimeVariable 对象，获取该变量类型的 RuntimeClass 对象"""

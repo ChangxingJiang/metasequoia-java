@@ -15,12 +15,12 @@ from metasequoia_java.sa.name_space import NameSpace
 from metasequoia_java.sa.name_space import SimpleNameSpace
 
 __all__ = [
-    "ClassContext"
+    "ClassContextImp"
 ]
 
 
-class ClassContext(ClassContextBase):
-    """类上下文"""
+class ClassContextImp(ClassContextBase):
+    """类上下文管理类的实现类"""
 
     def __init__(self,
                  project_context: ProjectContextBase,
@@ -39,7 +39,7 @@ class ClassContext(ClassContextBase):
         self._simple_name_space = SimpleNameSpace.create_by_class(class_node)
 
     @staticmethod
-    def create_by_class_name(file_context: FileContextBase, class_name: str) -> Optional["ClassContext"]:
+    def create_by_class_name(file_context: FileContextBase, class_name: str) -> Optional["ClassContextImp"]:
         """根据类型构造 ClassContext 对象"""
         if file_context is None:
             return None
@@ -47,7 +47,7 @@ class ClassContext(ClassContextBase):
         if "." in class_name:
             class_node = file_context.file_node.get_inner_class_by_name(class_name)  # 根据内部类名获取类的抽象语法树节点
             outer_class_name = class_name[:class_name.rindex(".")]
-            outer_class_context = ClassContext.create_by_class_name(file_context, outer_class_name)
+            outer_class_context = ClassContextImp.create_by_class_name(file_context, outer_class_name)
         else:
             class_node = file_context.file_node.get_class_by_name(class_name)  # 根据类名获取类的抽象语法树节点
             outer_class_context = None
@@ -55,7 +55,7 @@ class ClassContext(ClassContextBase):
         if class_node is None:
             return None
 
-        return ClassContext(
+        return ClassContextImp(
             project_context=file_context.project_context,
             file_context=file_context,
             class_name=class_name,
