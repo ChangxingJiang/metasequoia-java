@@ -3,7 +3,7 @@
 """
 
 import dataclasses
-from typing import Generator, List, Optional, Tuple, Type
+from typing import Generator, Optional, Tuple, Type
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
