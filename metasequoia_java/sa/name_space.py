@@ -9,7 +9,7 @@ TODO 考虑将命名空间作为 MethodContext 的一部分处理
 from typing import Dict, List, Optional, Union
 
 from metasequoia_java import ast
-from metasequoia_java.project.elements.runtime_class import RuntimeClass
+from metasequoia_java.sa.elements.runtime_class import RuntimeClass
 
 __all__ = [
     "SimpleNameSpace",

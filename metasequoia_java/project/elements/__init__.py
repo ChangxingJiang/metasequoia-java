@@ -1,3 +1,0 @@
-from metasequoia_java.project.elements.runtime_class import RuntimeClass
-from metasequoia_java.project.elements.runtime_method import RuntimeMethod
-from metasequoia_java.project.elements.runtime_variable import RuntimeVariable

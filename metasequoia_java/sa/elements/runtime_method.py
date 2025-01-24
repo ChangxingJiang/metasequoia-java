@@ -4,7 +4,7 @@
 
 import dataclasses
 
-from metasequoia_java.project.elements.runtime_class import RuntimeClass
+from metasequoia_java.sa.elements.runtime_class import RuntimeClass
 
 __all__ = [
     "RuntimeMethod"

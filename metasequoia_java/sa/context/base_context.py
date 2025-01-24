@@ -6,11 +6,11 @@ import abc
 from typing import Dict, Generator, List, Optional, Tuple, Type
 
 from metasequoia_java import ast
-from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.elements import RuntimeMethod
-from metasequoia_java.project.elements import RuntimeVariable
-from metasequoia_java.project.name_space import NameSpace
-from metasequoia_java.project.name_space import SimpleNameSpace
+from metasequoia_java.sa.elements import RuntimeClass
+from metasequoia_java.sa.elements import RuntimeMethod
+from metasequoia_java.sa.elements import RuntimeVariable
+from metasequoia_java.sa.name_space import NameSpace
+from metasequoia_java.sa.name_space import SimpleNameSpace
 
 __all__ = [
     "ProjectContextBase",

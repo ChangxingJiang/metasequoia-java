@@ -6,13 +6,13 @@ from typing import Dict, Optional
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.project.constants import JAVA_LANG_CLASS_NAME_SET
-from metasequoia_java.project.context.base_context import FileContextBase
-from metasequoia_java.project.context.base_context import ProjectContextBase
-from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.elements import RuntimeMethod
-from metasequoia_java.project.elements import RuntimeVariable
-from metasequoia_java.project.utils import split_last_name_from_absolute_name
+from metasequoia_java.sa.constants import JAVA_LANG_CLASS_NAME_SET
+from metasequoia_java.sa.context.base_context import FileContextBase
+from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.elements import RuntimeClass
+from metasequoia_java.sa.elements import RuntimeMethod
+from metasequoia_java.sa.elements import RuntimeVariable
+from metasequoia_java.sa.utils import split_last_name_from_absolute_name
 
 __all__ = [
     "FileContext"

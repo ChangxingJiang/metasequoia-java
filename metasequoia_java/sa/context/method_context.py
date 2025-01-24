@@ -7,19 +7,19 @@ from typing import Generator, Optional, Tuple, Type
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.project.context.base_context import ClassContextBase
-from metasequoia_java.project.context.base_context import FileContextBase
-from metasequoia_java.project.context.base_context import MethodContextBase
-from metasequoia_java.project.context.base_context import ProjectContextBase
-from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.elements import RuntimeMethod
-from metasequoia_java.project.elements import RuntimeVariable
-from metasequoia_java.project.name_space import NameSpace
-from metasequoia_java.project.name_space import SimpleNameSpace
-from metasequoia_java.project.utils import get_first_name_from_absolute_name
-from metasequoia_java.project.utils import get_last_name_from_absolute_name
-from metasequoia_java.project.utils import is_long_member_select
-from metasequoia_java.project.utils import split_last_name_from_absolute_name
+from metasequoia_java.sa.context.base_context import ClassContextBase
+from metasequoia_java.sa.context.base_context import FileContextBase
+from metasequoia_java.sa.context.base_context import MethodContextBase
+from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.elements import RuntimeClass
+from metasequoia_java.sa.elements import RuntimeMethod
+from metasequoia_java.sa.elements import RuntimeVariable
+from metasequoia_java.sa.name_space import NameSpace
+from metasequoia_java.sa.name_space import SimpleNameSpace
+from metasequoia_java.sa.utils import get_first_name_from_absolute_name
+from metasequoia_java.sa.utils import get_last_name_from_absolute_name
+from metasequoia_java.sa.utils import is_long_member_select
+from metasequoia_java.sa.utils import split_last_name_from_absolute_name
 
 __all__ = [
     "MethodContext"

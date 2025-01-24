@@ -7,12 +7,12 @@ from typing import List, Optional, Tuple
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.project.context.base_context import ClassContextBase
-from metasequoia_java.project.context.base_context import FileContextBase
-from metasequoia_java.project.context.base_context import ProjectContextBase
-from metasequoia_java.project.elements import RuntimeClass
-from metasequoia_java.project.name_space import NameSpace
-from metasequoia_java.project.name_space import SimpleNameSpace
+from metasequoia_java.sa.context.base_context import ClassContextBase
+from metasequoia_java.sa.context.base_context import FileContextBase
+from metasequoia_java.sa.context.base_context import ProjectContextBase
+from metasequoia_java.sa.elements import RuntimeClass
+from metasequoia_java.sa.name_space import NameSpace
+from metasequoia_java.sa.name_space import SimpleNameSpace
 
 __all__ = [
     "ClassContext"

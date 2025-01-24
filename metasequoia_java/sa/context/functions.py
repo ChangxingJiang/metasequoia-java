@@ -6,10 +6,10 @@ from typing import Optional
 
 from metasequoia_java import ast
 from metasequoia_java.common import LOGGER
-from metasequoia_java.project.context.base_context import ClassContextBase
-from metasequoia_java.project.context.base_context import MethodContextBase
-from metasequoia_java.project.context.class_context import ClassContext
-from metasequoia_java.project.context.method_context import MethodContext
+from metasequoia_java.sa.context.base_context import ClassContextBase
+from metasequoia_java.sa.context.base_context import MethodContextBase
+from metasequoia_java.sa.context.class_context import ClassContext
+from metasequoia_java.sa.context.method_context import MethodContext
 
 __all__ = [
     "create_anonymous_class_context",
