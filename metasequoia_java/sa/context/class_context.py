@@ -171,9 +171,11 @@ class ClassContextImp(ClassContext):
             runtime_class = self.file_context.infer_runtime_class_by_identifier_name(class_name)
             if runtime_class is None:
                 LOGGER.warning(f"找不到继承类: class_name={class_name}")
+                continue
             package_name = runtime_class.package_name
             if package_name is None:
                 LOGGER.warning(f"找不到继承类所属的包: class_name={class_name}")
+                continue
 
             result.append(RuntimeClass.create(
                 package_name=package_name,

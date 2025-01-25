@@ -313,7 +313,8 @@ class MethodContext(abc.ABC):
                               runtime_method: RuntimeMethod,
                               namespace: NameSpace,
                               statement_node: ast.Tree,
-                              outer_runtime_method: Optional[RuntimeMethod] = None
+                              outer_runtime_method: Optional[RuntimeMethod] = None,
+                              outer_method_param_idx: Optional[int] = None
                               ) -> Generator[Tuple[RuntimeMethod, ast.MethodInvocation], None, None]:
         """获取当前表达式中调用的方法"""
 

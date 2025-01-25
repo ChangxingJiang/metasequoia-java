@@ -172,7 +172,8 @@ class MethodContextImp(MethodContext):
         outer_method_param_idx : Optional[int], default = None
             如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的参数下标，用于实现 lambda 语句的类型推断
         """
-        for visit_namespace, visit_node in self.visitor_tree(runtime_method, namespace, statement_node):
+        for visit_namespace, visit_node in self.visitor_tree(runtime_method, namespace, statement_node,
+                                                              outer_runtime_method, outer_method_param_idx):
             if not isinstance(visit_namespace, NameSpace):
                 print(visit_namespace, visit_node)
 

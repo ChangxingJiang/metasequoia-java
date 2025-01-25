@@ -73,7 +73,7 @@ class SimpleNameSpace:
         """根据方法的代码块构造单层命名空间"""
         if method_node.block is None:
             return SimpleNameSpace()  # 没有代码块的函数
-        return SimpleNameSpace.create_by_statements(method_node.block.statements)
+        return SimpleNameSpace.create_by_statements(method_node.block_statements)
 
     @staticmethod
     def create_by_variable(variable_node: Optional[ast.Variable]) -> "SimpleNameSpace":

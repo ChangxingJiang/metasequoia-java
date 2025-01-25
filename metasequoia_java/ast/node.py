@@ -885,6 +885,14 @@ class Class(Statement):
                 class_name_list.append(declaration.name)
         return class_name_list
 
+    def get_static_block_list(self) -> List[Block]:
+        """获取静态代码块的列表"""
+        static_block_list = []
+        for member in self.members:
+            if isinstance(member, Block):
+                static_block_list.append(member)
+        return static_block_list
+
 
 @dataclasses.dataclass(slots=True)
 class Module(Tree):
@@ -1698,6 +1706,9 @@ class IntLiteral(Literal):
             source=source
         )
 
+    def get_int_value(self):
+        return self.value
+
     def generate(self) -> str:
         return change_int_to_string(self.value, self.style)
 
@@ -1719,6 +1730,9 @@ class LongLiteral(Literal):
             end_pos=end_pos,
             source=source
         )
+
+    def get_long_value(self):
+        return self.value
 
     def generate(self) -> str:
         return f"{self.value}L"
@@ -2000,6 +2014,31 @@ class MethodInvocation(Expression):
             return self.method_select.expression
         raise KeyError("cannot get belong_expression from node")  # TODO 待验证类型
 
+    def is_belong(self, name: str) -> bool:
+        """
+        1. 如果类方法所属的类型为 name 则返回 True，否则返回 False
+          样例 1: ClassName.functionName，其中 ClassName = name
+          样例 2: packageName.ClassName.functionName，其中 ClassName = name
+        2. 如果对象方法的前一个标识符为 name 则返回 True，否则返回 False
+          样例 1: variableName.functionName，其中 variableName = name
+          样例 2: variableName.attributeName.functionName，其中 attributeName = name
+        """
+        if isinstance(self.method_select, Identifier):
+            return False
+        if isinstance(self.method_select, MemberSelect):
+            expression = self.method_select.expression
+            if isinstance(expression, Identifier):
+                return expression.name == name
+            if isinstance(expression, MemberSelect):
+                return expression.identifier == name
+        return False
+
+    def get_argument(self, index: int) -> Optional[Expression]:
+        """获取第 index 个参数"""
+        if index >= len(self.arguments):
+            return None
+        return self.arguments[index]
+
 
 @dataclasses.dataclass(slots=True)
 class Method(Tree):
@@ -2148,6 +2187,13 @@ class NewClass(Expression):
             end_pos=end_pos,
             source=source
         )
+
+    @property
+    def class_name(self) -> str:
+        """返回类名"""
+        if isinstance(self.identifier, ParameterizedType):
+            return self.identifier.type_name.generate()
+        return self.identifier.generate()
 
     def generate(self) -> str:
         """TODO 待验证分隔符"""
