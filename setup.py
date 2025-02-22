@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="UTF-8") as file:
 
 setup(
     name="metasequoia-java",
-    version="0.1.1",
+    version="0.2.0",
     description="水杉 Java 解析器",
     long_description=long_description,
     long_description_content_type="text/markdown",
