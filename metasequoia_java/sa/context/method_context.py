@@ -173,10 +173,7 @@ class MethodContextImp(MethodContext):
             如果当前抽象语法树节点为某个方法的参数，则为调用包含该参数的外层方法的参数下标，用于实现 lambda 语句的类型推断
         """
         for visit_namespace, visit_node in self.visitor_tree(runtime_method, namespace, statement_node,
-                                                              outer_runtime_method, outer_method_param_idx):
-            if not isinstance(visit_namespace, NameSpace):
-                print(visit_namespace, visit_node)
-
+                                                             outer_runtime_method, outer_method_param_idx):
             # -------------------- 递归元素产出 --------------------
             if isinstance(visit_node, ast.MethodInvocation):
 
@@ -189,17 +186,35 @@ class MethodContextImp(MethodContext):
                         # 调用 import 导入的静态方法
                         yield res_runtime_method, visit_node
                     else:
-                        # 调用当前类的其他方法 TODO 待优先获取当前类的其他方法
-                        res_runtime_method = RuntimeMethod(
-                            belong_class=RuntimeClass.create(
-                                package_name=self.file_context.package_name,
-                                public_class_name=self.file_context.public_class_name,
-                                class_name=self.class_context.class_name,
-                                type_arguments=None  # TODO 待改为当前类构造时的泛型
-                            ),
-                            method_name=method_name
-                        )
-                        LOGGER.debug(f"生成调用方法(类型 1): {res_runtime_method}")
+                        # 逐层向外部类寻找方法
+                        class_context = self.class_context
+                        while (class_context is not None
+                               and not class_context.class_node.get_method_by_name(method_name)):
+                            class_context = class_context.outer_class_context
+
+                        if class_context is not None:
+                            # 方法 method_name 在当前类中存在的情况，即调用当前类的其他方法
+                            res_runtime_method = RuntimeMethod(
+                                belong_class=RuntimeClass.create(
+                                    package_name=self.file_context.package_name,
+                                    public_class_name=self.file_context.public_class_name,
+                                    class_name=class_context.class_name,
+                                    type_arguments=None  # TODO 考虑改为当前类构造时的泛型
+                                ),
+                                method_name=method_name
+                            )
+                            LOGGER.debug(f"生成调用方法(类型 1 - 1): {res_runtime_method}")
+                        else:
+                            res_runtime_method = RuntimeMethod(
+                                belong_class=RuntimeClass.create(
+                                    package_name=self.file_context.package_name,
+                                    public_class_name=self.file_context.public_class_name,
+                                    class_name="Unknown",  # 未知类
+                                    type_arguments=None  # TODO 考虑改为当前类构造时的泛型
+                                ),
+                                method_name=method_name
+                            )
+                            LOGGER.debug(f"生成调用方法(类型 1 - 2): {res_runtime_method}")
                         yield res_runtime_method, visit_node
 
                 # name1.name2() / name1.name2.name3() / name1().name2() / name1.name2().name3()
@@ -380,8 +395,10 @@ class MethodContextImp(MethodContext):
             yield from self.visitor_tree(runtime_method, namespace, ast_node.instance_type)
             yield from self.visitor_tree(runtime_method, namespace, ast_node.pattern)
         elif isinstance(ast_node, ast.TypeCast):
-            yield from self.visitor_tree(runtime_method, namespace, ast_node.cast_type)
-            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.cast_type, outer_runtime_method,
+                                         outer_method_param_idx)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression, outer_runtime_method,
+                                         outer_method_param_idx)
         elif isinstance(ast_node, (ast.Break, ast.Continue)):
             return  # break 语句中和 contain 语句中不会调用其他方法
         elif isinstance(ast_node, ast.Throw):
@@ -474,6 +491,7 @@ class MethodContextImp(MethodContext):
         elif isinstance(ast_node, ast.LambdaExpression):
             simple_name_space = SimpleNameSpace()
             # 获取 lambda 表达式对应的参数类型
+            # print(f"lambda 类型推断: outer_runtime_method={outer_runtime_method}")
             lambda_runtime_class = self.project_context.get_runtime_class_by_runtime_method_param(
                 runtime_method=outer_runtime_method,
                 param_idx=outer_method_param_idx
@@ -526,6 +544,11 @@ class MethodContextImp(MethodContext):
             return  # 跳过空表达式
         elif isinstance(ast_node, ast.Assert):
             yield from self.visitor_tree(runtime_method, namespace, ast_node.assertion)
+        elif isinstance(ast_node, ast.Synchronized):
+            namespace.add_space(SimpleNameSpace.create_by_statement(ast_node.block))
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.expression)
+            yield from self.visitor_tree(runtime_method, namespace, ast_node.block)
+            namespace.pop_space()
         else:
             LOGGER.error(f"visitor_tree: 未知表达式类型: {ast_node}")
             yield None, None
@@ -777,6 +800,8 @@ class MethodContextImp(MethodContext):
 
         # 获取 name1 的类型
         runtime_class = self.infer_runtime_class_by_node(runtime_method, namespace, member_select_node.expression)
+        if runtime_class is None:
+            return None
 
         # 全局搜索类属性的类型
         runtime_variable = RuntimeVariable(

@@ -23,6 +23,7 @@ JAVA_LANG_CLASS_NAME_SET = {
     "ModuleLayer",
     "Number",
     "Long",
+    "IllegalArgumentException",
     "Object",
     "Override",
     "Package",

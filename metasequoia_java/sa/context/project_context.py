@@ -113,13 +113,12 @@ class ProjectContextImp(ProjectContext):
                 return parse_compilation_unit(file.read())
         return parse_compilation_unit(self._outer_java_file[file_path])
 
-    @functools.lru_cache(maxsize=1024)
-    def get_file_node_by_package_name_class_name(self,
+    def get_file_path_by_package_name_class_name(self,
                                                  package_name: str,
                                                  public_class_name: str,
                                                  need_warning: bool = True
-                                                 ) -> Optional[ast.CompilationUnit]:
-        """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点
+                                                 ) -> Optional[str]:
+        """根据 package_name 和公有类的 class_name 获取对应文件的绝对路径
 
         1. 如果 package_name 和公有类的 class_name 对应大于 1 个文件，则返回 None 并发送警告
         2. 如果 package_name 和公有类的 class_name 没有对应文件，则尝试通过项目外部 Java 源码文件路径获取，如果获取失败则返回 None 并发送警告
@@ -136,7 +135,7 @@ class ProjectContextImp(ProjectContext):
                 file_path_list.append(file_path)
 
         if len(file_path_list) == 1:
-            return self.get_file_node_by_file_path(file_path_list[0])
+            return file_path_list[0]
 
         if len(file_path_list) > 1:
             if need_warning:
@@ -147,6 +146,23 @@ class ProjectContextImp(ProjectContext):
         if file_path not in self._outer_java_file:
             if need_warning:
                 LOGGER.warning(f"公有类找不到 Java 文件: package_name={package_name}, class_name={public_class_name}")
+            return None
+
+        return file_path
+
+    @functools.lru_cache(maxsize=1024)
+    def get_file_node_by_package_name_class_name(self,
+                                                 package_name: str,
+                                                 public_class_name: str,
+                                                 need_warning: bool = True
+                                                 ) -> Optional[ast.CompilationUnit]:
+        """根据 package_name 和公有类的 class_name 获取对应文件的抽象语法树节点
+
+        1. 如果 package_name 和公有类的 class_name 对应大于 1 个文件，则返回 None 并发送警告
+        2. 如果 package_name 和公有类的 class_name 没有对应文件，则尝试通过项目外部 Java 源码文件路径获取，如果获取失败则返回 None 并发送警告
+        """
+        file_path = self.get_file_path_by_package_name_class_name(package_name, public_class_name, need_warning)
+        if file_path is None:
             return None
         return self.get_file_node_by_file_path(file_path)
 
@@ -286,6 +302,14 @@ class ProjectContextImp(ProjectContext):
 
     def get_type_runtime_class_by_runtime_variable(self, runtime_variable: RuntimeVariable) -> Optional[RuntimeClass]:
         """根据 RuntimeVariable 对象，获取该变量类型的 RuntimeClass 对象"""
+        if runtime_variable.variable_name == "class":
+            return RuntimeClass.create(
+                package_name="java.lang",
+                public_class_name="Class",
+                class_name="Class",
+                type_arguments=[runtime_variable.belong_class]
+            )
+
         variable_info = self.get_variable_info_by_runtime_variable(runtime_variable, need_warning=False)
         if variable_info is None:
             res = self.try_get_outer_attribute_type(runtime_variable)
@@ -307,11 +331,13 @@ class ProjectContextImp(ProjectContext):
         """根据 RuntimeVariable 对象获取该变量所在类的 ClassContext 对象，以及初始化该对象的抽象语法树节点"""
         class_context = self.create_class_context_by_runtime_class(runtime_variable.belong_class, need_warning=False)
         if class_context is None:
-            LOGGER.warning(f"获取类变量的抽象语法树节点失败(类不存在): {runtime_variable}")
+            if need_warning:
+                LOGGER.warning(f"获取类变量的抽象语法树节点失败(类不存在): {runtime_variable}")
             return None
         variable_info = class_context.get_variable_node_by_name(runtime_variable.variable_name)
         if variable_info is None:
-            LOGGER.warning(f"获取类变量的抽象语法树节点失败(变量不存在): {runtime_variable}")
+            if need_warning:
+                LOGGER.warning(f"获取类变量的抽象语法树节点失败(变量不存在): {runtime_variable}")
         return variable_info
 
     def get_runtime_class_by_runtime_method_param(self,

@@ -57,6 +57,14 @@ class ProjectContext(abc.ABC):
         """根据 file_path（文件路径）获取 file_node（抽象语法树的文件节点）"""
 
     @abc.abstractmethod
+    def get_file_path_by_package_name_class_name(self,
+                                                 package_name: str,
+                                                 public_class_name: str,
+                                                 need_warning: bool = True
+                                                 ) -> Optional[str]:
+        """根据 package_name 和公有类的 class_name 获取对应文件的绝对路径"""
+
+    @abc.abstractmethod
     def get_file_node_by_package_name_class_name(self,
                                                  package_name: str,
                                                  public_class_name: str,
